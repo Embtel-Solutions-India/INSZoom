@@ -3539,15 +3539,8 @@ const CRMCaseDetail = () => {
               {/* the buttons share one line on a wide screen (the heading text gives way); they only wrap on a narrow one */}
               <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap [&>button]:whitespace-nowrap">
                 <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
-                <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
-                <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
-                  {tabLoading.forms ? 'Generating…' : caseForms.length ? 'Refresh Auto Fill' : 'Generate USCIS Forms'}
-                </button>
-                {caseForms.length > 0 && caseForms.every(form => form.generatedPdfDocument) && (
-                  <button onClick={generateFilingPackage} disabled={tabLoading.forms} className="btn-secondary text-sm">
-                    Generate Filing Package
-                  </button>
-                )}
+                {/* only two actions here (owner decision 2026-11-04): forms are added through Manage forms; Refresh reloads the forms */}
+                <button onClick={() => fetchCaseForms(true)} className="btn-primary text-sm">Refresh</button>
               </div>
             </div>
             {showManageForms && (
@@ -3710,7 +3703,7 @@ const CRMCaseDetail = () => {
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">
-                    Click <strong>Generate USCIS Forms</strong> to auto-fill forms from the
+                    Click <strong>Manage forms</strong> to add forms; they are auto-filled from the
                     available case data. Fields will be blank where information hasn't been
                     provided yet — fill them in manually, or they'll populate automatically
                     as the client completes their questionnaire.

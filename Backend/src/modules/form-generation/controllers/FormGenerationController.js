@@ -79,7 +79,8 @@ exports.downloadForm = async (req, res) => {
     // published edition is never missed. The case keeps its edition (an edition-locked form is not swapped silently); the user is told.
     let freshnessNote = null;
     try {
-      const current = await require("../../../models/CaseForm").findById(req.params.caseFormId).populate({ path: "formTemplateId", select: "status version formCode" });
+      // only the two fields this check reads (it used to load the WHOLE case form - up to several MB - before the download loaded it again)
+      const current = await require("../../../models/CaseForm").findById(req.params.caseFormId).select("formCode formTemplateId").populate({ path: "formTemplateId", select: "status version formCode" });
       if (current?.formTemplateId && current.formTemplateId.status !== "active") {
         const check = await withTimeout(require("../../uscis-form-import/services/OnDemandFormAcquisitionService").ensureCurrentUSCISForm(current.formCode, req.user, req, { forceCheck: true }), 25000, "USCIS edition check");
         if (check?.template && String(check.template._id) !== String(current.formTemplateId._id)) {

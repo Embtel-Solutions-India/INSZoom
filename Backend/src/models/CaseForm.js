@@ -322,6 +322,18 @@ caseFormSchema.index({ updatedAt: -1 });
 // the reconciliation sweeper looks for migrations that stopped half-way (sparse: only migrated case forms carry the field)
 caseFormSchema.index({ "migrationState.step": 1 }, { sparse: true });
 
+// Speed fix guard: a box save loads the case form WITHOUT its old snapshots (`versions`). Such a document may never write `versions` - that
+// would replace the stored history with only what this request holds. The save is refused instead (nothing is written), so history can never be lost.
+caseFormSchema.pre("save", function guardSnapshotsNotLoaded(next) {
+  if (this.$locals?.snapshotsNotLoaded && this.isModified("versions")) {
+    const error = new Error("Internal safety stop: this case form was loaded without its version history and cannot change it. Nothing was saved; please retry.");
+    error.status = 409;
+    error.code = "CASE_FORM_SNAPSHOTS_NOT_LOADED";
+    return next(error);
+  }
+  return next();
+});
+
 const CaseForm = mongoose.model("CaseForm", caseFormSchema);
 
 // PHASE 2 — attached as a static, not a change to the module's export shape

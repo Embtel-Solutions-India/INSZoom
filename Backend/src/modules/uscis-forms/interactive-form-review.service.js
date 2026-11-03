@@ -174,14 +174,22 @@ class InteractiveFormReviewService {
       && idOf(options.caseForm.caseId) === idOf(caseId)
       && typeof options.caseForm.populated === "function"
       && options.caseForm.populated("formTemplateId");
+    // Speed fix: the template (~8 MB for the I-129) comes from templateCache (checked fresh on every use) instead of being re-read on every box
+    // save; the normal populate() below is the fallback. A box save (options.forSave) also skips the case form's old snapshots (`versions`, up to
+    // 5 MB) - that path never reads or writes them, and CaseForm's pre-save guard refuses any save that would change them on such a document.
     let caseFormQuery = CaseForm.findOne({ _id: caseFormId, caseId })
-      .populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE })
       .maxTimeMS(WORKSPACE_READ_TIMEOUT_MS);
+    if (options.forSave) caseFormQuery = caseFormQuery.select("-versions");
     if (options.readOnlyOpen) caseFormQuery = caseFormQuery.read("secondaryPreferred");
     const caseForm = reusable
       ? options.caseForm
       : await caseFormQuery;
     if (!caseForm) throw error("Case form not found", 404);
+    if (!reusable) {
+      if (options.forSave) caseForm.$locals.snapshotsNotLoaded = true;
+      const attached = await require("./templateCache").attachTemplate(caseForm, { select: TEMPLATE_RENDER_EXCLUDE });
+      if (!attached && typeof caseForm.populate === "function") await caseForm.populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
+    }
     // Same dangling-reference guard renderCaseForm already carries: populate()
     // resolves to null when formTemplateId points at a deleted template, and
     // .toObject() on null is an uncaught TypeError (a 500 with no explanation)
@@ -603,7 +611,7 @@ class InteractiveFormReviewService {
   }
 
   static async saveFieldUnlocked(caseId, caseFormId, payload, user, req) {
-    const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user);
+    const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user, { forSave: true });
     this.assertEditable(caseForm, user);
     const rawFieldName = payload.fieldName || payload.fieldId;
     if (!rawFieldName) throw error("Field name is required", 400);
@@ -696,7 +704,7 @@ class InteractiveFormReviewService {
   }
 
   static async saveSectionUnlocked(caseId, caseFormId, payload, user, req) {
-    const { caseForm, template } = await this.load(caseId, caseFormId, user);
+    const { caseForm, template } = await this.load(caseId, caseFormId, user, { forSave: true });
     this.assertEditable(caseForm, user);
     const allowedFields = new Set(this.sectionFieldNames(template, payload.sectionKey));
     const values = payload.fieldValues || {};
