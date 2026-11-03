@@ -64,7 +64,7 @@ export const SocketProvider = ({ children }) => {
         if (!payload?.caseId) return
         const own = payload.actorId && String(payload.actorId) === String(user?._id || user?.id || '')
         if (own && document.hasFocus()) return
-        window.dispatchEvent(new CustomEvent('case-answers-changed', { detail: { caseId: String(payload.caseId), remote: true } }))
+        window.dispatchEvent(new CustomEvent('case-answers-changed', { detail: { caseId: String(payload.caseId), remote: true, scope: Array.isArray(payload.scope) ? payload.scope : [] } }))
       } catch { /* a live update must never break the socket */ }
     })
 

@@ -88,6 +88,8 @@ router.post("/:id/n600-process/approve", authenticate, authorizeRoles(...manager
 router.post("/:id/change-of-address/add", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.addChangeOfAddress);
 router.post("/:id/change-of-address/:componentId/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveChangeOfAddress);
 router.post("/:id/notes", authenticate, authorizeRoles(...staffRoles), body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addInternalNote);
+router.patch("/:id/notes/:noteId", authenticate, authorizeRoles(...staffRoles), body("note").trim().notEmpty().withMessage("Note is required"), validate, ctrl.updateInternalNote); // the note's author only
+router.delete("/:id/notes/:noteId", authenticate, authorizeRoles(...staffRoles), ctrl.deleteInternalNote); // any internal staff member
 router.post("/:id/external-notes", authenticate, body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addExternalNote);
 router.put(
   "/:id/assign-case-manager",

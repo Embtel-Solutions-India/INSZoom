@@ -21,6 +21,7 @@ import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
+import CaseNotesPanel from '../components/CaseNotesPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
@@ -370,15 +371,7 @@ const employeeVisaLabel = (child) => {
 // Documents tab: the "Uploaded By" column is hidden for these two cases only (an explicit exception requested by the business); every other case keeps it.
 const CASES_WITHOUT_UPLOADED_BY = new Set(['B413', 'B413-A'])
 
-// The notes typed when the case was created. New cases carry them in caseNotes; older cases only have the first internal note, which was written at the same moment.
-const creationNotes = (caseData) => {
-  if (!caseData) return ''
-  if (caseData.caseNotes) return String(caseData.caseNotes)
-  const first = (caseData.internalNotes || [])[0]
-  if (!first?.note || !first.createdAt || !caseData.createdAt) return ''
-  const gap = Math.abs(new Date(first.createdAt).getTime() - new Date(caseData.createdAt).getTime())
-  return gap <= 2 * 60 * 1000 && first.category === 'general' ? String(first.note) : ''
-}
+// (the notes typed when the case was created are worked out in components/CaseNotesPanel.jsx - creationNoteOf)
 
 const CRMCaseDetail = () => {
   const { id } = useParams()
@@ -980,6 +973,17 @@ const CRMCaseDetail = () => {
       setLoading(false)
     }
   }
+
+  // A note added / edited / deleted on another internal screen: re-read the case quietly so its Notes box shows the same notes everywhere.
+  useEffect(() => {
+    const onRemoteChange = (event) => {
+      const detail = event?.detail || {}
+      if (!detail.remote || String(detail.caseId) !== String(id) || !(detail.scope || []).includes('notes')) return
+      fetchCaseDetail(true)
+    }
+    window.addEventListener('case-answers-changed', onRemoteChange)
+    return () => window.removeEventListener('case-answers-changed', onRemoteChange)
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coming back to this (kept-alive) case after a while: refresh the case quietly in the
   // background - no spinner, nothing collapses, the open tab and scroll stay put.
@@ -2659,11 +2663,8 @@ const CRMCaseDetail = () => {
                 </div>
               </div>
 
-              {/* Notes written when the case was created (the "Case Details" box). The section is always here; with no notes it stays empty. */}
-              <div className="card">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Notes</h3>
-                {creationNotes(caseData) && <p className="text-sm text-foreground whitespace-pre-wrap break-words">{creationNotes(caseData)}</p>}
-              </div>
+              {/* Notes for the life of the case: every internal note (who and when) plus the notes typed at creation; any internal staff member adds one at any time */}
+              <CaseNotesPanel caseData={caseData} user={user} onChanged={() => fetchCaseDetail(true)} />
 
               {/* Petitioner / Beneficiary — family-workflow (I-130/Green Card)
                   cases only. BUG (fixed): Case.clientName/clientEmail are set

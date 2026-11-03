@@ -234,6 +234,8 @@ export const casesApi = {
   deletePermanently: (id) => api.delete(`/cases/${id}/permanent`),
   updateStage: (id, payload) => api.put(`/cases/${id}/stage`, payload),
   addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
+  updateInternalNote: (id, noteId, payload) => api.patch(`/cases/${id}/notes/${noteId}`, payload), // the note's author only
+  deleteInternalNote: (id, noteId) => api.delete(`/cases/${id}/notes/${noteId}`),
   assignCaseManager: (id, caseManagerId, notes, extra = {}) =>
     api.put(`/cases/${id}/assign-case-manager`, { caseManagerId, notes, ...extra }),
   // Additional case managers working the case alongside the primary one (the primary is changed through assignCaseManager above).
