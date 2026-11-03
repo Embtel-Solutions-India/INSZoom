@@ -16,7 +16,7 @@ This file is the one place that records every phase of the Petition AI Review su
 | 1 | Models, rules, env, PDF slicer, batch planner | DONE |
 | 2 | Own Gemini caller, prompt, validation, summary | DONE |
 | 3 | Durable job, worker, automatic upload trigger | DONE |
-| 4 | API + notifications | pending |
+| 4 | API + notifications | DONE |
 | 5 | Admin UI | pending |
 | 6 | Full verification + final report | pending |
 
@@ -186,4 +186,36 @@ REGRESSION_PLACEHOLDER
 
 **Next step:** Phase 4 - `/api/petition-ai-review` (staff only, existing auth + case access): scans by case (counts only), scan detail + paged findings, re-scan, retry, cancel; live `petition:ai_review` event (throttled) and a bell notification to the uploader when a scan finishes. Waiting for your approval.
 
-*(Phases 4-6 are added below as they are completed.)*
+---
+
+## Phase 4 - API and notifications (DONE)
+
+**Done** (new files in `Backend/src/modules/petition-ai-review/`, plus one guarded line in `routes/index.js`):
+- `reviewApi.service.js` + `petitionAiReview.routes.js` - `/api/petition-ai-review`, **staff only** (super admin, admin, team lead, case manager) **with access to the case**, using the same case lookup and `canAccessCase` as the petition review module:
+  - `GET /cases/:caseId` - the case's petitions with their latest scan, **counts only** (no findings, no diagnostics);
+  - `GET /scans/:scanId` - status, summary, page -> issues, category totals, gaps, the newest 50 diagnostics (never the worker's lease);
+  - `GET /scans/:scanId/findings` - paged (50 by default, at most 200), filters `severity`, `category`, `fromPage` / `toPage`;
+  - `POST /cases/:caseId/documents/:documentId/rescan` - a fresh scan from page 1 (the running one is returned if there is one), wakes the worker;
+  - `POST /scans/:scanId/retry` - re-check a waiting scan now, or reopen a failed / cancelled one from the page it reached;
+  - `POST /scans/:scanId/cancel` - stop a running scan.
+  A scan of a case the person cannot access is 403, an unknown one 404 - never another case's data. With `PETITION_AI_REVIEW` off the reads still answer (`enabled: false`, existing results stay visible) and the actions answer 404 "switched off".
+- `notifier.js` - live event `petition:ai_review` to the case team while a scan runs (at most once per scan every 2 s) and when it ends (also to the person who started it), and a **bell notification** to that person when the scan reaches an end state (finished / finished with unread pages / stopped / not set up) - not for a pause, which resumes by itself. Uses the existing notification type `general` (no change to the shared type list). It never throws and is never awaited by the scan.
+- `scanRunner.js` - a progress hook after each stored page range (fire-and-forget).
+- `routes/index.js` - the route is mounted inside a try/catch, so a load problem can never stop the API from starting.
+
+**Tested** - `phase4.api.test.js` (9 tests; the real router in a local HTTP server, an in-memory store on the real schemas, no database, no network): sign-in required; clients / attorneys refused; a case manager of another case gets 403 on that case, its scans and its actions; unknown / malformed ids 404; counts-only case list; scan detail without the lease and with 50 diagnostics; paging and filters (and the 200 cap, unknown filter values ignored); re-scan creates one scan and wakes the worker once, refuses non-petitions, deleted petitions and other cases' petitions; cancel / cancel twice (409) / retry reopens / retry with another open scan (409); feature off; progress throttling; who is notified; bell only for end states; every notification failure swallowed. **All Petition AI Review tests (Phases 0-4): 102 / 102 pass, run twice.**
+
+REGRESSION4_PLACEHOLDER
+
+**Not done in this phase:** nothing planned for Phase 4 is left. The screen that uses this API is Phase 5.
+
+**What you need to do:**
+1. Nothing to switch on yet: keep `PETITION_AI_REVIEW` unset / `off` until Phase 5 (the screen) is done.
+2. Deploy the backend when convenient - with the switch off the new routes only show existing results (none yet) and refuse actions.
+3. Still open: Gemini billing (still HTTP 402 "prepayment credits depleted" at the last check), FedEx / filing addresses, optional backup AI key.
+
+**Remaining:** Phases 5-6.
+
+**Next step:** Phase 5 - the Admin screen: an **AI Review** button and live status chip in each petition row, and the findings panel (severity counts, issues grouped by page, filters, "Open page N", Re-scan / Retry / Cancel, "AI-assisted - verify before acting"). Waiting for your approval.
+
+*(Phases 5-6 are added below as they are completed.)*

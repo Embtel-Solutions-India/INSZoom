@@ -41,7 +41,7 @@ const defaultSleep = (ms) => new Promise((resolve) => { const timer = setTimeout
 
 /**
  * deps: { scanService, config, loadDocument(id), readBuffer(document), openReader(buffer), loadFacts(caseId), loadRules(), createCaller(), createFallback(),
- *         sleep, logger, shouldStop(), onFinished(scanId, outcome), heartbeatMs }
+ *         sleep, logger, shouldStop(), onProgress(scan, { pagesDone, lastPage }), onFinished(scanId, outcome), heartbeatMs }
  */
 function createScanRunner(deps) {
   const { scanService, config, logger = console } = deps;
@@ -118,6 +118,7 @@ function createScanRunner(deps) {
             calls: result.value.calls, tokens: result.value.tokens, nextPage: batch.to + 1, pagesDone: batch.to, usedFallback: result.value.usedFallback, modelUsed: result.value.models[0],
           });
           next = batch.to + 1;
+          if (deps.onProgress) Promise.resolve().then(() => deps.onProgress(scan, { pagesDone: batch.to, lastPage })).catch(() => null); // live progress (throttled by the notifier); never awaited
         }
         if (next <= lastPage && config.batchDelayMs) await sleep(config.batchDelayMs);
       }
