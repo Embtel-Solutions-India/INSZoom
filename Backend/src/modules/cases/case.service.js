@@ -125,6 +125,15 @@ function isFamilyBeneficiaryOf(user, caseData) {
     || Boolean(caseData.beneficiaryInvite?.email && caseData.beneficiaryInvite.email === user.email);
 }
 
+// Owner decision 2026-11-04: case managers see and open EVERY case, exactly like team leads (and admins) - not only the cases assigned to them.
+// Who is ON the case (assignedCaseManager / additionalCaseManagers) is unchanged and still decides emails, notifications, the pipeline, the
+// case manager shown on the case and the personal dashboard / analytics numbers - only visibility and access widen. One rule for the list
+// (applyCaseRoleFilter) and the detail check (canAccessCase), so the two can never disagree.
+function seesEveryCase(user) {
+  const role = normalizeRole(user?.role);
+  return isAdmin(user) || role === "team_lead" || role === "case_manager";
+}
+
 function canAccessCase(user, caseData) {
   if (!user || !caseData) return false;
   const role = normalizeRole(user.role);
@@ -150,7 +159,7 @@ function canAccessCase(user, caseData) {
   // so access can't depend on already being assigned via
   // assignedTeamLead/teamId - see applyCaseRoleFilter's comment for why the
   // old, narrower check was circular).
-  if (isAdmin(user) || role === "team_lead") return true;
+  if (seesEveryCase(user)) return true;
   if (sameId(caseData.user, user._id)) return true;
   if (sameId(caseData.employeeUser, user._id)) return true;
   if (sameId(caseData.employerUser, user._id)) return true;
@@ -193,7 +202,7 @@ function applyCaseRoleFilter(filter, user) {
   // visibility was considered and explicitly declined in favor of
   // system-wide visibility, since Case.teamId/User.teamId aren't reliably
   // populated today.
-  if (isAdmin(user) || role === "team_lead") return filter;
+  if (seesEveryCase(user)) return filter;
   // Attorney: only cases with an active grant in attorneyAccess[]. Without
   // this branch an attorney fell through to the generic client filter at the
   // bottom (user/clientProfile/petitionerUser), which returns nothing — no
@@ -362,16 +371,27 @@ async function resolveStaffListFilter(query, user) {
     return { $and: [base, { $or: [{ "integrations.ghl.unifiedStageKey": stageKey }, ...(parentIds.length ? [{ _id: { $in: parentIds } }] : [])] }] };
   }
   const exclude = ["true", "1"].includes(String(query.excludeChildCases));
-  const needsRollUp = exclude && !query.caseRole && (query.search || normalizeRole(user?.role) === "case_manager");
+  // Filter by visa (2026-11-04): a case matches on its own visa; an employer / family matter also matches when ANY of its employee /
+  // beneficiary cases has that visa (a TN matter with an H-1B employee is listed under H-1B). Same roll-up as the stage filter above; the
+  // other filters still apply to the listed rows (base), and child cases stay inside their matter.
+  const visaType = typeof query.visaType === "string" ? query.visaType.trim() : "";
+  const visaCategory = typeof query.visaCategory === "string" ? query.visaCategory.trim() : "";
+  if (exclude && !query.caseRole && (visaType || visaCategory)) {
+    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaCategory: undefined }, user);
+    const visaMatch = {};
+    if (visaType) visaMatch.visaType = { $regex: visaType, $options: "i" };
+    if (visaCategory) visaMatch.visaCategory = visaCategory;
+    const parentIds = (await Case.distinct("parentCase", { ...visaMatch, parentCase: { $ne: null }, caseRole: { $in: ["employee", "beneficiary"] }, status: { $nin: ["removed", "archived"] } })).filter(Boolean);
+    return { $and: [base, { $or: [visaMatch, ...(parentIds.length ? [{ _id: { $in: parentIds } }] : [])] }] };
+  }
+  // case managers see every case since 2026-11-04 (seesEveryCase), so the roll-up is only needed for a search
+  const needsRollUp = exclude && !query.caseRole && query.search;
   if (!needsRollUp) return resolveCaseSearchFilter(query, user);
   const childFilter = buildCaseFilter({ ...query, excludeChildCases: undefined, caseRole: "employee,beneficiary" }, user);
   const parentIds = (await Case.distinct("parentCase", childFilter)).filter(Boolean);
   const direct = query.search ? buildCaseFilter(query, user) : await resolveCaseSearchFilter(query, user);
   if (!parentIds.length) return direct;
-  if (normalizeRole(user?.role) === "case_manager") {
-    // record the scoped access so the matter can be opened (assignments older than the field, or a path that skipped the sync)
-    Case.updateMany({ _id: { $in: parentIds }, childCaseManagers: { $ne: user._id } }, { $addToSet: { childCaseManagers: user._id } }, { timestamps: false }).catch(() => {});
-  }
+  // (listing never writes: the old childCaseManagers bookkeeping here was for per-child access, not needed now that case managers see every case)
   // no $text here: it cannot sit inside an $or
   return { $or: [direct, { _id: { $in: parentIds } }] };
 }

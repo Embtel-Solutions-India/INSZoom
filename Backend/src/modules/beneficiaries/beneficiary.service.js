@@ -254,8 +254,7 @@ function buildBaseFilter(query = {}) {
 function applyAccessFilter(filter, user, extraBeneficiaryIds = []) {
   const role = roleOf(user);
   if (role === "client") return { ...filter, user: user._id };
-  // Own beneficiaries, plus those on cases where this case manager is an additional (not primary) case manager.
-  if (role === "case_manager") return { ...filter, $and: [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, ...(extraBeneficiaryIds.length ? [{ _id: { $in: extraBeneficiaryIds } }] : [])] }] };
+  // case managers see every beneficiary (owner decision 2026-11-04: all case data is visible to every case manager); team leads unchanged
   if (role === "team_lead" && user.teamId) return { ...filter, teamId: user.teamId };
   return filter;
 }

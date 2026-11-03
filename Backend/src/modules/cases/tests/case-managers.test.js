@@ -31,24 +31,25 @@ test("allCaseManagerIds returns primary first, de-duplicated, for ids and popula
   assert.deepEqual(access.allCaseManagerIds({ assignedCaseManager: primary }), [String(primary)]);
 });
 
-test("a case without additionalCaseManagers (every existing case) behaves exactly as before", () => {
+// Owner decision 2026-11-04: every case manager sees and opens every case, like team leads; WHO is on the case (below) still decides emails / notifications.
+test("a case without additionalCaseManagers (every existing case): its case manager and any other case manager can open it", () => {
   const legacy = { user: client, assignedCaseManager: primary };
   assert.ok(caseService.canAccessCase(caseManager(primary), legacy));
-  assert.ok(!caseService.canAccessCase(caseManager(stranger), legacy));
+  assert.ok(caseService.canAccessCase(caseManager(stranger), legacy), "every case manager sees every case");
+  assert.deepEqual(access.allCaseManagerIds(legacy), [String(primary)], "only the assigned one is ON the case");
 });
 
-test("an additional case manager can access the case; an unrelated case manager still cannot", () => {
+test("primary, additional and unrelated case managers can all open the case; only primary + additional are on it", () => {
   const caseData = baseCase();
   assert.ok(caseService.canAccessCase(caseManager(primary), caseData));
   assert.ok(caseService.canAccessCase(caseManager(extra), caseData));
-  assert.ok(!caseService.canAccessCase(caseManager(stranger), caseData));
+  assert.ok(caseService.canAccessCase(caseManager(stranger), caseData));
+  assert.ok(!access.allCaseManagerIds(caseData).includes(String(stranger)), "an unrelated case manager is not on the case team");
 });
 
-test("the case list filter for a case manager matches primary OR additional", () => {
+test("the case list for a case manager is every case (no assignment restriction), like a team lead", () => {
   const filter = caseService.buildCaseFilter({}, caseManager(extra));
-  const clause = JSON.stringify(filter.$and);
-  assert.ok(clause.includes("additionalCaseManagers"));
-  assert.ok(clause.includes("assignedCaseManager"));
+  assert.equal(JSON.stringify(filter).includes("assignedCaseManager"), false);
 });
 
 test("filtering the case list by a case manager includes their additional cases", () => {
@@ -94,7 +95,8 @@ test("removing an additional case manager works; the primary and strangers canno
   assert.equal(svc.removeAdditionalCaseManager(caseData, extra, { _id: id() }).changed, true);
   assert.equal(caseData.additionalCaseManagers.length, 0);
   assert.equal(caseData.assignmentHistory[0].changeType, "removed");
-  assert.ok(!caseService.canAccessCase(caseManager(extra), caseData), "removed case manager loses access");
+  assert.ok(!access.allCaseManagerIds(caseData).includes(String(extra)), "the removed case manager is no longer on the case (no emails / notifications)");
+  assert.ok(caseService.canAccessCase(caseManager(extra), caseData), "but can still open it, like every case manager");
 });
 
 test("a case manager promoted to primary is dropped from the additional list", () => {

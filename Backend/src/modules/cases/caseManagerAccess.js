@@ -80,7 +80,10 @@ async function healChildScope(principal, user) {
 }
 
 // null = the user sees every child of this principal; otherwise the ids of the only children they may see.
+// Owner decision 2026-11-04: case managers see every case, like team leads - so every child too (null). The old per-child scoping below is kept
+// (unreachable) so it can be switched back by removing this one line.
 async function scopedChildIdsFor(principal, user) {
+  if (isCaseManagerRole(user)) return null;
   if (!isCaseManagerRole(user) || principal?.caseRole !== "principal") return null;
   if (isCaseManagerOfCase(principal, user._id) || idOf(principal.primaryOwner) === idOf(user._id) || idOf(principal.secondaryOwner) === idOf(user._id)) return null;
   if (!isChildScopedCaseManager(principal, user)) return null;

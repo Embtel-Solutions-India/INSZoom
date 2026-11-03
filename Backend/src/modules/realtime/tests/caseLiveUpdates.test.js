@@ -28,7 +28,7 @@ test("the event goes to everyone who can see the case - and only them - and carr
   await flushPending();
   assert.deepEqual(userEmits.map((e) => e.userId).sort(), ["atty-active", "cm1", "cm2", "delegate", "owner"]);
   assert.ok(userEmits.every((e) => e.event === EVENT && e.event === "case:data_changed"));
-  assert.deepEqual(roleEmits.map((e) => e.role).sort(), ["admin", "super_admin", "team_lead"]);
+  assert.deepEqual(roleEmits.map((e) => e.role).sort(), ["admin", "case_manager", "super_admin", "team_lead"], "every role that can open any case (case managers since 2026-11-04)");
   const { payload } = userEmits[0];
   assert.deepEqual(Object.keys(payload).sort(), ["actorId", "at", "caseId", "caseNumber", "reason", "scope"]);
   assert.deepEqual(payload.scope, ["documents"]);
