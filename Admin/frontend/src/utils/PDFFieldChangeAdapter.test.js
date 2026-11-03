@@ -167,4 +167,39 @@ describe('PDFFieldChangeAdapter', () => {
     expect(annotationStorage.setValue).toHaveBeenCalledWith('11R', { value: false })
     expect(prePopulateById(null, widgetIndex, {})).toBe(0)
   })
+
+  // Production bug (2026-11-04): pdf.js puts a checkbox's on-value in the attribute `exportValue`, which was not read, so ticks were
+  // saved as "Yes"; the viewer then compared "Yes" with the real on-value ("Y") and drew the box UNticked on the next redraw.
+  it('a ticked pdf.js checkbox is saved with the box\'s own on-value from its exportValue attribute', () => {
+    const pdfjsCheckbox = (checked, exportValue) => ({
+      name: 'form1[0].#subform[0].CheckBox_YN[0]', type: 'checkbox', checked, value: 'on',
+      getAttribute: (attr) => (attr === 'exportValue' ? exportValue : null),
+    })
+    const save = (checked, exportValue) => convert({ target: pdfjsCheckbox(checked, exportValue) }, 'case-form-1', {}, { fieldMetaByName }).value
+    expect(save(true, 'Y')).toBe('Y')
+    expect(save(true, ' APT ')).toBe(' APT ')
+    expect(save(false, 'Y')).toBe('')
+  })
+
+  it('a tick saved as "Yes" earlier is still drawn ticked on a box whose on-value is different', () => {
+    const annotationStorage = { setValue: vi.fn() }
+    const widgetIndex = buildWidgetIndex({ 'box.field': [{ id: '20R', type: 'checkbox', exportValues: 'Y' }] })
+    for (const [stored, ticked] of [['Yes', true], ['Y', true], [true, true], ['1', true], ['', false], [false, false], ['Off', false], ['false', false], ['0', false], [null, false]]) {
+      annotationStorage.setValue.mockClear()
+      prePopulateById(annotationStorage, widgetIndex, { 'box.field': stored })
+      expect(annotationStorage.setValue).toHaveBeenCalledWith('20R', { value: ticked })
+    }
+  })
+
+  it('checkboxes sharing one name with different on-values act as a choice: only the exact one is ticked, "Yes" ticks none of them', () => {
+    const annotationStorage = { setValue: vi.fn() }
+    const widgetIndex = buildWidgetIndex({ 'choice.field': [{ id: '30R', type: 'checkbox', exportValues: 'A' }, { id: '31R', type: 'checkbox', exportValues: 'B' }] })
+    prePopulateById(annotationStorage, widgetIndex, { 'choice.field': 'B' })
+    expect(annotationStorage.setValue).toHaveBeenCalledWith('30R', { value: false })
+    expect(annotationStorage.setValue).toHaveBeenCalledWith('31R', { value: true })
+    annotationStorage.setValue.mockClear()
+    prePopulateById(annotationStorage, widgetIndex, { 'choice.field': 'Yes' })
+    expect(annotationStorage.setValue).toHaveBeenCalledWith('30R', { value: false })
+    expect(annotationStorage.setValue).toHaveBeenCalledWith('31R', { value: false })
+  })
 })

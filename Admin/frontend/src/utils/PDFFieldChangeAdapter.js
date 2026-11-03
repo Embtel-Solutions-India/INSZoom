@@ -51,17 +51,31 @@ const fieldTypeOf = (input) => {
   ).trim()
 }
 
+// The box's own "on" value. pdf.js puts it on the checkbox element as the attribute `exportValue` (e.g. "Y", " APT "); it used to be
+// missed (only data-export-value was read), so every tick was saved as "Yes" - which the viewer then drew UNticked on the next redraw.
 const exportValueOf = (input) => {
   const target = input?.target || input || {}
-  const value = input?.exportValue ??
-    input?.buttonValue ??
-    target.exportValue ??
-    target.buttonValue ??
-    findAttribute(target, 'data-export-value') ??
-    findAttribute(target, 'data-button-value')
-  if (value !== undefined && value !== null && value !== '') return value
+  const candidates = [
+    input?.exportValue,
+    input?.buttonValue,
+    target.exportValue,
+    target.buttonValue,
+    findAttribute(target, 'exportValue'),
+    findAttribute(target, 'data-export-value'),
+    findAttribute(target, 'data-button-value'),
+  ]
+  const value = candidates.find((item) => item !== undefined && item !== null && item !== '')
+  if (value !== undefined) return value
   if (target.value !== undefined && target.value !== null && target.value !== '' && target.value !== 'on') return target.value
   return 'Yes'
+}
+
+// a stored checkbox answer that means "ticked" (anything but empty / false / Off / 0)
+const isTicked = (value) => {
+  if (value === true) return true
+  if (value == null || value === false) return false
+  const text = String(value).trim().toLowerCase()
+  return text !== '' && !UNCHECKED_TEXT.has(text) && text !== 'no'
 }
 
 export function normalizePdfFieldValue(input) {
@@ -175,9 +189,13 @@ export function prePopulateById(annotationStorage, widgetIndex, fieldValues = {}
     const widgets = widgetIndex.get(fieldName)
     if (!widgets || !widgets.length) return
     const value = unwrapStoredValue(entry)
+    // One "on" value for this name: any stored tick means ticked (a tick saved as "Yes" before the export value was read correctly
+    // must still show as ticked). Several widgets with DIFFERENT on-values under one name act as a choice: only the exact one is ticked.
+    const checkboxOnValues = new Set(widgets.filter((widget) => widget.type === 'checkbox').map((widget) => String(widget.exportValue)))
     widgets.forEach((widget) => {
       if (widget.type === 'checkbox') {
-        annotationStorage.setValue(widget.id, { value: value === widget.exportValue || value === true })
+        const ticked = checkboxOnValues.size > 1 ? (value === true || String(value) === String(widget.exportValue)) : (value === widget.exportValue || isTicked(value))
+        annotationStorage.setValue(widget.id, { value: ticked })
       } else if (widget.type === 'radiobutton') {
         annotationStorage.setValue(widget.id, { value: String(value) === String(widget.exportValue) })
       } else {
