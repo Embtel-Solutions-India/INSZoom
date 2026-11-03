@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { authApi, casesApi, employeeProfileApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
 import { isEmployeeAccount } from "../../utils/auth";
+import PasswordHint from "../../components/auth/PasswordHint";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
 // and case-specific data (including Premium Processing/I-907) all live on
@@ -349,6 +350,7 @@ export default function Profile() {
               onChange={(e) => updatePasswordField("confirmNewPassword", e.target.value)}
             />
           </Field>
+          <PasswordHint className="mb-0" />
 
           {passwordError && (
             <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-2.5">

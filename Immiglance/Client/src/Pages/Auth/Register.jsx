@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
+import PasswordHint from "../../components/auth/PasswordHint";
 import AuthShell from "../../components/auth/AuthShell";
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -243,6 +244,7 @@ export default function Register() {
               placeholder="Confirm Password" value={form.confirmPassword} onChange={set("confirmPassword")}
               autoComplete="new-password"
             />
+            <PasswordHint />
 
             {success && (
               <div role="status" className="mb-3 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-2.5 flex items-center gap-2">

@@ -50,9 +50,20 @@ async function sendSubmittedNotice({ caseDoc, previousKey }) {
   }
 }
 
+// The client's Tasks page (the case workflow, cached for 30 s) shows "Filed" completed once the card is at Submitted or later: expire that cache
+// on a move so the next read recalculates it, in both directions (a card moved back out un-completes it). Never throws.
+async function refreshClientProgress(caseDoc) {
+  try {
+    await Case.updateOne({ _id: caseDoc._id }, { $unset: { lastSyncedAt: 1 } }, { timestamps: false });
+  } catch (error) {
+    logger.warn("ghl_progress_refresh_failed", { caseId: String(caseDoc?._id), error: error.message });
+  }
+}
+
 /** Fire-and-forget wrapper for the move sites. */
 function notifySubmitted(args) {
   try {
+    refreshClientProgress(args.caseDoc).catch(() => {});
     sendSubmittedNotice(args).catch(() => {});
   } catch (_error) {
     /* never affects the move */
