@@ -42,6 +42,7 @@ import {
 import { formGenerationApi, uscisFormsApi, readFormWarnings } from '../../services/api'
 import { useCaseFormLiveUpdates } from '../../hooks/useCaseFormLiveUpdates'
 import { convert as convertPdfFieldChange, extractFieldName, buildWidgetIndex, prePopulateById } from '../../utils/PDFFieldChangeAdapter'
+import { rememberCombLayout, syncCombLayout, watchFieldLimits } from '../../utils/fieldLimitWatcher'
 import { buildPageSlots, pageMismatch } from './viewerPageSlots'
 
 // Must be set in the SAME module that renders <Document>/<Page> (react-pdf's
@@ -401,26 +402,6 @@ const applyNativeFieldValue = (element, value) => {
   if (element.value !== text) element.value = text
 }
 
-// A comb field is a row of printed boxes, one character per box: pdf.js lines the characters up with the boxes (class "comb" + a letter-spacing) for exactly
-// its /MaxLen characters. No field may limit how much can be typed, so maxlength is removed - but the box layout is KEPT while the text fits its boxes, so each
-// character sits in its own box; a text longer than the boxes falls back to ordinary text, so every character stays visible and editable. (The layout used to be
-// dropped altogether, which packed the characters together and out of their boxes.)
-const rememberCombLayout = (element) => {
-  if (element.dataset.combMax !== undefined || !element.classList.contains('comb')) return
-  const max = Number(element.getAttribute('maxlength'))
-  if (!(max > 0)) return
-  element.dataset.combMax = String(max)
-  element.dataset.combSpacing = element.style.letterSpacing || ''
-}
-const syncCombLayout = (element) => {
-  const max = Number(element?.dataset?.combMax)
-  if (!(max > 0)) return
-  const fits = String(element.value ?? '').length <= max
-  if (element.classList.contains('comb') !== fits) element.classList.toggle('comb', fits)
-  const spacing = fits ? (element.dataset.combSpacing || '') : ''
-  if (element.style.letterSpacing !== spacing) element.style.letterSpacing = spacing
-}
-
 const NATIVE_FIELD_CLASSES = ['canonical', 'override', 'session', 'conflict', 'error', 'saving', 'unmapped'].map((name) => `native-field-${name}`)
 
 const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit }) => {
@@ -485,6 +466,12 @@ function PdfFormPage({ pdfPageNumber, displayPageNumber, pdfPageWidth, pdfPageHe
   useEffect(() => {
     syncNativeFields()
   }, [syncNativeFields])
+
+  // No character limit, ever: pdf.js draws a page's boxes on its own schedule (scrolling, zoom, re-render) and copies each PDF box's /MaxLen
+  // onto it, AFTER the styling pass above may already have run - which is how the limit kept coming back. This watcher catches every box the
+  // moment pdf.js adds it (or sets a maxlength on it): the box layout of a one-character-per-box field is remembered FIRST (so numbers stay in
+  // their own boxes), then the limit is removed.
+  useEffect(() => watchFieldLimits(pageRef.current), [])
 
   useEffect(() => {
     const node = pageRef.current

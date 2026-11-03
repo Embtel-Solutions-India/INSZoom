@@ -12,22 +12,21 @@ test("values that fit are written unchanged", () => {
   assert.equal(fitTextValue({ pdfField: email, value: "a@b.com", maxLength: undefined }).status, "unchanged");
 });
 
-test("an over-long phone drops its formatting / country code to fit", () => {
-  assert.equal(fitTextValue({ pdfField: phone, value: "+919354596545", maxLength: 10 }).value, "9354596545");
-  assert.equal(fitTextValue({ pdfField: phone, value: "(935) 459-6545", maxLength: 10 }).value, "9354596545");
-  assert.equal(fitTextValue({ pdfField: phone, value: "+1 (935) 459-6545", maxLength: 10 }).value, "9354596545");
+// Owner rule 2026-11-04: no character limit on any form, ever - an entry is never cut. Separators are dropped only when that makes it fit its boxes.
+test("a number that only misses its boxes because of separators is written without them, one character per box", () => {
+  assert.deepEqual(fitTextValue({ pdfField: phone, value: "(935) 459-6545", maxLength: 10 }).value, "9354596545");
+  assert.equal(fitTextValue({ pdfField: zip, value: "12345-6789", maxLength: 9 }).value, "123456789");
+  assert.equal(fitTextValue({ pdfField: "form1[0].Line1_AlienNumber[0]", value: "A-123-456-789", maxLength: 10 }).value, "A123456789");
+  assert.equal(fitTextValue({ pdfField: "form1[0].Line5_SSN[0]", value: "123-45-6789", maxLength: 9 }).value, "123456789");
 });
 
-test("an over-long ZIP is shortened to its digits", () => {
-  assert.equal(fitTextValue({ pdfField: zip, value: "123456", maxLength: 5 }).value, "12345");
-  assert.equal(fitTextValue({ pdfField: zip, value: "12345-6789", maxLength: 5 }).value, "12345");
-});
-
-test("an over-long email (or any other text) is cut to the field's length and reported", () => {
-  const result = fitTextValue({ pdfField: email, value: "vishu@embtelsolutions.com", maxLength: 15 });
-  assert.equal(result.status, "adjusted");
-  assert.equal(result.value, "vishu@embtelsol");
-  assert.match(result.reason, /25 characters.*allows 15.*cut to the first 15/);
+test("anything still longer than its box is NEVER cut: the whole entry is returned as too_long (the renderer lifts the box limit)", () => {
+  for (const [pdfField, value, maxLength] of [[phone, "+919354596545", 10], [phone, "+1 (935) 459-6545", 10], [zip, "123456", 5], [zip, "12345-6789", 5], [email, "vishu@embtelsolutions.com", 15]]) {
+    const result = fitTextValue({ pdfField, value, maxLength });
+    assert.equal(result.status, "too_long", value);
+    assert.equal(result.value, value, "every character kept");
+    assert.match(result.reason, /whole entry.*kept.*lifted/);
+  }
 });
 
 test("fidelity sampling skips deliberately-blank fields", () => {

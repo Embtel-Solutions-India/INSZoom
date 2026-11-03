@@ -60,6 +60,13 @@ class FormMappingService {
   }
 
   static async loadMappingVersion(template, mappingVersionId) {
+    // Speed fix: a version loaded by id comes from the in-memory cache (change stamp checked on every use, own copy per caller - see
+    // uscis-forms/templateCache.js); undefined there means "not served" and the original query runs exactly as before.
+    const byId = mappingVersionId || template.activeMappingVersionId;
+    if (byId) {
+      const cached = await require("../../uscis-forms/templateCache").getMappingVersionLean(byId, { Model: USCISMappingVersion });
+      if (cached !== undefined) return cached;
+    }
     if (mappingVersionId) return USCISMappingVersion.findById(mappingVersionId).lean();
     if (template.activeMappingVersionId) return USCISMappingVersion.findById(template.activeMappingVersionId).lean();
     return USCISMappingVersion.findOne({ template: template._id, status: "active" }).sort({ mappingVersion: -1 }).lean();

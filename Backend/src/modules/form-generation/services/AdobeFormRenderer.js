@@ -21,7 +21,7 @@ const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
 const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
 const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
-const { fitTextValue } = require("./FieldValueFitter");
+const { fitTextValue, liftFieldLimit } = require("./FieldValueFitter");
 const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("./FullTextFieldGuard");
 const { toAdobeRanges } = require("./ViewerPdfPreparationService");
 
@@ -121,6 +121,11 @@ class AdobeFormRenderer {
           return;
         }
         if (fit.status === "adjusted") adjustedFieldWrites.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, from: String(mapped.value), to: fit.value, reason: fit.reason });
+        // never cut: a value still longer than the box gets the box's limit lifted on the copy sent to Adobe (saved below) and goes in full
+        if (fit.status === "too_long") {
+          liftFieldLimit(field);
+          adjustedFieldWrites.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, from: String(mapped.value), to: fit.value, reason: fit.reason });
+        }
         setNested(jsonFormFieldsData, mapped.pdfField, fit.value);
         includedFields.push(mapped.pdfField);
         return;

@@ -1087,8 +1087,9 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
   // Deliberately NOT routed to a secondary: this exact document is mutated
   // (fieldValues/filledData/completion/syncState) and saved at the end of this
   // same function, so a stale read here would overwrite concurrent edits.
+  // Speed fix: the template (~8 MB for the I-129) comes from the in-memory templateCache (change stamp checked on every open, own copy per
+  // caller); the original populate() is the fallback, so a missing / removed template still ends up null and is reported below exactly as before.
   let caseFormQuery = CaseForm.findOne({ _id: caseFormId, caseId })
-    .populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE })
     .maxTimeMS(RENDER_READ_TIMEOUT_MS);
   if (readOnlyOpen) caseFormQuery = caseFormQuery.read("secondaryPreferred");
   const caseForm = await caseFormQuery;
@@ -1096,6 +1097,9 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
     const error = new Error("Case form not found");
     error.statusCode = 404;
     throw error;
+  }
+  if (!(await require("./templateCache").attachTemplate(caseForm, { select: TEMPLATE_RENDER_EXCLUDE })) && typeof caseForm.populate === "function") {
+    await caseForm.populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
   }
   if (!caseForm.formTemplateId) {
     // populate() silently resolves to null when formTemplateId points at a

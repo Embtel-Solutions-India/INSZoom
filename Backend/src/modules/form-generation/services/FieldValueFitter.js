@@ -1,36 +1,36 @@
-// Decides what to write into a PDF text field whose maxLength is shorter than
-// the case value. Without this, pdf-lib throws ExceededMaxLengthError, the
-// field stays blank, and PDFFidelityService then rejected the ENTIRE download
-// (422) because a sampled field read back empty - confirmed live on I-907
-// (a "+919354596545" phone in a 10-char field, a 6-digit ZIP in a 5-char
-// field) and I-131 (a 25-char email in a 15-char field).
-//
-// Only normalizations that cannot change the meaning of the value are applied:
-//   - phone/fax: keep digits only; if still too long, keep the LAST maxLength
-//     digits (drops a country-code prefix such as +91 / 1)
-//   - ZIP: keep digits only, then the first maxLength digits (ZIP+4 forms have
-//     a separate 4-digit field)
-// Anything else (names, emails, street lines, ...) is cut to the first
-// maxLength characters so the form still carries as much of the entry as fits,
-// and the cut is reported as an "adjusted" write so the download warns the case
-// manager to double-check that field.
-const PHONE_FIELD = /(phone|mobile|fax)/i;
-const ZIP_FIELD = /zip/i;
+// Decides what to write into a PDF text field whose /MaxLen is shorter than the case value.
+// Owner rule (2026-11-04): NO character limit on any form, ever - an entry is NEVER cut or left out. So:
+//   - a value that fits is written unchanged;
+//   - a value that only misses its boxes because of separators (spaces, dashes, brackets, dots, slashes - "(555) 123-4567", "A-123-456-789",
+//     "123-45-6789") is written without them, so every character still lands in its own printed box (a comb field); nothing is lost - only
+//     formatting the boxes print themselves;
+//   - anything still longer returns status "too_long" with the WHOLE value: the caller lifts that box's limit (liftFieldLimit below) and
+//     writes it in full (FullTextFieldGuard.shrinkLongTextToFit then shrinks the font so it is visible).
+// (Before this, a too-long value was cut to the first MaxLen characters / a phone's country code or a ZIP+4 was dropped.)
+const SEPARATORS = /[\s\-().\/]+/g;
 
-function fitTextValue({ pdfField, value, maxLength }) {
+/** The value with its box separators removed (for one-character-per-box fields). */
+function compactForBoxes(value) {
+  return String(value ?? "").replace(SEPARATORS, "");
+}
+
+function fitTextValue({ value, maxLength }) {
   const text = String(value ?? "");
   if (!maxLength || text.length <= maxLength) return { value: text, status: "unchanged" };
+  const compact = compactForBoxes(text);
+  if (compact && compact.length <= maxLength) return { value: compact, status: "adjusted", reason: `written without spaces / dashes / brackets so each character sits in its own box (${maxLength} boxes)` };
+  return { value: text, status: "too_long", reason: `the whole entry (${text.length} characters) is kept; the box limit of ${maxLength} was lifted for it` };
+}
 
-  if (PHONE_FIELD.test(pdfField)) {
-    const digits = text.replace(/\D/g, "");
-    if (digits.length && digits.length <= maxLength) return { value: digits, status: "adjusted", reason: `phone reformatted to digits to fit ${maxLength} characters` };
-    if (digits.length > maxLength) return { value: digits.slice(-maxLength), status: "adjusted", reason: `phone country code removed to fit ${maxLength} characters` };
+/** Removes one text field's limit (and its box layout) on the working copy so a long entry can be written in full. Never throws. */
+function liftFieldLimit(field) {
+  try {
+    if (field.isCombed?.()) field.disableCombing();
+    field.setMaxLength(undefined);
+    return true;
+  } catch (_error) {
+    return false;
   }
-  if (ZIP_FIELD.test(pdfField)) {
-    const digits = text.replace(/\D/g, "");
-    if (digits.length) return { value: digits.slice(0, maxLength), status: "adjusted", reason: `ZIP shortened to ${maxLength} digits` };
-  }
-  return { value: text.slice(0, maxLength), status: "adjusted", reason: `value is ${text.length} characters but the PDF field allows ${maxLength}; cut to the first ${maxLength} characters` };
 }
 
 // ---- dropdown / radio / option-list fields --------------------------------
@@ -67,4 +67,4 @@ function fitChoiceValue({ value, options = [] }) {
   return { status: changed ? "adjusted" : "unchanged", values, reason: changed ? `matched to the form's choice "${String(values[0]).trim()}"` : undefined };
 }
 
-module.exports = { fitTextValue, fitChoiceValue };
+module.exports = { fitTextValue, fitChoiceValue, compactForBoxes, liftFieldLimit };

@@ -23,13 +23,15 @@ test("renderCaseForm throws a clear, actionable error (not an uncaught TypeError
     maxTimeMS: () => Promise.resolve({ _id: "case1" }),
   }));
   t.mock.method(caseService, "canAccessCase", () => true);
-  // renderCaseForm also chains .populate().maxTimeMS() on this query - same
-  // reasoning as the Case.findById mock above.
-  t.mock.method(CaseForm, "findOne", () => ({
-    populate: () => ({
+  // renderCaseForm chains .maxTimeMS() on this query (and before the 2026-11-04 speed fix, .populate() first - the template now comes from
+  // templateCache with populate() as the fallback) - both chains are supported so this stays a test of the guard, not of the query shape.
+  t.mock.method(CaseForm, "findOne", () => {
+    const query = {
+      populate: () => query,
       maxTimeMS: () => Promise.resolve({ _id: "caseform1", formTemplateId: null }),
-    }),
-  }));
+    };
+    return query;
+  });
 
   await assert.rejects(
     () => renderCaseForm("case1", "caseform1", { _id: "user1", role: "case_manager" }, {}),
