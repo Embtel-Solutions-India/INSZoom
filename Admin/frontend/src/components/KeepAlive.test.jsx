@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { useRef, useState } from 'react'
 import { MemoryRouter, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom'
-import KeepAliveOutlet, { useRouteRevisit } from './KeepAliveOutlet'
+import KeepAliveOutlet, { useRouteRevisit, useKeepAlivePin } from './KeepAliveOutlet'
 import KeepTab from './KeepTab'
 
 const mounts = {}
@@ -11,12 +11,15 @@ function Page({ name }) {
   const params = useParams()
   const location = useLocation()
   const [text, setText] = useState('')
+  const [open, setOpen] = useState(false) // stands for an open USCIS form / Manage forms
+  useKeepAlivePin(open)
   const seenMount = useRef(false)
   if (!seenMount.current) { seenMount.current = true; mounts[name] = (mounts[name] || 0) + 1 }
   useRouteRevisit(() => { revisits[name] = (revisits[name] || 0) + 1 })
   return (
     <div data-testid={`page-${name}`}>
       <input aria-label={`${name}-input`} value={text} onChange={(e) => setText(e.target.value)} />
+      <button onClick={() => setOpen((value) => !value)}>{`${name}-toggle-work`}</button>
       <span data-testid={`${name}-id`}>{params.id || ''}</span>
       <span data-testid={`${name}-location`}>{location.pathname}</span>
     </div>
@@ -102,6 +105,17 @@ describe('KeepAliveOutlet', () => {
     expect(mounts.list).toBe(2)
   })
 
+  it('a page with open work is never dropped by the page limit either', () => {
+    mount({ maxKept: 2 })
+    nav('/list/1')
+    fireEvent.click(screen.getByText('detail-toggle-work'))
+    nav('/list/2')
+    nav('/list/3')
+    nav('/list/1')
+    expect(screen.getAllByTestId('detail-id').map((node) => node.textContent)).toContain('1')
+    expect(mounts.detail).toBe(3) // pages 1, 2, 3 each mounted once: page 1 was never re-created
+  })
+
   describe('expiry and quiet refresh', () => {
     beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-06T10:00:00Z')) })
     afterEach(() => { vi.useRealTimers() })
@@ -112,6 +126,25 @@ describe('KeepAliveOutlet', () => {
       vi.setSystemTime(new Date('2026-10-06T10:05:00Z'))
       nav('/list')
       expect(mounts.list).toBe(2)
+    })
+
+    it('a page with open work (an open form) is never dropped for being away long - it comes back exactly as left', () => {
+      mount({ maxHiddenMs: 60 * 1000 })
+      nav('/list/1')
+      fireEvent.change(screen.getByLabelText('detail-input'), { target: { value: 'typed in the form' } })
+      fireEvent.click(screen.getByText('detail-toggle-work'))
+      nav('/list')
+      vi.setSystemTime(new Date('2026-10-06T11:00:00Z')) // an hour away
+      nav('/other')
+      nav('/list/1')
+      expect(mounts.detail).toBe(1)
+      expect(screen.getByLabelText('detail-input').value).toBe('typed in the form')
+      // once the work is closed the normal limit applies again
+      fireEvent.click(screen.getByText('detail-toggle-work'))
+      nav('/list')
+      vi.setSystemTime(new Date('2026-10-06T12:00:00Z'))
+      nav('/list/1')
+      expect(mounts.detail).toBe(2)
     })
 
     it('coming back after a short moment does NOT refresh; after a while it refreshes quietly (once)', () => {

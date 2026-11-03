@@ -11,6 +11,10 @@ const fs = require("node:fs/promises");
 const test = require("node:test");
 const env = require("../../../config/env");
 const PDFRenderer = require("../services/PDFRenderer");
+const { useLocalTemplateStorage, storedTemplate } = require("./fixtures/localTemplateStorage");
+
+// templates reach the renderer through storage, as in production (never a disk path)
+const storedCopies = useLocalTemplateStorage(test);
 
 const RAW_I539_ASSET = path.join(__dirname, "../../../../dev-assets/uscis/i-539_2024-08-28.pdf");
 
@@ -39,7 +43,7 @@ test("AC3 - editable render sets NeedAppearances and keeps fields; flatten remov
 
   try {
     const template = {
-      pdfTemplatePath: templatePath,
+      pdfTemplatePath: templatePath, ...storedTemplate(templatePath),
       pdfFieldMappings: [{ caseField: "applicant.fullName", pdfField: "ApplicantName", type: "text" }],
     };
     const caseForm = { filledData: { applicant: { fullName: "Grace Hopper" } } };
@@ -81,7 +85,7 @@ test("AC5 - a raw, unnormalized real USCIS PDF is normalized on demand and rende
   assert.equal(rawLoaded.getForm().getFields().length, 0, "fixture must be unnormalized for this test to prove anything");
 
   const template = {
-    pdfTemplatePath: RAW_I539_ASSET,
+    pdfTemplatePath: RAW_I539_ASSET, ...storedTemplate(RAW_I539_ASSET),
     // formFields only needs to be non-empty to trigger the mismatch check -
     // its contents don't have to match every real I-539 field for this test.
     formFields: [{ fieldId: "applicant.fullName", pdfField: "Pt1Line1a_FamilyName" }],
@@ -94,26 +98,37 @@ test("AC5 - a raw, unnormalized real USCIS PDF is normalized on demand and rende
   assert.equal(rendered.renderReport.mappedFieldCount, 1);
 });
 
-test("AC5 - qpdf missing surfaces the clear install error instead of a silent unfilled PDF", async () => {
+// The configured qpdf path is broken: normalizePdf (utils/normalizePdf.js) re-probes, tries qpdf on PATH, then its verified built-in
+// fallback, so the form is STILL rendered filled - never a silently unfilled PDF. The "nothing works" QPDF_NOT_FOUND path is proven
+// with injected tools in utils/tests/normalizePdf*.test.js (independent of whether this machine has qpdf).
+test("AC5 - a broken qpdf path still renders a filled PDF (automatic recovery), never a silent unfilled one", async () => {
   let raw;
   try {
     raw = await fs.readFile(RAW_I539_ASSET);
   } catch (error) {
     return;
   }
+  // the I-539's real box, by its full PDF name - mappings store full names, exactly as in production
+  const I539_FAMILY_NAME = "form1[0].#subform[0].P1Line1a_FamilyName[0]";
   const template = {
-    pdfTemplatePath: RAW_I539_ASSET,
-    formFields: [{ fieldId: "applicant.fullName", pdfField: "Pt1Line1a_FamilyName" }],
-    pdfFieldMappings: [{ caseField: "applicant.fullName", pdfField: "Pt1Line1a_FamilyName", type: "text" }],
+    pdfTemplatePath: RAW_I539_ASSET, ...storedTemplate(RAW_I539_ASSET),
+    formFields: [{ fieldId: "applicant.fullName", pdfField: I539_FAMILY_NAME }],
+    pdfFieldMappings: [{ caseField: "applicant.fullName", pdfField: I539_FAMILY_NAME, type: "text" }],
   };
   const caseForm = { filledData: { applicant: { fullName: "Doe" } } };
+  storedCopies.clear(); // start from the raw PDF, not the normalized copy an earlier test stored back
   const previousPath = env.qpdfPath;
   env.qpdfPath = "C:/definitely/not/a/real/qpdf/binary-does-not-exist.exe";
   try {
-    await assert.rejects(
-      () => PDFRenderer.render({ caseForm, template, flatten: false }),
-      (error) => error.code === "QPDF_NOT_FOUND"
-    );
+    const { PDFDocument } = require("pdf-lib");
+    const rendered = await PDFRenderer.render({ caseForm, template, flatten: false });
+    const output = await PDFDocument.load(rendered.buffer, { ignoreEncryption: true, updateMetadata: false });
+    assert.ok(output.getForm().getFields().length > 0, "the output is a fillable, normalized PDF");
+    assert.equal(rendered.renderReport.mappedFieldCount, 1);
+    assert.deepEqual(rendered.renderReport.unmappedPdfFields, [], "every mapped box was found in the PDF");
+    const familyName = output.getForm().getFields().find((field) => field.getName() === I539_FAMILY_NAME);
+    assert.ok(familyName, "the mapped box exists in the output");
+    assert.equal(familyName.getText(), "Doe", "the data is in the PDF - not lost");
   } finally {
     env.qpdfPath = previousPath;
   }
@@ -147,7 +162,7 @@ test("AC10 - form-agnostic: the identical render pipeline fills a completely unr
         { fieldId: "applicant.age", pdfField: "ApplicantAge", type: "text" },
         { fieldId: "sponsor.isActive", pdfField: "IsActiveSponsor", type: "checkbox" },
       ],
-      pdfTemplatePath: templatePath,
+      pdfTemplatePath: templatePath, ...storedTemplate(templatePath),
     };
     const caseForm = { filledData: { sponsor: { orgName: "Contoso Robotics", isActive: true }, applicant: { age: "29" } } };
     const rendered = await PDFRenderer.render({ caseForm, template, flatten: false });

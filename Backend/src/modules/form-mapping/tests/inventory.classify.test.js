@@ -28,7 +28,14 @@ test("non-client-data boxes are non_data: USCIS-use-only, office use, signature,
   assert.equal(classOf(field("d", "PDF417 BarCode", { fieldType: "text", pdfFieldName: "PDF417BarCode1[0]" })), "non_data");
   assert.equal(classOf(field("e", "Enter Interpreter's Given Name", { pdfFieldName: "Pt8Line1_InterpreterGivenName[0]" })), "non_data");
   assert.equal(classOf(field("f", "Preparer's Family Name", { pdfFieldName: "P7_Line1_PreparersFamilyName[0]" })), "non_data");
-  assert.equal(classOf(field("g", "Total", { readOnly: true, calculated: true })), "non_data");
+  // a widget nobody can type into that USCIS flags read-only stays locked for good (field-lock-policy keepsLock)
+  assert.equal(classOf(field("g", "Total", { readOnly: true, calculated: true, pdfFieldType: "unknown_widget" })), "non_data");
+});
+
+test("a read-only COMPUTED text box is client data the case manager may fill (owner decision 2026-10-27: only barcodes and signatures stay locked)", () => {
+  const out = classifyField(field("t", "Total", { readOnly: true, calculated: true }), ctx());
+  assert.notEqual(out.class, "non_data");
+  assert.equal(out.class, "deliberately_blank", "optional, no party, no source: left empty by the system, but editable");
 });
 
 test("a box that speaks about a person with no active edge needs a source (protected role), with the role and the reason stated", () => {

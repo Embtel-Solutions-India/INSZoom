@@ -1,7 +1,8 @@
 // Petition AI Review settings, read from the environment with safe defaults. readConfig() never contains the key itself:
 // only resolveApiKey() returns it, and only the Gemini caller uses that.
 //
-//   PETITION_AI_REVIEW             on | off              master switch (default on). off = the whole subsystem does nothing.
+//   PETITION_AI_REVIEW             on | off              master switch (default OFF - owner decision 2026-11-03). Only on / true / 1 / yes /
+//                                                        enabled switch it on; unset or anything else = the whole subsystem does nothing.
 //   PETITION_AI_API_KEY            optional dedicated key; falls back to GEMINI_API_KEY / GOOGLE_GEMINI_API_KEY / GOOGLE_API_KEY
 //   PETITION_AI_MODEL              optional; falls back to GEMINI_MODEL, then gemini-flash-latest
 //   PETITION_AI_PAGES_PER_CALL     pages sent to the model per call (default 4, 1-10)
@@ -20,8 +21,8 @@ function whole(value, fallback, min, max) {
 }
 
 function enabled(env = process.env) {
-  const value = String(env.PETITION_AI_REVIEW ?? "on").trim().toLowerCase();
-  return !["off", "false", "0", "no", "disabled"].includes(value);
+  const value = String(env.PETITION_AI_REVIEW ?? "off").trim().toLowerCase();
+  return ["on", "true", "1", "yes", "enabled"].includes(value);
 }
 
 /** Name of the variable that holds the key (never its value), or null. */

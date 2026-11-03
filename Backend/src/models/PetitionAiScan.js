@@ -35,6 +35,11 @@ const petitionAiScanSchema = new mongoose.Schema(
     pagesDone: { type: Number, default: 0, min: 0 },
     batchSize: { type: Number, default: 4, min: 1 },
     gaps: { type: [{ from: Number, to: Number, reason: String, _id: false }], default: [] }, // pages that could not be read
+    // pages whose AI call failed for a temporary reason (5xx / timeout / bad JSON): reviewed again after the main pass, at most twice
+    retryRanges: { type: [{ from: Number, to: Number, tries: { type: Number, default: 0 }, reason: String, _id: false }], default: [] },
+    // set while the scan waits for the AI to work again (billing / quota / rejected key): the worker re-checks on its own at nextAttemptAt
+    paused: { code: { type: String, default: null }, message: { type: String, default: "" }, since: { type: Date, default: null } },
+    usedFallback: { type: Boolean, default: false }, // part of the scan was reviewed by the backup AI (text mode)
     counts: {
       error: { type: Number, default: 0, min: 0 },
       warning: { type: Number, default: 0, min: 0 },

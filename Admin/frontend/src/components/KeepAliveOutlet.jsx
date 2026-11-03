@@ -38,6 +38,9 @@ const MAX_HIDDEN_MS = 15 * 60 * 1000
 const REVISIT_AFTER_MS = 20 * 1000 // away at least this long -> refresh quietly on return
 
 const KeepAliveKeyContext = createContext(null)
+// Pages holding open work (an open USCIS form, Manage forms) pin themselves: a pinned page is never dropped - not for being
+// away too long, not for the page limit - so coming back finds the work exactly as it was left. See useKeepAlivePin().
+const KeepAlivePinContext = createContext(null)
 
 const isKeepable = (pathname, routes) => routes.some((pattern) => matchPath({ path: pattern, end: true }, pathname))
 
@@ -47,21 +50,23 @@ export default function KeepAliveOutlet({ routes = KEEP_ALIVE_ROUTES, maxKept = 
   const locationContext = useContext(LocationContext)
   const cache = useRef(new Map()) // pathname -> { element, locationContext, hiddenAt }
   const previousKey = useRef(null)
+  const pinned = useRef(new Set()) // page keys with open work
+  const pins = useRef({ pin: (pageKey) => pinned.current.add(pageKey), unpin: (pageKey) => pinned.current.delete(pageKey) })
 
   const key = location.pathname.replace(/\/+$/, '') || '/'
   const keepable = isKeepable(key, routes)
   const now = Date.now()
 
-  // Drop pages that have been away too long (never the one being shown).
+  // Drop pages that have been away too long (never the one being shown, never a pinned one).
   for (const [entryKey, entry] of cache.current) {
-    if (entryKey !== key && entry.hiddenAt && now - entry.hiddenAt > maxHiddenMs) cache.current.delete(entryKey)
+    if (entryKey !== key && !pinned.current.has(entryKey) && entry.hiddenAt && now - entry.hiddenAt > maxHiddenMs) cache.current.delete(entryKey)
   }
 
   if (keepable && outlet) {
     const existing = cache.current.get(key)
     // The page being opened was away so long it counts as stale: start it fresh
-    // (a new generation gives it a new React key, so it really remounts).
-    const expired = existing && existing.hiddenAt && now - existing.hiddenAt > maxHiddenMs
+    // (a new generation gives it a new React key, so it really remounts). A pinned page is never stale.
+    const expired = existing && !pinned.current.has(key) && existing.hiddenAt && now - existing.hiddenAt > maxHiddenMs
     // awayFor survives a double render (StrictMode): it is only reset once the revisit was announced
     const awayFor = existing && !expired ? (existing.hiddenAt ? now - existing.hiddenAt : existing.awayFor) : 0
     cache.current.set(key, { element: outlet, locationContext, hiddenAt: 0, awayFor, lastSeen: now, generation: existing ? existing.generation + (expired ? 1 : 0) : 0 })
@@ -70,9 +75,9 @@ export default function KeepAliveOutlet({ routes = KEEP_ALIVE_ROUTES, maxKept = 
   for (const [entryKey, entry] of cache.current) {
     if (entryKey !== key && !entry.hiddenAt) entry.hiddenAt = now
   }
-  // Bound the number of kept pages: forget the least recently shown hidden ones.
+  // Bound the number of kept pages: forget the least recently shown hidden ones (pinned pages are kept).
   if (cache.current.size > maxKept) {
-    const hidden = [...cache.current.entries()].filter(([entryKey]) => entryKey !== key).sort((a, b) => a[1].lastSeen - b[1].lastSeen)
+    const hidden = [...cache.current.entries()].filter(([entryKey]) => entryKey !== key && !pinned.current.has(entryKey)).sort((a, b) => a[1].lastSeen - b[1].lastSeen)
     while (cache.current.size > maxKept && hidden.length) cache.current.delete(hidden.shift()[0])
   }
 
@@ -89,7 +94,7 @@ export default function KeepAliveOutlet({ routes = KEEP_ALIVE_ROUTES, maxKept = 
   })
 
   return (
-    <>
+    <KeepAlivePinContext.Provider value={pins.current}>
       {[...cache.current.entries()].map(([entryKey, entry]) => {
         const active = keepable && entryKey === key
         return (
@@ -101,8 +106,20 @@ export default function KeepAliveOutlet({ routes = KEEP_ALIVE_ROUTES, maxKept = 
         )
       })}
       {!keepable && outlet}
-    </>
+    </KeepAlivePinContext.Provider>
   )
+}
+
+// A kept page calls this with `true` while it holds open work (an open form, an unsaved selection): the page is then never
+// dropped by the time / page limits. Released when `active` turns false or the page unmounts. Does nothing outside KeepAliveOutlet.
+export function useKeepAlivePin(active) {
+  const key = useContext(KeepAliveKeyContext)
+  const pins = useContext(KeepAlivePinContext)
+  useEffect(() => {
+    if (!key || !pins || !active) return undefined
+    pins.pin(key)
+    return () => pins.unpin(key)
+  }, [key, pins, active])
 }
 
 // A kept page calls this to refresh its data quietly when it comes back after

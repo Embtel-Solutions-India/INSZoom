@@ -29,14 +29,15 @@ async function widthsOf(bytes) {
 // ── settings ────────────────────────────────────────────────────────────
 test("config: safe defaults, master switch, key precedence, and the key is never part of the config object", () => {
   const defaults = readConfig({});
-  assert.equal(defaults.enabled, true);
+  assert.equal(defaults.enabled, false, "off unless switched on (owner decision 2026-11-03)");
   assert.equal(defaults.keyConfigured, false);
   assert.equal(defaults.pagesPerCall, 4);
   assert.equal(defaults.concurrency, 2);
   assert.equal(defaults.maxPages, 1500);
   assert.equal(defaults.model, "gemini-flash-latest");
   for (const off of ["off", "false", "0", "no", "disabled", " OFF "]) assert.equal(readConfig({ PETITION_AI_REVIEW: off }).enabled, false, off);
-  assert.equal(readConfig({ PETITION_AI_REVIEW: "on" }).enabled, true);
+  for (const on of ["on", "true", "1", "yes", "enabled", " ON "]) assert.equal(readConfig({ PETITION_AI_REVIEW: on }).enabled, true, on);
+  assert.equal(readConfig({ PETITION_AI_REVIEW: "maybe" }).enabled, false, "an unknown value is off");
   const env = { GEMINI_API_KEY: "gem-secret", PETITION_AI_API_KEY: "pet-secret", GEMINI_MODEL: "gemini-x" };
   assert.equal(keySource(env), "PETITION_AI_API_KEY");
   assert.equal(resolveApiKey(env), "pet-secret");

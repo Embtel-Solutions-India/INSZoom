@@ -4,6 +4,10 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const PDFRenderer = require("../services/PDFRenderer");
+const { useLocalTemplateStorage, storedTemplate } = require("./fixtures/localTemplateStorage");
+
+// templates reach the renderer through storage, as in production (never a disk path)
+useLocalTemplateStorage(test);
 
 test("PDFRenderer fills official PDF fields through metadata mappings", async (t) => {
   let pdfLib;
@@ -26,7 +30,7 @@ test("PDFRenderer fills official PDF fields through metadata mappings", async (t
   const result = await PDFRenderer.render({
     caseForm: { filledData: { beneficiary: { lastName: "Doe" } } },
     template: {
-      pdfTemplatePath: templatePath,
+      pdfTemplatePath: templatePath, ...storedTemplate(templatePath),
       pdfFieldMappings: [{ caseField: "beneficiary.lastName", pdfField: "Pt1Line1FamilyName", type: "text" }],
     },
     flatten: false,

@@ -15,7 +15,7 @@ This file is the one place that records every phase of the Petition AI Review su
 | 0 | Gemini diagnosis + diagnostic script | DONE |
 | 1 | Models, rules, env, PDF slicer, batch planner | DONE |
 | 2 | Own Gemini caller, prompt, validation, summary | DONE |
-| 3 | Durable job, worker, automatic upload trigger | pending |
+| 3 | Durable job, worker, automatic upload trigger | DONE |
 | 4 | API + notifications | pending |
 | 5 | Admin UI | pending |
 | 6 | Full verification + final report | pending |
@@ -139,4 +139,51 @@ The classifier now names this case `BILLING` (HTTP 402, never retried) - test ad
 
 **Next step:** Phase 3 - durable scan job (lease + fence, resume from the page cursor), worker started with the server, automatic trigger after a petition upload (after the response, never throwing), re-queued pages retried at the end, pause + automatic re-check on billing / quota, manual re-scan / cancel. Waiting for your approval.
 
-*(Phases 3-6 are added below as they are completed.)*
+---
+
+## Phase 3 - Durable job, worker, automatic trigger (DONE)
+
+**Owner decision applied first:** the master switch is now **off by default** - `PETITION_AI_REVIEW` must be set to `on` (or true / 1 / yes / enabled) for anything to happen; unset or any other value = off (`config.js`, `.env.example`, Phase 1 test updated). With it off the server starts no worker and the upload hook returns at once.
+
+**Done:**
+- `scanService.js` - every operation on a scan, with the lease + fence pattern of the form pipeline: one open scan per petition (two simultaneous uploads share one scan), atomic claim, a scan whose worker died is claimable again and resumes at its saved page, scans that keep dying are closed as failed, idempotent page-range writes (a range written twice keeps one copy of its findings), pause / backoff release / shutdown hand-back / complete / close, and the team actions for Phase 4: cancel, retry (re-check a waiting scan now, or reopen a failed / cancelled one from the page it reached), re-scan.
+- `scanRunner.js` - runs one claimed scan: reads the petition (existing cached `readDocumentBuffer`, no second storage read), opens the page reader (separate process), plans pages on the first claim, reviews batches in rounds (default 2 AI calls in flight), stores each range and moves the cursor, re-reviews temporarily failed pages at the end (at most 2 more times each), builds the summary and finishes. A heartbeat keeps the lease alive during long AI calls. The reader is always closed. It never rejects.
+- `worker.js` - one scan at a time per server, polls every 20 s, `kick()` starts at once after an upload, passes never overlap, graceful stop.
+- `caseFacts.js` - the case number, visa type and the names of the people / companies on the case for the prompt (read-only, never throws).
+- `index.js` - assembly: `startPetitionAiReview()` (null unless switched on, never throws) and the upload hook `onPetitionUploaded()`.
+- Models: `PetitionAiScan` gained `retryRanges`, `paused` and `usedFallback` (additive).
+- **The only edits to existing files** (both wrapped so they can never throw):
+  - `documents/document.service.js` - right after the existing petition `ensureReview` call: `onPetitionUploaded(...)`. It returns at once; the scan is queued on a later tick, after the upload response. It reaches both the normal and the chunked upload (both go through `createDocumentFromFile`); a duplicate upload returns earlier and never reaches it; other document types are ignored.
+  - `server.js` - starts the worker beside the other workers and stops it on shutdown.
+
+**Every way a scan can end is decided in code:**
+| Situation | What happens automatically |
+|---|---|
+| Worker / server dies mid-scan | lease expires (2 min), another pass resumes at the saved page; every page is scanned exactly once and the dead worker can write nothing |
+| Server shuts down normally | scan handed back without using an attempt; the restart resumes it at once |
+| AI billing / quota / rejected key | scan paused, re-checked every 30 min from the same page, resumes by itself (Retry re-checks at once); after a week of waiting it is closed as failed with Retry |
+| Backup AI configured | used instead of pausing (text mode) |
+| AI 5xx / timeout / bad JSON on some pages | those pages re-reviewed at the end (2 more tries), then flagged `unreadable_page` (status `completed_with_gaps`) - never silently missing |
+| Storage error, reader crash, unexpected error | retried with backoff 1, 2, 4, 8 min; after 5 attempts failed with Retry |
+| Petition deleted | closed as cancelled with the reason |
+| PDF locked with a password / damaged / empty | failed with a plain message ("upload an unprotected copy") |
+| No AI key and no backup | `not_configured` with a readable message |
+| Team cancels | the worker's next write is refused and it stops; nothing more is written |
+| Page cap (`PETITION_AI_MAX_PAGES`) | only the first pages scanned; the summary says which pages were not |
+
+**Tested** - `petition-ai-review/tests/phase3.job.test.js` (27 tests; in-memory store built on the real schemas, AI stubbed, no database, no network) + Phases 0-2: **93 / 93 pass, 0 skipped, run twice (30 s)**. They prove all of the above, including: a worker frozen mid-scan is taken over and every page is still scanned exactly once with zero writes from the stale worker; billing pause and automatic resume from the failing page; the upload hook is off by default, ignores other documents and duplicates, writes nothing during the request, takes < 5 ms and never throws (even when queueing fails); an end-to-end run with the REAL PDF reader and the real Gemini caller on a stubbed network; a 700-page petition completed with every page once and event-loop lag < 250 ms. While building, three test expectations were corrected (the code was right): an expired lease makes a scan claimable again; a stop before the first claim claims nothing; a page number sent as text is accepted.
+
+REGRESSION_PLACEHOLDER
+
+**Not done in this phase:** nothing planned for Phase 3 is left. Notifications when a scan finishes, and the API for cancel / retry / re-scan, are Phase 4 (the service functions exist; `onFinished` is the hook point).
+
+**What you need to do:**
+1. Nothing to switch on yet. Keep `PETITION_AI_REVIEW` unset / `off` until Phase 5 (the screen) is done - otherwise scans would run with no way to see them.
+2. Your running backend (nodemon) reloads with these changes; with the switch off it logs `petition_ai_review_off` and does nothing else.
+3. Still open: Gemini billing (pay-as-you-go not yet active for the server's key at the last check), FedEx / filing addresses, optional backup AI key.
+
+**Remaining:** Phases 4-6. Open items: Gemini billing, FedEx / filing addresses, approval for one small live smoke test in Phase 6.
+
+**Next step:** Phase 4 - `/api/petition-ai-review` (staff only, existing auth + case access): scans by case (counts only), scan detail + paged findings, re-scan, retry, cancel; live `petition:ai_review` event (throttled) and a bell notification to the uploader when a scan finishes. Waiting for your approval.
+
+*(Phases 4-6 are added below as they are completed.)*
