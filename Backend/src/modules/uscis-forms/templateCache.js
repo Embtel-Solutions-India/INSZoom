@@ -72,4 +72,34 @@ async function attachTemplate(caseForm, options = {}) {
   return typeof caseForm.populated !== "function" || Boolean(caseForm.populated("formTemplateId"));
 }
 
-module.exports = { getTemplateDocument, attachTemplate, _cache: cache };
+// ── mapping versions (the box -> canonical path graph; ~0.9 MB for the I-129, read on every open, twice) ──
+// Same guarantees: a change stamp is checked before every use, every caller gets its own plain copy (as .lean() returns), any failure returns
+// undefined so the caller does its normal query.
+const mappingCache = new Map(); // id -> { stamp, raw }
+async function getMappingVersionLean(mappingVersionId, { Model } = {}) {
+  try {
+    const id = idOf(mappingVersionId);
+    if (!mongoose.isValidObjectId(id)) return undefined;
+    const VersionModel = Model || require("../../models/USCISMappingVersion");
+    const row = await VersionModel.findById(id).select("updatedAt __v status").lean();
+    if (!row) return null; // same as findById(...).lean() for a missing version
+    const stamp = JSON.stringify([row.updatedAt, row.__v, row.status].map((v) => (v == null ? null : String(v))));
+    let entry = mappingCache.get(id);
+    if (!entry || entry.stamp !== stamp) {
+      const plain = await VersionModel.findById(id).lean();
+      if (!plain) return null;
+      entry = { stamp, raw: BSON.serialize(plain) };
+      mappingCache.delete(id);
+      mappingCache.set(id, entry);
+      while (mappingCache.size > MAX_ENTRIES) mappingCache.delete(mappingCache.keys().next().value);
+    } else {
+      mappingCache.delete(id);
+      mappingCache.set(id, entry);
+    }
+    return BSON.deserialize(entry.raw, { promoteBuffers: true });
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+module.exports = { getTemplateDocument, attachTemplate, getMappingVersionLean, _cache: cache, _mappingCache: mappingCache };

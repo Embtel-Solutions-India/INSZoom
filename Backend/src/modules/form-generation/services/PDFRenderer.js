@@ -1,5 +1,5 @@
 const storageService = require("../../uploads/storage.service");
-const { fitTextValue, fitChoiceValue } = require("./FieldValueFitter");
+const { fitTextValue, fitChoiceValue, liftFieldLimit } = require("./FieldValueFitter");
 const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("./FullTextFieldGuard");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
@@ -129,6 +129,11 @@ class PDFRenderer {
         return false;
       }
       if (fit.status === "adjusted") mappedField.adjustment = { from: String(value), to: fit.value, reason: fit.reason };
+      // never cut: a value still longer than the box gets the box's limit lifted and is written in full
+      if (fit.status === "too_long") {
+        liftFieldLimit(field);
+        mappedField.adjustment = { from: String(value), to: fit.value, reason: fit.reason };
+      }
       field.setText(fit.value);
       return true;
     } catch (error) {

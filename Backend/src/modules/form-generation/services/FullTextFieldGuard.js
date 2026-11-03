@@ -38,7 +38,9 @@ function liftTextLengthLimits(form, valueFor) {
       if (maxLength === undefined) continue;
       if (valueFor && field.isCombed?.()) {
         const text = valueFor(field.getName());
-        if (text !== undefined && String(text).length <= maxLength) continue; // keep the boxes
+        // keep the boxes when the entry fits them - also when it fits once its separators are removed ("(555) 123-4567" in 10 boxes):
+        // the fitter then writes it without them, one character per box, instead of packing it together as plain text
+        if (text !== undefined && (String(text).length <= maxLength || require("./FieldValueFitter").compactForBoxes(text).length <= maxLength)) continue;
       }
       if (field.isCombed?.()) field.disableCombing();
       field.setMaxLength(undefined);

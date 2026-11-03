@@ -109,3 +109,42 @@ test("guard: a case form loaded without its snapshots can never write them - the
   full.set("versions", [{ versionNumber: 1 }]);
   assert.equal(await runGuard(full), null, "a fully loaded case form (download, auto-fill) keeps writing snapshots as before");
 });
+
+// mapping versions (read on every form open)
+const { getMappingVersionLean, _mappingCache } = require("../templateCache");
+function versionModel(store, counter) {
+  return {
+    findById: (id) => ({
+      select: () => ({ lean: async () => { counter.stamps += 1; const row = store.get(String(id)); return row ? { updatedAt: row.updatedAt, __v: row.__v, status: row.status } : null; } }),
+      lean: async () => { counter.full += 1; const row = store.get(String(id)); return row ? JSON.parse(JSON.stringify(row)) : null; },
+    }),
+  };
+}
+
+test("mapping versions: same content as the normal lean() read, served from memory on the next open, reloaded at once when the version changes", async () => {
+  _mappingCache.clear();
+  const id = new Types.ObjectId();
+  const row = { _id: String(id), status: "active", __v: 1, updatedAt: "2026-11-04T00:00:00.000Z", graph: { edges: [{ targetFieldId: "a", sourcePath: "beneficiary.firstName" }] } };
+  const store = new Map([[String(id), row]]);
+  const counter = { stamps: 0, full: 0 };
+  const Model = versionModel(store, counter);
+  const first = await getMappingVersionLean(id, { Model });
+  assert.deepEqual(first.graph.edges, row.graph.edges);
+  await getMappingVersionLean(id, { Model });
+  assert.equal(counter.full, 1, "second open: only the change stamp is read");
+  row.status = "retired"; // activation of a newer version, or any edit, changes the stamp
+  row.graph.edges[0].sourcePath = "beneficiary.lastName";
+  assert.equal((await getMappingVersionLean(id, { Model })).graph.edges[0].sourcePath, "beneficiary.lastName");
+  assert.equal(counter.full, 2);
+  const mine = await getMappingVersionLean(id, { Model });
+  mine.graph.edges[0].sourcePath = "changed by one request";
+  assert.equal((await getMappingVersionLean(id, { Model })).graph.edges[0].sourcePath, "beneficiary.lastName", "callers never share a copy");
+});
+
+test("mapping versions: a missing version is null (as before), a bad id or a database error is undefined so the caller runs its own query", async () => {
+  _mappingCache.clear();
+  const Model = versionModel(new Map(), { stamps: 0, full: 0 });
+  assert.equal(await getMappingVersionLean(new Types.ObjectId(), { Model }), null);
+  assert.equal(await getMappingVersionLean("bad", { Model }), undefined);
+  assert.equal(await getMappingVersionLean(new Types.ObjectId(), { Model: { findById: () => { throw new Error("db down"); } } }), undefined);
+});
