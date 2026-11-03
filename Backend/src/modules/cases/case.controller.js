@@ -2044,7 +2044,63 @@ exports.addInternalNote = async (req, res, next) => {
     caseService.addAuditEntry(caseData, "add_note", "Internal note added", req.user, { note: req.body.note }, req);
     await caseData.save();
     await caseService.writeAuditLog("add_note", caseData, req.user, { note: req.body.note }, req);
+    announceNotesChanged(caseData, req.user, "note_added");
 
+    res.json({ success: true, case: caseData });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Every internal screen with the case open re-reads its notes at once (live update only - never throws, never delays the answer).
+function announceNotesChanged(caseData, actor, reason) {
+  try { require("../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "notes", { actor, reason }); } catch (_error) { /* live update only */ }
+}
+
+// The note being edited / deleted (not one already deleted), or null.
+function liveInternalNote(caseData, noteId) {
+  const note = require("mongoose").isValidObjectId(noteId) ? caseData.internalNotes?.id?.(noteId) : null;
+  return note && !note.deletedAt ? note : null;
+}
+
+// Edit a note: only the person who wrote it. The earlier wording is kept in editHistory.
+exports.updateInternalNote = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to access this case" });
+    const note = liveInternalNote(caseData, req.params.noteId);
+    if (!note) return res.status(404).json({ success: false, message: "This note was not found (it may have been deleted)." });
+    if (String(note.author) !== String(req.user._id)) return res.status(403).json({ success: false, message: "Only the person who wrote this note can edit it." });
+    const text = String(req.body.note || "").trim();
+    if (text === note.note) return res.json({ success: true, case: caseData });
+    note.editHistory = [...(note.editHistory || []), { previousNote: note.note, editedBy: req.user._id, editedAt: new Date() }];
+    note.note = text;
+    note.updatedAt = new Date();
+    caseService.addAuditEntry(caseData, "edit_note", "Internal note edited", req.user, { noteId: String(note._id) }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("edit_note", caseData, req.user, { noteId: String(note._id) }, req);
+    announceNotesChanged(caseData, req.user, "note_edited");
+    res.json({ success: true, case: caseData });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Delete a note: any internal staff member with access to the case. Kept on the record (deletedAt / deletedBy) for the audit trail; screens hide it.
+exports.deleteInternalNote = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to access this case" });
+    const note = liveInternalNote(caseData, req.params.noteId);
+    if (!note) return res.status(404).json({ success: false, message: "This note was not found (it may have been deleted)." });
+    note.deletedAt = new Date();
+    note.deletedBy = req.user._id;
+    caseService.addAuditEntry(caseData, "delete_note", "Internal note deleted", req.user, { noteId: String(note._id) }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("delete_note", caseData, req.user, { noteId: String(note._id) }, req);
+    announceNotesChanged(caseData, req.user, "note_deleted");
     res.json({ success: true, case: caseData });
   } catch (error) {
     handleError(error, next);
