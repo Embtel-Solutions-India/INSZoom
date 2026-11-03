@@ -317,6 +317,7 @@ async function applyStageChange(event, caseDoc, opportunity, pipeline, mapping) 
   });
   await fresh.save();
   emitPipelineUpdate(fresh, "stage");
+  require("./ghlSubmittedNotice").notifySubmitted({ caseDoc: fresh, previousKey: ghl.unifiedStageKey }); // congratulations e-mail on a move into Submitted; after the move, never throws
   return { outcome: "processed" };
 }
 

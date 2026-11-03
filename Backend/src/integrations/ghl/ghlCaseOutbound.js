@@ -211,17 +211,37 @@ async function ensureLinked(caseId, { client } = {}) {
 }
 
 /** The stages a case can be moved to (its GHL pipeline's own stages) - same list for every case, however it was created. */
+// An employer matter's stage control picks ONE employee: each employee has their own card, and only that card moves.
+async function employeeCardsOf(principalId) {
+  return Case.find({ parentCase: principalId, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } })
+    .select("_id caseNumber clientName clientEmail user employeeContact.name employeeContact.email integrations.ghl.pipelineId integrations.ghl.unifiedStageKey").sort({ createdAt: 1 }).lean();
+}
+
+/** Moves ONE employee's card of an employer matter. The employee must belong to that matter. */
+async function moveEmployerEmployee({ caseId, employeeCaseId, unifiedStageKey, moveId, user }) {
+  const { moveCaseStage } = require("./ghlOutboundService");
+  const cards = await employeeCardsOf(caseId);
+  if (!cards.some((card) => String(card._id) === String(employeeCaseId))) {
+    throw Object.assign(new Error("Choose an employee of this matter."), { status: 400, code: "EMPLOYEE_REQUIRED" });
+  }
+  return moveCaseStage({ caseId: employeeCaseId, unifiedStageKey, moveId, user });
+}
+
 async function stagesForCase(caseId, user) {
   const { assertCanWorkCase } = require("./ghlOutboundService");
   const caseDoc = await Case.findById(caseId).select("visaType petitionSubType pipelineCategory visaSelectionStatus status caseRole caseStructure integrations.ghl").lean();
   if (!caseDoc) throw Object.assign(new Error("Case not found"), { status: 404 });
-  await assertCanWorkCase(user, caseId);
-  const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId });
+  const [, config] = await Promise.all([assertCanWorkCase(user, caseId), GHLIntegration.findOne({ locationId: env.ghl.locationId })]);
   if (!config?.mappingsConfirmedAt) throw Object.assign(new Error("GHL stage mapping has not been confirmed"), { status: 409, code: "MAPPING_UNCONFIRMED" });
   const ghl = caseDoc.integrations?.ghl || {};
   let pipeline;
+  let cards = null;
   if (ghl.opportunityId) {
     pipeline = config.pipelines.find((p) => p.enabled && p.ghlPipelineId === ghl.pipelineId);
+  } else if (isEmployerMatter(caseDoc)) {
+    cards = await employeeCardsOf(caseId);
+    if (!cards.length) throw Object.assign(new Error("None of this matter's employees are on the Pipeline yet."), { status: 409, code: "NOT_STAGEABLE" });
+    pipeline = config.pipelines.find((p) => p.enabled && p.ghlPipelineId === cards[0].integrations?.ghl?.pipelineId);
   } else {
     if (plan(caseDoc) !== "card") throw Object.assign(new Error("This case is not on the Pipeline yet."), { status: 409, code: "NOT_STAGEABLE" });
     const category = caseDoc.pipelineCategory || aux.categoryForVisa(caseDoc.visaType, caseDoc.petitionSubType, await visaService.ensureEntries(config));
@@ -229,6 +249,19 @@ async function stagesForCase(caseId, user) {
   }
   if (!pipeline) throw Object.assign(new Error("This case's GHL pipeline is not configured"), { status: 409, code: "PIPELINE_NOT_CONFIGURED" });
   const stages = [...pipeline.stages].sort((a, b) => a.order - b.order).map((s) => ({ key: s.key, name: s.name }));
+  if (cards) {
+    // only the employee's own name and email (never the employer's); a slot not filled in yet is not offered
+    const employees = cards
+      .map((card) => ({
+        caseId: String(card._id),
+        caseNumber: card.caseNumber,
+        name: clean(card.clientName) || clean(card.employeeContact?.name),
+        email: clean(card.clientEmail) || clean(card.employeeContact?.email),
+        currentKey: card.integrations?.ghl?.unifiedStageKey || null,
+      }))
+      .filter((employee) => employee.name || employee.email);
+    return { category: pipeline.category, currentKey: null, stages, employees };
+  }
   return { category: pipeline.category, currentKey: ghl.unifiedStageKey || stages[0]?.key || null, stages };
 }
 
@@ -307,4 +340,4 @@ async function isDeletionPending(opportunityId) {
   return Boolean(await GHLSyncJob.exists(deletionPendingFilter(opportunityId)));
 }
 
-module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, moveEmployerEmployee, isEmployerMatter, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };

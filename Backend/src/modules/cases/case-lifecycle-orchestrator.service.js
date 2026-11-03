@@ -17,6 +17,10 @@ const FORM_GENERATED_STATUSES = new Set(["ai_filled", "draft", "in_review", "und
 const FORM_APPROVED_STATUSES = new Set(["approved", "ready_for_pdf", "generated", "locked", "filed"]);
 const DOCUMENT_COMPLETE_STATUSES = new Set(["submitted", "uploaded", "approved", "accepted", "complete", "completed"]);
 
+// Pipeline stages at or after "Submitted": the case has been submitted, so the client's "Filed" milestone reads completed (display only: it never
+// changes Case.status / Case.stage, which still follow `metrics.filed` below).
+const SUBMITTED_OR_LATER_STAGE_KEYS = new Set(["submitted_fedex", "receipt_tracking", "rfe", "status_approved", "status_disapproved", "feedback"]);
+
 const MILESTONE_DEFINITIONS = [
   { key: "case_created", label: "Case Created", weight: 5, role: "client", route: "/dashboard" },
   { key: "case_assigned", label: "Case Assigned", weight: 10, role: "team_lead", route: "/crm-cases" },
@@ -75,7 +79,7 @@ class CaseLifecycleOrchestrator {
       questionnaire_completed: Boolean(metrics.questionnaireComplete),
       documents_completed: Boolean(metrics.documentsComplete),
       case_manager_review: Boolean(metrics.caseManagerReviewComplete),
-      filed: Boolean(metrics.filed),
+      filed: Boolean(metrics.filed || metrics.submittedInPipeline),
     };
     let percent = 0;
     const milestones = MILESTONE_DEFINITIONS.map((definition) => {
@@ -167,6 +171,7 @@ class CaseLifecycleOrchestrator {
     const filed = caseData.status === "filed"
       || caseData.immigrationLifecycle?.filingStatus === "filed"
       || (caseData.immigrationLifecycle?.filings || []).some((filing) => filing.status === "filed");
+    const submittedInPipeline = Boolean(caseData.integrations?.ghl?.opportunityId) && SUBMITTED_OR_LATER_STAGE_KEYS.has(caseData.integrations?.ghl?.unifiedStageKey);
     return {
       assigned: Boolean(caseData.primaryOwner || caseData.assignedCaseManager),
       questionnaireComplete,
@@ -177,6 +182,7 @@ class CaseLifecycleOrchestrator {
       pdfGenerated,
       packageGenerated,
       filed,
+      submittedInPipeline,
       questionnaire: {
         totalAnswers: answers.length,
         submitted: questionnaireComplete,

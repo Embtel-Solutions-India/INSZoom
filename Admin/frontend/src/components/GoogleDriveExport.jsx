@@ -6,9 +6,6 @@ import { googleDriveApi } from '../services/api'
 // (re-adding a changed file updates that same copy). Each team member connects and uses THEIR OWN Google account and folders.
 // Renders nothing at all unless the server reports the feature as enabled, so it can never affect a screen where it is switched off.
 
-const PICKER_KEY = import.meta.env.VITE_GOOGLE_PICKER_API_KEY
-const PICKER_PROJECT = import.meta.env.VITE_GOOGLE_CLOUD_PROJECT_NUMBER
-const PICKER_ENABLED = Boolean(PICKER_KEY && PICKER_PROJECT)
 const FINAL_JOB = new Set(['completed', 'completed_with_errors', 'failed'])
 const REASONS = {
   cancelled: 'Google sign-in was cancelled.',
@@ -28,22 +25,6 @@ const loadStatus = (force = false) => {
     statusPromise = googleDriveApi.status().then((res) => (lastStatus = res.data)).catch(() => lastStatus || { enabled: false })
   }
   return statusPromise
-}
-
-let pickerScript = null
-const loadPicker = () => {
-  if (window.google?.picker) return Promise.resolve()
-  if (!pickerScript) {
-    pickerScript = new Promise((resolve, reject) => {
-      const script = document.createElement('script')
-      script.src = 'https://apis.google.com/js/api.js'
-      script.async = true
-      script.onload = () => window.gapi.load('picker', { callback: resolve, onerror: reject })
-      script.onerror = () => { pickerScript = null; reject(new Error('Google Picker could not be loaded')) }
-      document.head.appendChild(script)
-    })
-  }
-  return pickerScript
 }
 
 const errorText = (error, fallback) => error?.response?.data?.message || fallback
@@ -80,8 +61,8 @@ export function DriveLogo({ className = 'h-4 w-4' }) {
   )
 }
 
-// A folder browser used when Google's own folder window is not available (no Picker key on the server, it could not be opened) or the user
-// prefers it. It walks the user's real Drive one level at a time and reaches every folder the connected account may open:
+// The Immiglance folder browser - the only way to choose or create the destination folder (Google's own folder window is no longer used).
+// It walks the user's real Drive one level at a time and reaches every folder the connected account may open:
 //   My Drive · Shared with me (folders other people shared) · Shared drives, plus a name search across all three.
 // Long lists load page by page ("Load more"), and folders the account can only view are shown but cannot be chosen as a destination.
 const TABS = [
@@ -231,14 +212,13 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [folder, setFolder] = useState(null)
-  const [browse, setBrowse] = useState(false) // true = use the in-app folder browser instead of Google's own window
   const [browseAt, setBrowseAt] = useState(null) // folder currently open in the browser (null = My Drive)
   const [newName, setNewName] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [links, setLinks] = useState({})
   const [busy, setBusy] = useState('')
   const [job, setJob] = useState(null)
-  // 'files' = pick the documents here; 'folder' = pick the destination in Google's own Drive Picker.
+  // 'files' = pick the documents here; 'folder' = pick the destination in the Immiglance folder browser.
   const [step, setStep] = useState('files')
   const [showAccounts, setShowAccounts] = useState(false)
   const pollRef = useRef(null)
@@ -273,14 +253,13 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
   const docs = useMemo(() => documents.filter((doc) => doc?._id), [documents])
 
   // When the dialog opens (and Drive is usable): start from the document step, and load which files already have a Drive copy.
-  // Without a Google Picker key the app falls back to its own short folder list, so that is only loaded in that case.
   useEffect(() => {
     if (open) loadStatus(true).then(setStatus)
   }, [open])
 
   useEffect(() => {
     if (!open || !connected) return
-    setSelected(new Set()); setStep('files'); setFolder(null); setBrowse(false)
+    setSelected(new Set()); setStep('files'); setFolder(null)
     googleDriveApi.lookupLinks(docs.map((doc) => doc._id)).then((res) => setLinks(res.data.links || {})).catch(() => setLinks({}))
   }, [open, connected, activeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -337,39 +316,8 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
     } catch (err) { fail(err, 'That folder cannot be used.') } finally { setBusy('') }
   }
 
-  // Google's own Drive folder window (not an Immiglance list): the user's real Drive, including subfolders, "Shared with me" and shared drives.
-  // The dialog is only "busy" while the token and Google's script load; once the window is on screen it is Google's, and a window that
-  // fails to render (blocked script, API-key restriction) can never leave this dialog stuck.
-  const chooseWithPicker = async () => {
-    setBusy('pick'); setError('')
-    try {
-      const [{ data }] = await Promise.all([googleDriveApi.pickerToken(), loadPicker()])
-      const { picker } = window.google
-      const folders = 'application/vnd.google-apps.folder'
-      const view = (id, label, configure = (v) => v) => configure(new picker.DocsView(id).setLabel(label).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes(folders))
-      new picker.PickerBuilder()
-        .addView(view(picker.ViewId.DOCS, 'My Drive', (v) => v.setParent('root'))) // opens My Drive; open folders to reach subfolders
-        .addView(view(picker.ViewId.DOCS, 'Shared with me', (v) => v.setOwnedByMe(false)))
-        .addView(view(picker.ViewId.DOCS, 'Shared drives', (v) => v.setEnableDrives(true)))
-        .enableFeature(picker.Feature.SUPPORT_DRIVES)
-        .setOAuthToken(data.accessToken)
-        .setDeveloperKey(PICKER_KEY)
-        .setAppId(PICKER_PROJECT)
-        .setOrigin(`${window.location.protocol}//${window.location.host}`)
-        .setTitle('Choose a destination folder in your Google Drive')
-        .setCallback((result) => { if (result.action === picker.Action.PICKED && result.docs?.[0]) useFolder(result.docs[0]) })
-        .build()
-        .setVisible(true)
-      setBusy('')
-    } catch (err) {
-      // Google's window could not be opened: say so and offer the in-app browser, which reaches the same folders.
-      fail(err, "Google's folder window could not be opened. You can browse your folders here instead.")
-      setBrowse(true); setBusy('')
-    }
-  }
-
-  // "Next": the documents are chosen here; now Google's folder browser opens (or, without a Picker key, the simple fallback is shown).
-  const next = () => { setStep('folder'); setError(''); if (PICKER_ENABLED) chooseWithPicker(); else setBrowse(true) }
+  // "Next": the documents are chosen; now the destination is picked in the Immiglance folder browser (My Drive, Shared with me, Shared drives, search).
+  const next = () => { setStep('folder'); setError('') }
 
   const createFolder = async () => {
     setBusy('create'); setError('')
@@ -480,13 +428,11 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                   {step === 'folder' && (
                     <section>
                       <h4 className="mb-2 text-sm font-semibold text-foreground">Step 2 of 2 · Choose the destination folder in your Google Drive</h4>
-                      <p className="mb-3 text-xs text-muted-foreground">{selected.size} document{selected.size === 1 ? '' : 's'} selected.{PICKER_ENABLED && !browse ? ' Google Drive opens in its own window so you can browse your real folders and subfolders.' : ''}</p>
+                      <p className="mb-3 text-xs text-muted-foreground">{selected.size} document{selected.size === 1 ? '' : 's'} selected.</p>
                       {folder
-                        ? <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"><span className="flex items-center gap-2 text-foreground"><FolderOpen className="h-4 w-4" /> {folder.name}</span><button type="button" className="text-xs text-blue-600 hover:underline" disabled={busy === 'pick'} onClick={() => { if (PICKER_ENABLED && !browse) chooseWithPicker(); else setFolder(null) }}>Choose a different folder</button></div>
-                        : PICKER_ENABLED && !browse
-                          ? <div className="space-y-2"><div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground"><span className="flex-1">{busy === 'pick' ? 'Opening Google Drive…' : busy === 'check' ? 'Checking the folder…' : 'No folder chosen yet.'}</span><button type="button" onClick={chooseWithPicker} disabled={busy === 'pick' || busy === 'check'} className="btn-secondary inline-flex items-center gap-2 text-sm"><FolderOpen className="h-4 w-4" /> Open Google Drive</button></div><button type="button" onClick={() => setBrowse(true)} className="text-xs text-blue-600 hover:underline" data-testid="drive-browse-instead">Search or browse your folders here instead (My Drive, Shared with me, Shared drives)</button></div>
-                          : <FolderBrowser onSelect={useFolder} onLocation={setBrowseAt} disabled={busy === 'check'} />}
-                      {(folder || browse || !PICKER_ENABLED) && (!folder && browseAt?.virtual ? (
+                        ? <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"><span className="flex items-center gap-2 text-foreground"><FolderOpen className="h-4 w-4" /> {folder.name}</span><button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setFolder(null)}>Choose a different folder</button></div>
+                        : <FolderBrowser onSelect={useFolder} onLocation={setBrowseAt} disabled={busy === 'check'} />}
+                      {(!folder && browseAt?.virtual ? (
                         <p className="mt-3 text-xs text-muted-foreground">Open a folder to create a new folder inside it.</p>
                       ) : (
                         <div className="mt-3">
@@ -530,7 +476,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                 <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">{job && !running ? 'Close' : 'Cancel'}</button>
                 {connected && !job && step === 'files' && <button type="button" onClick={next} disabled={selected.size === 0} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60" data-testid="drive-next"><FolderOpen className="h-4 w-4" /> Next: choose folder</button>}
                 {connected && !job && step === 'folder' && <button type="button" onClick={() => setStep('files')} className="btn-secondary text-sm" data-testid="drive-back">Back to files</button>}
-                {connected && !job && step === 'folder' && <button type="button" onClick={start} disabled={!folder || selected.size === 0 || busy === 'sync' || busy === 'pick'} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60" data-testid="drive-start"><Cloud className="h-4 w-4" /> {busy === 'sync' ? 'Starting…' : `Add ${selected.size || ''} file${selected.size === 1 ? '' : 's'} to Drive`}</button>}
+                {connected && !job && step === 'folder' && <button type="button" onClick={start} disabled={!folder || selected.size === 0 || busy === 'sync'} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60" data-testid="drive-start"><Cloud className="h-4 w-4" /> {busy === 'sync' ? 'Starting…' : `Add ${selected.size || ''} file${selected.size === 1 ? '' : 's'} to Drive`}</button>}
               </div>
             </div>
           </div>

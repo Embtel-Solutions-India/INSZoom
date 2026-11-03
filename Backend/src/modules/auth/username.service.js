@@ -17,7 +17,16 @@ async function resolveUsername(user, requestedUsername) {
     }
     return candidate;
   }
-  return user.email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "");
+  // No username chosen: derive one from the email. It must be unique (usernames carry a unique index), so when the derived name is already
+  // another account's (two clients at "info@..."), add a number instead of letting the save fail and the password never being set.
+  const base = user.email.split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "") || "user";
+  let candidate = base;
+  for (let attempt = 2; attempt < 50; attempt += 1) {
+    const existing = await User.findOne({ username: candidate }).select("_id").lean();
+    if (!existing || existing._id.toString() === user._id.toString()) return candidate;
+    candidate = `${base}${attempt}`;
+  }
+  return `${base}${Date.now().toString(36)}`;
 }
 
 module.exports = { resolveUsername };

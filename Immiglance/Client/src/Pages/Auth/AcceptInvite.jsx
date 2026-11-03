@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
+import PasswordHint from "../../components/auth/PasswordHint";
 
 const LockIcon = () => (
   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -120,6 +121,7 @@ export default function AcceptInvite() {
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             <PasswordField icon={<LockIcon />} name="confirmPassword" placeholder="Confirm Password"
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
+            <PasswordHint />
 
             {error && (
               <div role="alert" className="mb-4 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3">

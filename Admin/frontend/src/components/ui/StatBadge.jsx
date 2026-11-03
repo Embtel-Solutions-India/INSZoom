@@ -20,11 +20,11 @@ export function statusColor() {
 // same neutral style today. Pass a raw className via `color` for the rare
 // one-off badge that genuinely needs to carry a color (e.g. a real
 // paid/unpaid signal), matching the reference's own sparing use of color.
-export default function StatBadge({ value, kind = 'status', color, className = '' }) {
+export default function StatBadge({ value, kind = 'status', color, className = '', style }) {
   const resolved = color || NEUTRAL_PILL
   const label = typeof value === 'string' ? value.replace(/_/g, ' ') : value
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full capitalize ${resolved} ${className}`}>
+    <span style={style} className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full capitalize ${resolved} ${className}`}>
       {label}
     </span>
   )

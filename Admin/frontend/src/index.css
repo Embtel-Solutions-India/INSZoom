@@ -424,3 +424,12 @@
 .dark .stage-col-count { background-color: color-mix(in srgb, var(--accent) 22%, #0a0a0a); color: hsl(var(--foreground)); }
 .dark .stage-col-foot { border-color: color-mix(in srgb, var(--accent) 35%, #0a0a0a); }
 .dark .stage-col-loading { background: rgba(0, 0, 0, .55); color: var(--accent); }
+
+/* Stage colours (utils/stageTone.js): blue for filed / outcome stages, red for On Hold. The dark theme shows it in the same blue as the primary buttons (e.g. Refresh Cases), rgb(92, 143, 224). */
+:root { --tone-blue-rgb: 59, 111, 182; --tone-red-rgb: 178, 74, 74; }
+.dark {
+  --tone-blue-rgb: 92, 143, 224; --tone-red-rgb: 224, 108, 108;
+  /* Completed cases take the logo blue in the dark theme only; these vars do not exist in the day theme, where the stage colour shows instead */
+  --completed-row-bg: rgba(96, 142, 222, 0.09);
+  --completed-pill-bg: rgba(96, 142, 222, 0.13); --completed-pill-border: rgba(96, 142, 222, 0.38); --completed-pill-text: rgb(96, 142, 222);
+}

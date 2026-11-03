@@ -118,6 +118,7 @@ async function moveCaseStage({ caseId, unifiedStageKey, moveId, user }) {
   }
 
   emitMove(fresh, moveId);
+  require("./ghlSubmittedNotice").notifySubmitted({ caseDoc: fresh, previousKey: ghl.unifiedStageKey }); // congratulations e-mail on a move into Submitted; after the move, never throws
   processJobSoon(job._id);
   return { card: presentCard(fresh, user), unchanged: false, moveId };
 }

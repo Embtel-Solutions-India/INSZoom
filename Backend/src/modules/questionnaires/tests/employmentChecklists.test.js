@@ -33,11 +33,8 @@ test("neither H-1B checklist definition sets a published status (stays in draft 
   }
 });
 
-test("coverage gap fix: certified LCA / ETA-9035 is a required employer document", () => {
-  const doc = byKey(employer, "certified_lca_eta9035");
-  assert.ok(doc, "certified_lca_eta9035 question is missing");
-  assert.equal(doc.type, "file");
-  assert.equal(doc.required, true);
+test("certified LCA / ETA-9035 is intentionally not asked on the employer checklist", () => {
+  assert.equal(byKey(employer, "certified_lca_eta9035"), undefined);
 });
 
 test("coverage gap fix: SOC code and prevailing wage level are required employer fields (H-1B Data Collection Supplement)", () => {

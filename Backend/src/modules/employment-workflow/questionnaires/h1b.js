@@ -11,22 +11,7 @@ function matches(value) {
 // Offer Letter" document previously lived here; the source does not list one
 // under this checklist (the offer letter's job-title/salary/duties are
 // captured as PART-2 fields instead), so it was removed.
-//
-// certified_lca_eta9035 is an ADDITION beyond the literal source list (Phase 2
-// coverage audit, flagged for attorney sign-off): every H-1B petition (new,
-// extension, transfer, or amendment) requires a DOL-certified Labor Condition
-// Application filed with the I-129 — the source checklist never asked for it,
-// but its absence would make the checklist incomplete for actual filing.
 const employerDocuments = [
-  {
-    name: "Certified Labor Condition Application (LCA / ETA-9035)",
-    documentType: "certified_lca_eta9035",
-    description: "DOL-certified Labor Condition Application (ETA Form 9035/9035E), required for every H-1B petition.",
-    required: true,
-    category: "immigration",
-    targetRole: "employer",
-    status: "requested",
-  },
   {
     name: "Copy of the Business license",
     documentType: "business_license",

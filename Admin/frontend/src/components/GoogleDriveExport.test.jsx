@@ -173,72 +173,23 @@ describe('GoogleDriveExport', () => {
     expect(screen.getByText(/1 of 3 selected/)).toBeTruthy()
   })
 
-  describe('with Google Picker configured', () => {
-    // A stand-in for Google's Picker: records how it was built and lets the test "pick" a folder.
-    const fakePicker = () => { window.google = { picker: fakePickerApi() } }
-    beforeEach(() => { vi.stubEnv('VITE_GOOGLE_PICKER_API_KEY', 'picker-key'); vi.stubEnv('VITE_GOOGLE_CLOUD_PROJECT_NUMBER', '12345'); fakePicker() })
-    afterEach(() => { vi.unstubAllEnvs(); delete window.google })
-
-    it("Next opens Google's own folder browser (no Immiglance folder list); a picked folder is validated and used; a subfolder can be created inside it", async () => {
-      api.pickerToken.mockReturnValue(ok({ accessToken: 'short-lived', expiresIn: 1800 }))
-      api.validateFolder.mockReturnValue(ok({ folder: { id: 'F9', name: 'Smith / Immigration' } }))
-      api.createFolder.mockReturnValue(ok({ folder: { id: 'SUB1', name: 'Evidence' } }))
-      api.sync.mockReturnValue(ok({ jobId: 'j2' }))
-      api.job.mockReturnValue(ok({ job: { id: 'j2', status: 'completed', folderName: 'Evidence', counts: { synced: 1, updated: 0, skipped: 0, failed: 0 }, items: [{ documentId: 'd1', name: 'passport.pdf', status: 'synced' }] } }))
-      await mount({ enabled: true, configured: true, connected: true, status: 'connected', email: 'me@example.com' })
-      fireEvent.click(await screen.findByTestId('add-to-drive-button'))
-      await screen.findByText('me@example.com')
-      expect(api.listFolders).not.toHaveBeenCalled() // the app does not draw its own folder list when Google's is available
-
-      fireEvent.click(await screen.findByLabelText('passport.pdf'))
-      expect(built.visible).toBeUndefined() // nothing opens until Next
-      fireEvent.click(screen.getByTestId('drive-next'))
-
-      await waitFor(() => expect(built.visible).toBe(true))
-      expect(built).toMatchObject({ token: 'short-lived', key: 'picker-key', appId: '12345' })
-      expect(built.features).toContain('SUPPORT_DRIVES')
-      expect(built.views.map((v) => v.opts.label)).toEqual(['My Drive', 'Shared with me', 'Shared drives'])
-      expect(built.views[0].opts.parent).toBe('root') // opens My Drive so folders open into their subfolders
-      expect(built.views[1].opts.ownedByMe).toBe(false)
-      expect(built.views[2].opts.drives).toBe(true)
-      expect(built.views.every((v) => v.opts.selectFolder === true && v.opts.includeFolders === true)).toBe(true)
-
-      await act(async () => { await built.callback({ action: 'picked', docs: [{ id: 'F9' }] }) })
-      await waitFor(() => expect(api.validateFolder).toHaveBeenCalledWith('F9'))
-      expect(await screen.findByText('Smith / Immigration')).toBeTruthy()
-
-      // create a new folder INSIDE the folder that was picked
-      fireEvent.change(screen.getByPlaceholderText(/New folder inside/i), { target: { value: 'Evidence' } })
-      fireEvent.click(screen.getByRole('button', { name: /Create/i }))
-      await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith('Evidence', 'F9'))
-      fireEvent.click(await screen.findByTestId('drive-start'))
-      await waitFor(() => expect(api.sync).toHaveBeenCalledWith({ documentIds: ['d1'], folderId: 'SUB1', caseId: 'c1' }))
-    })
-
-    it("cancelling Google's window changes nothing and leaves the dialog usable", async () => {
-      api.pickerToken.mockReturnValue(ok({ accessToken: 't', expiresIn: 1800 }))
+  it('never opens Google\'s own folder window, even when Picker keys are configured: the Immiglance browser is the only folder step', async () => {
+    vi.stubEnv('VITE_GOOGLE_PICKER_API_KEY', 'picker-key')
+    vi.stubEnv('VITE_GOOGLE_CLOUD_PROJECT_NUMBER', '12345')
+    window.google = { picker: fakePickerApi() }
+    try {
+      api.listFolders.mockReturnValue(ok({ folders: [{ id: 'f1', name: 'Smith Family', canAddChildren: true }], recent: [] }))
       await mount({ enabled: true, configured: true, connected: true, status: 'connected', email: 'me@example.com' })
       fireEvent.click(await screen.findByTestId('add-to-drive-button'))
       fireEvent.click(await screen.findByLabelText('passport.pdf'))
       fireEvent.click(screen.getByTestId('drive-next'))
-      await waitFor(() => expect(built.visible).toBe(true))
-      await act(async () => { await built.callback({ action: 'cancel' }) })
-      expect(await screen.findByText(/No folder chosen yet/)).toBeTruthy()
-      expect(screen.getByTestId('drive-start').disabled).toBe(true)
-      expect(api.validateFolder).not.toHaveBeenCalled()
-    })
-
-    it('a folder the user can pick but Immiglance cannot write to shows the reason', async () => {
-      api.pickerToken.mockReturnValue(ok({ accessToken: 't', expiresIn: 1800 }))
-      api.validateFolder.mockImplementation(() => Promise.reject({ response: { data: { message: 'The connected Google account cannot add files to that folder' } } }))
-      await mount({ enabled: true, configured: true, connected: true, status: 'connected', email: 'me@example.com' })
-      fireEvent.click(await screen.findByTestId('add-to-drive-button'))
-      fireEvent.click(await screen.findByLabelText('passport.pdf'))
-      fireEvent.click(screen.getByTestId('drive-next'))
-      await waitFor(() => expect(built.visible).toBe(true))
-      await act(async () => { await built.callback({ action: 'picked', docs: [{ id: 'RO' }] }) })
-      expect(await screen.findByText(/cannot add files to that folder/i)).toBeTruthy()
-    })
+      expect(await screen.findByTestId('drive-browser')).toBeTruthy() // our themed browser, straight away
+      expect(await screen.findByText('Smith Family')).toBeTruthy()
+      expect(screen.queryByText(/Open Google Drive/)).toBeNull() // no button that would open Google's window
+      expect(screen.queryByTestId('drive-browse-instead')).toBeNull()
+      expect(api.pickerToken).not.toHaveBeenCalled()
+      expect(built.visible).toBeUndefined() // Google's Picker was never shown
+    } finally { vi.unstubAllEnvs(); delete window.google }
   })
 
   describe('several Google accounts', () => {
@@ -377,34 +328,6 @@ describe('GoogleDriveExport', () => {
       expect(await screen.findByText(/revoked or expired/i)).toBeTruthy()
     })
 
-    describe('with Google Picker configured', () => {
-      beforeEach(() => { vi.stubEnv('VITE_GOOGLE_PICKER_API_KEY', 'picker-key'); vi.stubEnv('VITE_GOOGLE_CLOUD_PROJECT_NUMBER', '12345'); window.google = { picker: {} } })
-      afterEach(() => { vi.unstubAllEnvs(); delete window.google })
-
-      it('if Google\'s window cannot be opened, the user is told and gets the folder browser instead of a stuck screen', async () => {
-        api.pickerToken.mockImplementation(() => Promise.reject({ response: { data: { message: 'Could not prepare Google Drive.' } } }))
-        api.listFolders.mockReturnValue(ok({ folders: [{ id: 'f1', name: 'Smith Family' }], recent: [] }))
-        await mount(connected)
-        await toFolderStep()
-        expect(await screen.findByText(/Could not prepare Google Drive/)).toBeTruthy()
-        expect(await screen.findByTestId('drive-browser')).toBeTruthy()
-        expect(await screen.findByText('Smith Family')).toBeTruthy()
-        expect(screen.queryByText(/Opening Google Drive/)).toBeNull()
-      })
-
-      it('a "browse here instead" link is always available next to Google\'s window', async () => {
-        api.pickerToken.mockReturnValue(ok({ accessToken: 't', expiresIn: 1800 }))
-        window.google.picker = fakePickerApi()
-        api.listFolders.mockReturnValue(ok({ folders: [{ id: 'f1', name: 'Smith Family' }], recent: [] }))
-        await mount(connected)
-        await toFolderStep()
-        await waitFor(() => expect(built.visible).toBe(true))
-        expect(screen.queryByText(/Opening Google Drive/)).toBeNull() // the dialog is not stuck "opening" while Google's window is up
-        fireEvent.click(await screen.findByTestId('drive-browse-instead'))
-        expect(await screen.findByText('Smith Family')).toBeTruthy()
-        expect(api.listFolders).toHaveBeenCalledWith('root')
-      })
-    })
   })
 
   it('an account saved before the Drive permission was widened is asked to reconnect once, with the reason', async () => {

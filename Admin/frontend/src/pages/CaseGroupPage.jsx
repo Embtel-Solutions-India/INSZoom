@@ -6,6 +6,11 @@ import { useAuth } from '../contexts/AuthContext'
 import ConfirmModal from '../components/ConfirmModal'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
+import { useVisaOptions, groupVisaOptions } from '../utils/visaOptions'
+import WrappingSelect from '../components/ui/WrappingSelect'
+import StageSummary from '../components/ui/StageSummary'
+import { rowToneStyle } from '../utils/stageTone'
+import { useSocket } from '../contexts/SocketContext'
 
 // The Corporations and Clients sidebar pages. Read-only lists of one kind of case each (GET /cases?caseGroup=...), laid out as
 // cards (default) or a list - deliberately not the table screen the all-cases page uses. Cases are created from the Cases page only.
@@ -56,6 +61,10 @@ export default function CaseGroupPage({ caseGroup }) {
   const [appliedSearch, setAppliedSearch] = useState('')
   const [view, setView] = useState('cards') // 'cards' | 'list'
   const [sortOrder, setSortOrder] = useState('desc')
+  // the same grouped visa list as the New case dropdown (utils/visaOptions.js); the chosen option is sent as the case's visa type
+  const { options: visaOptions, registryTypes } = useVisaOptions()
+  const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
+  const [visaFilter, setVisaFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [overallTotal, setOverallTotal] = useState(null)
@@ -71,8 +80,12 @@ export default function CaseGroupPage({ caseGroup }) {
     const seq = ++fetchSeq.current
     try {
       setError('')
-      const params = { ...baseParams, page, limit: PAGE_SIZE, sortOrder }
+      const params = { ...baseParams, page, limit: PAGE_SIZE, sortOrder, toneGroup: true } // working cases first, then blue, then red; the sort applies inside each group
       if (appliedSearch) params.search = appliedSearch
+      if (visaFilter) {
+        const chosen = visaOptions.find((opt) => opt.value === visaFilter)
+        params.visaType = chosen?.canonicalLabel || chosen?.label || visaFilter
+      }
       const response = await api.get('/cases', { params })
       if (seq !== fetchSeq.current) return
       setCases(response.data.cases || [])
@@ -85,7 +98,7 @@ export default function CaseGroupPage({ caseGroup }) {
       if (seq === fetchSeq.current) setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseGroup, page, appliedSearch, sortOrder])
+  }, [caseGroup, page, appliedSearch, sortOrder, visaFilter])
 
   // total shown in the banner (independent of search)
   const fetchOverallTotal = useCallback(async () => {
@@ -101,6 +114,16 @@ export default function CaseGroupPage({ caseGroup }) {
   useEffect(() => { fetchCases() }, [fetchCases])
   useEffect(() => { fetchOverallTotal() }, [fetchOverallTotal])
   useRouteRevisit(() => { fetchCases(); fetchOverallTotal() })
+
+  // A card moved on the Pipeline, through Update Stage, or in GoHighLevel: the Stage column follows it. Registered once, so it
+  // calls the latest fetchCases through a ref (same pattern as the Cases page).
+  const { subscribe, connected } = useSocket()
+  const fetchCasesRef = useRef(null)
+  fetchCasesRef.current = fetchCases
+  useEffect(() => {
+    if (!connected) return undefined
+    return subscribe('ghl:pipeline:updated', () => fetchCasesRef.current?.())
+  }, [connected, subscribe])
 
   // moves the case (and its child cases) to the recycle bin, exactly as the all-cases page does
   const runDeleteCase = async () => {
@@ -131,7 +154,7 @@ export default function CaseGroupPage({ caseGroup }) {
   }, [search])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const filtering = Boolean(appliedSearch)
+  const filtering = Boolean(appliedSearch || visaFilter)
   const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const lastShown = Math.min(total, page * PAGE_SIZE)
 
@@ -181,6 +204,13 @@ export default function CaseGroupPage({ caseGroup }) {
               className="w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
             />
           </div>
+          <WrappingSelect
+            value={visaFilter}
+            onChange={(value) => { setLoading(true); setPage(1); setVisaFilter(value) }}
+            className="w-full sm:w-64 sm:shrink-0"
+            ariaLabel="Visa type"
+            options={[{ value: '', label: 'All Visa Types' }, ...groupedVisaOptions]}
+          />
           <div className="inline-flex shrink-0 rounded-full border border-border bg-card p-0.5" role="group" aria-label="Sort by creation date">
             {[['desc', 'Newest first'], ['asc', 'Oldest first']].map(([value, label]) => (
               <button
@@ -258,14 +288,14 @@ export default function CaseGroupPage({ caseGroup }) {
                   const manager = item.assignedCaseManager?.name || item.assignedCaseManager?.displayName
                   const employees = item.caseStructure === 'employer_employee' ? item.childCaseCount : 0
                   return (
-                    <tr key={item._id} onClick={() => navigate(`/crm-cases/${item._id}`)} className="cursor-pointer transition-colors hover:bg-muted/40">
+                    <tr key={item._id} onClick={() => navigate(`/crm-cases/${item._id}`)} style={rowToneStyle(item)} className="cursor-pointer transition-colors hover:bg-muted/40">
                       <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">{item.caseNumber}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{personName(item)}</p>
                         <p className="text-xs text-muted-foreground">{personEmail(item)}{employees > 0 ? `${personEmail(item) ? ' · ' : ''}${employees} ${employees === 1 ? 'employee' : 'employees'}` : ''}</p>
                       </td>
                       <td className="px-4 py-3 text-foreground">{resolveDisplayVisa(item)}</td>
-                      <td className="px-4 py-3 capitalize text-muted-foreground">{titleCase(item.pipelineStage || item.stage)}</td>
+                      <td className="px-4 py-3"><StageSummary caseItem={item} /></td>
                       <td className="px-4 py-3 capitalize text-muted-foreground">{titleCase(item.status)}</td>
                       <td className="px-4 py-3 text-foreground">{manager || <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting assignment</span>}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(item.createdAt)}</td>
@@ -299,6 +329,7 @@ export default function CaseGroupPage({ caseGroup }) {
                   key={item._id}
                   role="button"
                   tabIndex={0}
+                  style={rowToneStyle(item)}
                   onClick={() => navigate(`/crm-cases/${item._id}`)}
                   onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/crm-cases/${item._id}`) }}
                   className="group flex cursor-pointer flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5"
@@ -318,7 +349,7 @@ export default function CaseGroupPage({ caseGroup }) {
 
                   <div className="mt-4 flex flex-wrap items-center gap-1.5">
                     <span className="rounded-md bg-secondary px-2 py-1 text-xs font-semibold text-foreground">{resolveDisplayVisa(item)}</span>
-                    <span className="rounded-md border border-border px-2 py-1 text-xs capitalize text-muted-foreground">{titleCase(item.pipelineStage || item.stage)}</span>
+                    <StageSummary caseItem={item} />
                     <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${item.status === 'on_hold' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' : 'border border-border text-muted-foreground'}`}>{titleCase(item.status)}</span>
                   </div>
 

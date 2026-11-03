@@ -9,7 +9,7 @@ import { api, API_BASE_URL, casesApi, documentsApi, employeeProfileApi, messages
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import { LANDING_URL } from "../../components/CrossAppRedirect";
 import { splitHeadline } from "../../utils/headline";
-import { PLAN_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "../../config/planConfig";
+import { PLAN_LABELS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -78,14 +78,6 @@ const normalizeCaseStage = (caseData) => {
   return CRM_STAGE_INDEX[key] ?? 0;
 };
 
-/* ── Circular Progress ──────────────────────────────────────────────────────── */
-function moneyFromCents(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number(value || 0) / 100);
-}
-
 /* ── Loading skeletons (P1 Fix 9) ─────────────────────────────────────────────
    animate-pulse placeholders shown only during the initial case fetch —
    replaces what used to be a blank/"Pending"-valued render for that window. */
@@ -111,14 +103,7 @@ function CaseProgressSkeleton() {
 function PaymentSummaryCard({ plan }) {
     if (!plan) return null;
 
-    const status = plan.paymentStatus || "not_started";
-    // plan.amount is stored in cents (see case.controller.js's plan.amount
-    // normalization and payment.service.js, which copies it straight into
-    // Payment.totalAmount/baseAmount - all cents) - moneyFromCents divides
-    // by 100 before formatting, same helper this file already uses for
-    // paymentSummary.amountPaid/remainingAmount below.
-    const formattedAmount = moneyFromCents(plan.amount);
-
+    // Payments are handled outside the client portal, so this card no longer shows an amount or a status: the client is pointed to their case manager.
     return (
       <div className="bg-card rounded-lg border border-card-border overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
@@ -133,23 +118,10 @@ function PaymentSummaryCard({ plan }) {
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-muted-foreground">Total Fee</span>
-            <span className="text-sm font-bold text-foreground">{formattedAmount}</span>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-muted-foreground">Payment Status</span>
-            <span
-              className={`text-[0.68rem] font-bold px-2.5 py-1 rounded-full border ${
-                PAYMENT_STATUS_COLORS[status] || PAYMENT_STATUS_COLORS.not_started
-              }`}
-            >
-              {PAYMENT_STATUS_LABELS[status] || "Not Started"}
-            </span>
-          </div>
-
+        <div className="px-5 py-4">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Payments are handled outside the client portal. Please contact your case manager to get your payment summary.
+          </p>
         </div>
       </div>
     );
@@ -439,8 +411,9 @@ function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline 
       <div className="overflow-x-auto px-5 py-5 sm:px-6">
         <ol className="grid" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(5.5rem, 1fr))` }}>
           {steps.map((step, index) => {
-            const done = index < currentIndex;
-            const active = index === currentIndex;
+            // The Submitted stage counts as completed the moment the card is there (nothing is left for the client to do in it), not only once a later stage is reached.
+            const done = index < currentIndex || (Boolean(ghlStages) && index === currentIndex && ghlStages[index]?.key === "submitted_fedex");
+            const active = index === currentIndex && !done;
             return (
               <li key={`${step}-${index}`} className="relative flex flex-col items-center text-center">
                 {index > 0 && (

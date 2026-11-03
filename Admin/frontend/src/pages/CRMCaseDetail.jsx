@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { pipelineCategoryLabel } from '../utils/visaOptions'
 import AddEmployeeModal from '../components/AddEmployeeModal'
+import { stageToneStyle, rowToneStyle } from '../utils/stageTone'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import GoogleDriveExport from '../components/GoogleDriveExport'
 import { useCaseOrigin } from '../utils/caseOrigin'
@@ -860,6 +861,12 @@ const CRMCaseDetail = () => {
   const [ghlStages, setGhlStages] = useState([])
   const useGhlStages = ghlStages.length > 0
   const [ghlStagesError, setGhlStagesError] = useState('')
+  const [ghlUnavailable, setGhlUnavailable] = useState('') // the case cannot be staged on the Pipeline (reason shown instead of the old CRM list)
+  const [ghlStageTick, setGhlStageTick] = useState(0) // bumped by a Pipeline / GoHighLevel move so the open dropdown reloads
+  const [ghlEmployees, setGhlEmployees] = useState(null) // null = a single card (family / single person); a list (maybe empty) = employer matter: its employees (each has their own card); the move goes to the chosen one only
+  const [stageEmployeeId, setStageEmployeeId] = useState('')
+  const stageEmployeeIdRef = useRef('')
+  stageEmployeeIdRef.current = stageEmployeeId
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
@@ -1647,17 +1654,51 @@ const CRMCaseDetail = () => {
     ghlApi.caseStages(id)
       .then((res) => {
         if (cancelled) return
+        setGhlUnavailable('')
         setGhlStages(res.data?.stages || [])
-        setNewStage((current) => current || res.data?.currentKey || '')
+        const employees = res.data?.employees ?? null
+        setGhlEmployees(employees)
+        // always the current Pipeline stage (of the chosen employee, for an employer matter), so a move made in GoHighLevel shows here
+        if (employees) {
+          setStageEmployeeId((chosen) => (employees.some((e) => e.caseId === chosen) ? chosen : ''))
+          setNewStage(employees.find((e) => e.caseId === stageEmployeeIdRef.current)?.currentKey || '')
+        } else {
+          setNewStage(res.data?.currentKey || '')
+        }
       })
-      .catch(() => { if (!cancelled) setGhlStages([]) }) // fall back to the CRM stage list
+      .catch((err) => {
+        if (cancelled) return
+        setGhlStages([])
+        // a case that cannot be staged says why; only an unreachable / switched-off GHL falls back to the CRM stage list
+        setGhlUnavailable(err?.response?.status === 409 ? (err.response.data?.message || 'This case is not on the Pipeline yet.') : '')
+      })
     return () => { cancelled = true }
-  }, [showStageUpdateModal, id])
+  }, [showStageUpdateModal, id, ghlStageTick])
+
+  // Loaded ahead of time (quietly, once the case page is open) so Update Stage opens with its stages and employees already in place.
+  useEffect(() => {
+    if (!id) return undefined
+    let cancelled = false
+    ghlApi.caseStages(id)
+      .then((res) => {
+        if (cancelled) return
+        setGhlUnavailable('')
+        setGhlStages(res.data?.stages || [])
+        setGhlEmployees(res.data?.employees ?? null)
+      })
+      .catch(() => {}) // the dialog loads it again and reports any problem
+    return () => { cancelled = true }
+  }, [id])
+
+  useEffect(() => {
+    if (!connected || !showStageUpdateModal) return undefined
+    return subscribe('ghl:pipeline:updated', () => setGhlStageTick((n) => n + 1))
+  }, [connected, showStageUpdateModal, subscribe])
 
   const handleStageUpdate = async () => {
     try {
       if (useGhlStages) {
-        await ghlApi.moveStage(id, { unifiedStageKey: newStage, moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
+        await ghlApi.moveStage(id, { unifiedStageKey: newStage, ...(ghlEmployees ? { employeeCaseId: stageEmployeeId } : {}), moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
       } else {
         await api.put(`/cases/${id}/stage`, { stage: newStage })
       }
@@ -2256,6 +2297,7 @@ const CRMCaseDetail = () => {
                       <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
                       <th className="px-2 py-2 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
                       <th className="px-2 py-2"></th>
@@ -2273,6 +2315,7 @@ const CRMCaseDetail = () => {
                       return (
                         <Fragment key={child._id}>
                         <tr
+                          style={isRemoved ? undefined : rowToneStyle(child)}
                           className={isRemoved ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40 transition-colors'}
                           onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
                         >
@@ -2294,6 +2337,16 @@ const CRMCaseDetail = () => {
                           <td className="px-2 py-2.5 text-[13px] text-foreground">{employeeVisaLabel(child)}</td>
                           <td className="px-2 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
+                          </td>
+                          <td className="px-2 py-2.5">
+                            {child.pipelineStage ? (
+                              <span
+                                className="inline-block rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground"
+                                style={stageToneStyle(child.pipelineStageKey || child.pipelineStage)}
+                              >
+                                {child.pipelineStage}
+                              </span>
+                            ) : <span className="text-muted-foreground">-</span>}
                           </td>
                           <td className="px-2 py-2.5 text-center">
                             {isEmployerMatter && (
@@ -3900,6 +3953,23 @@ const CRMCaseDetail = () => {
           <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Update Stage</h3>
             <div className="space-y-4">
+              {ghlEmployees && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Employee</label>
+                  <select
+                    value={stageEmployeeId}
+                    onChange={(e) => {
+                      const employee = ghlEmployees.find((item) => item.caseId === e.target.value)
+                      setStageEmployeeId(e.target.value)
+                      setNewStage(employee?.currentKey || '')
+                    }}
+                    className="input-field"
+                  >
+                    <option value="">Select employee</option>
+                    {ghlEmployees.map((employee) => <option key={employee.caseId} value={employee.caseId}>{[employee.name, employee.email].filter(Boolean).join(' - ') || employee.caseNumber}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">New Stage</label>
                 <select
@@ -3908,20 +3978,21 @@ const CRMCaseDetail = () => {
                   className="input-field"
                 >
                   <option value="">Select stage</option>
-                  {useGhlStages
+                  {ghlUnavailable ? null : useGhlStages
                     ? ghlStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.name}</option>)
                     : STAGES.map(stage => (
                       <option key={stage} value={stage}>{stage.replace('_', ' ')}</option>
                     ))}
                 </select>
                 {useGhlStages && ghlStagesError ? <p className="mt-1 text-sm text-red-700">{ghlStagesError}</p> : null}
-                {useGhlStages ? <p className="mt-1 text-xs text-muted-foreground">Moves the card on the Pipeline board and updates GoHighLevel.</p> : null}
+                {ghlUnavailable ? <p className="mt-1 text-sm text-red-700">{ghlUnavailable}</p> : null}
+                {useGhlStages ? <p className="mt-1 text-xs text-muted-foreground">{ghlEmployees ? 'Moves only the chosen employee card on the Pipeline board and updates GoHighLevel.' : 'Moves the card on the Pipeline board and updates GoHighLevel.'}</p> : null}
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowStageUpdateModal(false)} className="btn-secondary flex-1">
                   Cancel
                 </button>
-                <button onClick={handleStageUpdate} className="btn-primary flex-1" disabled={!newStage}>
+                <button onClick={handleStageUpdate} className="btn-primary flex-1" disabled={!newStage || (Boolean(ghlEmployees) && !stageEmployeeId)}>
                   Update
                 </button>
               </div>

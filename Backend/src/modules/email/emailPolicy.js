@@ -134,6 +134,7 @@ const SEND_RULES = {
   "questionnaire-submitted-team": { when: "A client, employer, employee or beneficiary submits their questionnaire - sent to the case's assigned case manager and its team lead (never administrators).", unless: "Nobody is assigned, or the same email was sent for this case a moment ago." },
   "client-message-team-alert": { when: "A client sends a message through the Immiglance portal - sent to the case's case manager and team lead.", unless: "The person already got this email for the same case in the last 30 minutes (this limit applies to this email only)." },
   "document-requested": { when: "Staff request documents from a client.", unless: "—" },
+  "case-submitted-client": { when: "A client's case card reaches the Submitted stage on the Pipeline (moved by the team, through Update Stage, or in GoHighLevel). Sent once per case, to the client only.", unless: "The case already got this e-mail, the case has no client login (an employer-filled employee slot), or the e-mail is switched off." },
   "filing-submitted": { when: "The USCIS tracking status changes to 'filed' - sent to the client.", unless: "The status did not change." },
   "receipt-received": { when: "A USCIS receipt notice is recorded - sent to the client.", unless: "The status did not change." },
   "rfe-received": { when: "The USCIS tracking status changes to 'RFE issued' - sent to the client.", unless: "The status did not change." },
