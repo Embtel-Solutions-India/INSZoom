@@ -82,6 +82,11 @@ const isRetryableSaveError = (error) => {
   const status = error?.response?.status
   return !status || status >= 500 || status === 408 || status === 429
 }
+// The background retry keeps going for everything that can still succeed later (network, server, an expired sign-in that is renewed,
+// a conflict or a lock that clears). Only answers that can never change are left for the case manager: a rejected value, no permission,
+// the form is gone.
+const NEVER_SUCCEEDS_STATUSES = new Set([400, 403, 404, 422])
+const keepRetryingInBackground = (error) => !NEVER_SUCCEEDS_STATUSES.has(error?.response?.status)
 // Typing updates the live draft (valuesRef) instantly; React state - which drives page-wide
 // re-rendering - is only brought up to date in batches this far apart, so typing never lags.
 const VALUES_COMMIT_DELAY_MS = 200
@@ -1040,7 +1045,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       setErrorMessage(error.response?.data?.message || 'Unable to save changes. Please try again.')
       // Keep going in the background until the server accepts the save (unless it was rejected
       // outright, which retrying cannot fix). The unsaved fields stay marked meanwhile.
-      if (isRetryableSaveError(error)) {
+      if (keepRetryingInBackground(error)) {
         backgroundRetryTimer.current = setTimeout(() => {
           backgroundRetryTimer.current = null
           savePendingRef.current?.('Automatic retry of a failed save', { reload: options.reload })

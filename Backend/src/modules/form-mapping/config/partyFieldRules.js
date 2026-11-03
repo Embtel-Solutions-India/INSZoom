@@ -35,8 +35,10 @@ const RULES = {
     // ---- beneficiary (the worker) ----
     R("beneficiary.firstName", ["Part3_Line2_GivenName", "HSupLine2_GivenName"]),
     R("beneficiary.middleName", ["Part3_Line2_MiddleName", "HSupLine2_MiddleName"]),
-    R("beneficiary.lastName", ["Part3_Line2_FamilyName", "HSupLine2_FamilyName"]),
-    R("beneficiary.fullName", ["Line2_BeneficiaryName", "TASupLine1_NameofBeneficiary"], { transform: FULL_NAME }),
+    R("beneficiary.lastName", "Part3_Line2_FamilyName"),
+    // HSupLine2_FamilyName is ONE box, "Name of the Beneficiary", on the L (page 24), O/P (page 28) and Q-1/R-1 (page 31) supplements - no given-name box beside
+    // it - so it takes the whole name (given + middle + family), never the family name alone (it printed only "Singh" for Santosh Singh).
+    R("beneficiary.fullName", ["Line2_BeneficiaryName", "TASupLine1_NameofBeneficiary", "HSupLine2_FamilyName"], { transform: FULL_NAME }),
     R("beneficiary.alienRegistrationNumber", "Line1_AlienNumber", { pages: [3], transform: { type: "digits" } }),
     R("beneficiary.dateOfBirth", "Line6_DateOfBirth", { pages: [3] }),
     R("beneficiary.ssn", "Line5_SSN", { pages: [3], transform: { type: "digits" } }),
