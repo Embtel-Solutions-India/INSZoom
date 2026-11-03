@@ -242,7 +242,8 @@ function canEditClientIntake(user, client, caseData) {
   const role = roleOf(user);
   if (["super_admin", "admin"].includes(role)) return true;
   if (["client", "user"].includes(role)) return sameId(client.user, user._id) && !["submitted", "locked"].includes(client.intakeSubmission?.status);
-  if (role === "case_manager") return isCaseManagerOfCase(caseData, user._id);
+  // case managers work every case, like team leads (owner decision 2026-11-04)
+  if (role === "case_manager") return true;
   if (role === "team_lead") return true;
   return false;
 }

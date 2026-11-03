@@ -9,7 +9,8 @@ const logger = require("../../utils/logger");
 
 const EVENT = "case:data_changed";
 const COALESCE_MS = 250;
-const ROLES = ["super_admin", "admin", "team_lead"];
+// every staff role that can open any case hears when any case changes (the open case page only reacts to its own case); case managers since 2026-11-04
+const ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const pending = new Map(); // caseId -> { scopes:Set, reason, actorId, timer }
 
 const idOf = (value) => {

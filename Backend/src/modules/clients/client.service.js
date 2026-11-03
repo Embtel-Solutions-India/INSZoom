@@ -142,10 +142,8 @@ function buildClientFilter(query = {}, user, extraClientIds = []) {
   }
   const role = roleOf(user);
   if (role === "client") filter.user = user._id;
-  else if (role === "case_manager") {
-    // Own clients, plus the clients of cases where this case manager is an additional (not primary) case manager.
-    filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, ...(extraClientIds.length ? [{ _id: { $in: extraClientIds } }] : [])] }];
-  } else if (role === "team_lead" && user.teamId) filter.teamId = user.teamId;
+  // case managers see every client (owner decision 2026-11-04: all case data is visible to every case manager); team leads unchanged
+  else if (role === "team_lead" && user.teamId) filter.teamId = user.teamId;
   return filter;
 }
 
