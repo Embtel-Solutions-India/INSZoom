@@ -286,6 +286,13 @@ connectDB()
     // runs / retries the checklist edits (remove a question, change its wording) that the editor hands over and shows instantly
     const checklistEditWorker = require("./modules/questionnaires/checklist-edit-jobs.service").startChecklistEditWorker();
     const recycleBinWorker = require("./modules/recycle-bin/recycle-bin.service").startRecycleBinWorker(); // removes recycle-bin items after 30 days
+    // Petition AI Review: scans uploaded petitions page by page (null and nothing started unless PETITION_AI_REVIEW=on); can never stop the server from starting
+    let petitionAiReview = null;
+    try {
+      petitionAiReview = require("./modules/petition-ai-review").startPetitionAiReview();
+    } catch (error) {
+      logger.error("petition_ai_review_not_started", { error: error?.message });
+    }
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         logger.fatal("port_in_use", { port: env.port, error });
@@ -328,6 +335,7 @@ connectDB()
       clearInterval(caseDeletionWorker);
       clearInterval(checklistEditWorker);
       clearInterval(recycleBinWorker);
+      if (petitionAiReview) Promise.resolve().then(() => petitionAiReview.stop()).catch((error) => logger.error("petition_ai_review_stop_failed", { error: error?.message }));
       server.close(() => {
         disconnectDB()
           .catch((error) => logger.error("mongodb_disconnect_failed", { error }))

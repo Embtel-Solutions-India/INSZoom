@@ -68,6 +68,13 @@ function expandPageRanges(pageRanges, totalPages, context) {
 async function findActiveComponentDefinition(caseForm, template) {
   if (!caseForm?.componentCode) return null;
   const parentFormCode = caseForm.parentFormCode || template.formCode;
+  // never query with an undefined parent (Mongoose would drop the condition and could match another form's component)
+  if (!template?._id) {
+    throw componentPageError(
+      `Component "${caseForm.componentCode}" cannot be resolved: its parent template ${parentFormCode} has no stored id - refusing to fall back to the full parent PDF.`,
+      { parentFormCode, componentCode: caseForm.componentCode }
+    );
+  }
   const componentDef = await USCISFormComponentDefinition.findOne({
     parentTemplateId: template._id,
     componentCode: caseForm.componentCode,
@@ -102,6 +109,9 @@ async function resolveComponentPages(caseForm, template, totalPages) {
 // no longer automatically means "render every page of the parent PDF" -
 // it means "render the independent/core form's own pages").
 async function resolveCorePages(template, totalPages) {
+  // A template that was never stored (no _id) cannot have components registered against it: render every page, without a query.
+  // (Querying with parentTemplateId: undefined would make Mongoose drop the condition and match EVERY form's active components.)
+  if (!template?._id) return null;
   const activeComponents = await USCISFormComponentDefinition.find({
     parentTemplateId: template._id,
     status: "ACTIVE",

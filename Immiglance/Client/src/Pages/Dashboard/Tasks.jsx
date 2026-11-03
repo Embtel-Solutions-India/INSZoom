@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useMyCase } from "../../hooks/useMyCaseProfile";
 import { casesApi } from "../../services/api";
+import { effectiveMilestones } from "../../utils/milestones";
 
 const Ic = {
   Check: () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>,
@@ -82,7 +83,7 @@ export default function Tasks() {
     queryFn: () => casesApi.workflow(caseId),
     enabled: Boolean(caseId),
   });
-  const milestones = workflowRaw?.workflow?.progress?.milestones || workflowRaw?.data?.progress?.milestones || [];
+  const milestones = effectiveMilestones(workflowRaw?.workflow?.progress?.milestones || workflowRaw?.data?.progress?.milestones || []);
   const completedCount = milestones.filter((m) => m.completed).length;
   const isLoading = caseIsPending || (Boolean(caseId) && workflowIsPending);
 

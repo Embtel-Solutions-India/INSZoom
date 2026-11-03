@@ -69,13 +69,22 @@ function cardLayout({ title, label = "", heading = "", innerHtml, headerAlign = 
   const year = new Date().getFullYear();
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
-<body style="margin:0;padding:0;background:#f3f6fb;font-family:${FONT};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb;padding:32px 12px;">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>
+  /* Phones: no grey frame around the card - the white Immiglance box fills the whole screen. */
+  @media only screen and (max-width:620px) {
+    .im-body, .im-outer { background:#ffffff !important; }
+    .im-outer { padding:0 !important; }
+    .im-card { border:0 !important; border-radius:0 !important; }
+    .im-pad { padding-left:20px !important; padding-right:20px !important; }
+  }
+</style></head>
+<body class="im-body" style="margin:0;padding:0;background:#f3f6fb;font-family:${FONT};">
+  <table role="presentation" class="im-outer" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6fb;padding:32px 12px;">
     <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3e9f2;border-radius:6px;">
+      <table role="presentation" class="im-card" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3e9f2;border-radius:6px;">
         <tr>
-          <td style="padding:24px 36px 20px;background:#ffffff;border-radius:6px 6px 0 0;">
+          <td class="im-pad" style="padding:24px 36px 20px;background:#ffffff;border-radius:6px 6px 0 0;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
               <td valign="middle" ${centered ? 'align="center"' : ""}><table role="presentation" cellpadding="0" cellspacing="0"><tr>
                 <td valign="middle" style="padding-right:10px;"><img src="${logoUrl()}" width="32" height="32" alt="" style="display:block;border:0;"></td>
@@ -85,16 +94,16 @@ function cardLayout({ title, label = "", heading = "", innerHtml, headerAlign = 
             </tr></table>
           </td>
         </tr>
-        <tr><td style="padding:0 36px;"><div style="height:1px;background:${LINE};"></div></td></tr>
+        <tr><td class="im-pad" style="padding:0 36px;"><div style="height:1px;background:${LINE};"></div></td></tr>
         <tr>
-          <td style="padding:28px 36px 8px;">
+          <td class="im-pad" style="padding:28px 36px 8px;">
             ${heading ? `<h1 style="margin:0 0 20px;${headingCss || `font-size:26px;font-weight:700;color:${NAVY};line-height:1.3;font-family:${FONT};`}">${heading}</h1>` : ""}
             ${innerHtml}
           </td>
         </tr>
-        <tr><td style="padding:0 36px;"><div style="height:1px;background:${LINE};"></div></td></tr>
+        <tr><td class="im-pad" style="padding:0 36px;"><div style="height:1px;background:${LINE};"></div></td></tr>
         <tr>
-          <td style="padding:18px 36px 26px;">
+          <td class="im-pad" style="padding:18px 36px 26px;">
             <p style="margin:0;color:${FAINT};font-size:12px;line-height:1.6;font-family:${FONT};">This is an automated message from Immiglance. Please do not reply to this email.<br>&copy; ${year} Immiglance. All rights reserved.</p>
           </td>
         </tr>

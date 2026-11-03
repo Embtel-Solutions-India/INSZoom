@@ -524,6 +524,12 @@ async function createDocumentFromFile({ file, body, user, req }) {
     await context.caseData.save();
     // the petition starts out visible to the case team only; the case manager releases it to the attorney(s) and / or the client (modules/petition-review)
     await require("../petition-review/petitionReview.data").ensureReview(document._id, context.caseData._id).catch(() => null);
+    // Petition AI Review: queues the page-by-page AI scan on a later tick - returns at once and never throws (does nothing unless PETITION_AI_REVIEW=on)
+    try {
+      require("../petition-ai-review").onPetitionUploaded({ document, caseData: context.caseData, user });
+    } catch (_error) {
+      // never affects the upload
+    }
   }
   announceDocumentChange(document, user, "upload");
   return document;

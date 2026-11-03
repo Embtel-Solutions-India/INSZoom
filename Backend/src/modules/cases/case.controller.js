@@ -2985,7 +2985,8 @@ exports.addEmployeeSlot = async (req, res, next) => {
       petitionSubType: employeeVisa.petitionSubType,
       checklistItems: childChecklist,
       documentChecklist: childChecklist,
-      status: "pending_assignment",
+      // the employee case inherits the matter's case manager below, so it is already assigned when there is one (same rule as the GHL employer paths)
+      status: principal.assignedCaseManager ? "assigned" : "pending_assignment",
       assignedTeamLead: principal.assignedTeamLead,
       teamId: principal.teamId,
       assignedCaseManager: principal.assignedCaseManager,

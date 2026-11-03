@@ -11,6 +11,7 @@ import { LANDING_URL } from "../../components/CrossAppRedirect";
 import { splitHeadline } from "../../utils/headline";
 import { PLAN_LABELS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
+import { effectiveMilestones } from "../../utils/milestones";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const fmtDate = (iso) =>
@@ -368,11 +369,15 @@ const initialsOf = (name) => String(name || "").trim().split(/\s+/).map((part) =
 
 // The steps shown are the stages of the case's own GoHighLevel pipeline when it has one (names and count come from there, so they follow any
 // change made in GHL); otherwise the portal's standard five steps.
-function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline }) {
-  const ghlStages = pipeline?.stages?.length ? pipeline.stages : null;
-  const steps = ghlStages ? ghlStages.map((stage) => stage.name) : CASE_STATUS_STEPS;
+function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline, milestones }) {
+  // The bar shows the same steps as the Tasks page (the case's lifecycle milestones); when the card reaches Submitted on the Pipeline, "Filed" completes and so
+  // does everything before it (utils/milestones.js). Only if those milestones are not available does it fall back to the pipeline's own stages / the standard steps.
+  const useMilestones = Array.isArray(milestones) && milestones.length > 0;
+  const ghlStages = !useMilestones && pipeline?.stages?.length ? pipeline.stages : null;
+  const steps = useMilestones ? milestones.map((milestone) => milestone.label) : ghlStages ? ghlStages.map((stage) => stage.name) : CASE_STATUS_STEPS;
   const found = ghlStages ? ghlStages.findIndex((stage) => stage.key === pipeline.currentKey) : -1;
-  const currentIndex = ghlStages ? Math.max(0, found) : resolveCaseStepIndex(caseData);
+  const firstOpen = useMilestones ? milestones.findIndex((milestone) => !milestone.completed) : -1;
+  const currentIndex = useMilestones ? (firstOpen === -1 ? steps.length - 1 : firstOpen) : ghlStages ? Math.max(0, found) : resolveCaseStepIndex(caseData);
   const statusLabel = steps[currentIndex] || "Evaluation In Progress";
   const email = profileData?.email || user?.email || "—";
   const phone = profileData?.primaryPhone || caseData?.clientPhone || "—";
@@ -412,7 +417,9 @@ function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline 
         <ol className="grid" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(5.5rem, 1fr))` }}>
           {steps.map((step, index) => {
             // The Submitted stage counts as completed the moment the card is there (nothing is left for the client to do in it), not only once a later stage is reached.
-            const done = index < currentIndex || (Boolean(ghlStages) && index === currentIndex && ghlStages[index]?.key === "submitted_fedex");
+            const done = useMilestones
+              ? Boolean(milestones[index]?.completed)
+              : index < currentIndex || (Boolean(ghlStages) && index === currentIndex && ghlStages[index]?.key === "submitted_fedex");
             const active = index === currentIndex && !done;
             return (
               <li key={`${step}-${index}`} className="relative flex flex-col items-center text-center">
@@ -750,7 +757,8 @@ export default function Dashboard() {
   const documentCount = numberOrNull(documentCountRaw?.count);
   const unreadMessages = numberOrNull(unreadRaw?.unreadCount ?? unreadRaw?.count);
   // "Tasks" are the case's lifecycle milestones - the very list the Tasks page shows
-  const milestones = workflowRaw?.workflow?.progress?.milestones || workflowRaw?.data?.progress?.milestones || null;
+  const rawMilestones = workflowRaw?.workflow?.progress?.milestones || workflowRaw?.data?.progress?.milestones || null;
+  const milestones = rawMilestones ? effectiveMilestones(rawMilestones) : null;
   const taskTotal = milestones ? milestones.length : null;
   const closedTaskCount = milestones ? milestones.filter((milestone) => milestone.completed).length : null;
   const openTaskCount = milestones ? taskTotal - closedTaskCount : null;
@@ -786,7 +794,7 @@ export default function Dashboard() {
 
         <div id="case-progress">
           {isInitialCaseLoading ? <CaseProgressSkeleton /> : (
-            <CaseStatusStepper caseData={activeCaseData} profileData={profileData} user={user} displayName={displayName} pipeline={pipeline} />
+            <CaseStatusStepper caseData={activeCaseData} profileData={profileData} user={user} displayName={displayName} pipeline={pipeline} milestones={milestones} />
           )}
         </div>
 

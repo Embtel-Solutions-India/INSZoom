@@ -7,7 +7,7 @@ import { stageToneStyle, rowToneStyle } from '../utils/stageTone'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import GoogleDriveExport from '../components/GoogleDriveExport'
 import { useCaseOrigin } from '../utils/caseOrigin'
-import { useRouteRevisit } from '../components/KeepAliveOutlet'
+import { useRouteRevisit, useKeepAlivePin } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
@@ -948,12 +948,16 @@ const CRMCaseDetail = () => {
     }
   }, [location.search, assignmentPrompted])
 
+  // The full-page "Loading case details..." only for the FIRST load of a case. Once this case is on screen, every reload is quiet:
+  // the spinner unmounts the whole page, which threw away whatever was open - e.g. the forms picked in Manage forms before Apply.
+  const loadedCaseIdRef = useRef('')
   const fetchCaseDetail = async (silent = false) => {
     try {
-      if (silent !== true) setLoading(true)
+      if (silent !== true && loadedCaseIdRef.current !== String(id)) setLoading(true)
       const response = await casesApi.get(id)
       const nextCase = response.data.case
       childPollStoppedRef.current = false // the case loaded, so child-case refreshes may run again
+      loadedCaseIdRef.current = String(id)
       setCaseData(nextCase)
       // The client profile shown in the Overview is the only thing read from the intake bundle: fetch just that, in the background, so the
       // page opens as soon as the case itself is here (it used to wait for the whole intake bundle too).
@@ -980,6 +984,8 @@ const CRMCaseDetail = () => {
   // Coming back to this (kept-alive) case after a while: refresh the case quietly in the
   // background - no spinner, nothing collapses, the open tab and scroll stay put.
   useRouteRevisit(() => { fetchCaseDetail(true) })
+  // An open USCIS form or Manage forms keeps this page alive however long the user is away, so it is never closed behind their back.
+  useKeepAlivePin(Boolean(selectedCaseForm) || showManageForms)
 
   // Set once the case is gone (404) or no longer accessible (403): such an answer never changes by itself, and this page is
   // kept alive after the user leaves it, so without this the 30s poll below would hit the API (and the console) forever for a
@@ -1283,7 +1289,8 @@ const CRMCaseDetail = () => {
           : 'The client just updated their profile information.'
       )
       invalidateCachedGet(`/questionnaires/case/${id}`)
-      fetchCaseDetail()
+      // quietly: this fires on EVERY profile save of a client who completed it once, and a full reload closed Manage forms (losing the picked forms)
+      fetchCaseDetail(true)
       fetchChecklistsProgress(id)
       fetchDocuments(true)
       fetchCaseForms(true)

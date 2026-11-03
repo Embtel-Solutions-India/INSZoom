@@ -183,7 +183,10 @@ export default function Profile() {
     setPasswordSaving(true);
     try {
       await authApi.changePassword(currentPassword, newPassword);
-      setPasswordMessage("Password changed successfully.");
+      // The server signs the account out everywhere after a password change (Backend auth.service changePassword), so take the person to the login page
+      // here on purpose, after a moment to read the message, instead of letting the next request fail on its own.
+      setPasswordMessage("Password changed successfully. Redirecting you to the login page...");
+      setTimeout(() => window.dispatchEvent(new Event("immiglance:session-expired")), 2500);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
     } catch (error) {
       setPasswordError(error.message || "Unable to change password. Check your current password and try again.");
@@ -316,6 +319,9 @@ export default function Profile() {
         {/* ── Security ── */}
         <div className="bg-card rounded-lg border border-card-border p-6 space-y-4">
           <h2 className="font-serif text-lg font-bold text-foreground mb-1">Change Password</h2>
+          <p className="text-sm text-muted-foreground -mt-2">
+            After you change your password, you will be redirected to the login page. Please log in again with your new password.
+          </p>
 
           <Field label="Current password">
             <input
