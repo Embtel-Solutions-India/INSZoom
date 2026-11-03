@@ -24,22 +24,8 @@ function describeConfig() {
   };
 }
 
-// Classifies a Gemini reply the way the Petition AI Review caller does, so the diagnosis and the real scan agree.
-function classifyReply(httpStatus, payload) {
-  // 402 = the Google AI Studio project has no prepaid credits left: every call is refused until billing is topped up (not temporary, never retried)
-  if (httpStatus === 402) return { code: "BILLING", note: payload?.error?.message || "prepayment credits depleted - top up billing in Google AI Studio" };
-  if (httpStatus === 429) return { code: "QUOTA", note: payload?.error?.message || "rate limit or quota exhausted" };
-  if (httpStatus >= 400) return { code: `HTTP_${httpStatus}`, note: payload?.error?.message || "request failed" };
-  const block = payload?.promptFeedback?.blockReason;
-  if (block) return { code: "BLOCKED", note: `prompt blocked: ${block}` };
-  const candidate = payload?.candidates?.[0];
-  if (!candidate) return { code: "EMPTY_RESPONSE", note: "no candidate returned" };
-  const text = (candidate.content?.parts || []).map((part) => part.text || "").join("");
-  if (candidate.finishReason && !["STOP", "FINISH_REASON_UNSPECIFIED"].includes(candidate.finishReason) && !text) return { code: "BLOCKED", note: `finishReason ${candidate.finishReason} with no text` };
-  if (candidate.finishReason === "MAX_TOKENS") return { code: "TRUNCATED", note: "output cut off at the token limit" };
-  if (!text) return { code: "EMPTY_RESPONSE", note: "candidate has no text" };
-  return { code: "OK", note: "text returned" };
-}
+// Same rules as the real scan (src/modules/petition-ai-review/replyClassifier.js), so the diagnosis and the scan agree.
+const { classifyReply } = require(path.join(__dirname, "..", "src", "modules", "petition-ai-review", "replyClassifier"));
 
 async function main() {
   const config = describeConfig();

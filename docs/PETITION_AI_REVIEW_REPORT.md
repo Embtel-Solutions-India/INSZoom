@@ -1,6 +1,6 @@
 # Petition AI Review - implementation report (single living document)
 
-This file is the one place that records every phase of the Petition AI Review subsystem: what was built, what was tested, what is not done yet. It is updated at the end of each phase. Plan: `C:\Users\ishaan\.claude\plans\melodic-skipping-muffin.md`.
+This file is the one place that records every phase of the Petition AI Review subsystem: what was built, what was tested, what is not done yet. It is updated at the end of each phase. Plan: [`docs/PETITION_AI_REVIEW_PLAN.md`](PETITION_AI_REVIEW_PLAN.md) (exact copy of the approved rev 3).
 
 **What it is:** when the internal team uploads a petition (PDF, often 500-700 pages) the petition is scanned automatically, page by page, by an AI (Gemini, key from the server env). The findings ("page 112: wrong name; page 340: address differs ...") are shown in a summary panel inside that petition's row in the Admin petition list, behind its own **AI Review** button.
 
@@ -14,7 +14,7 @@ This file is the one place that records every phase of the Petition AI Review su
 |---|---|---|
 | 0 | Gemini diagnosis + diagnostic script | DONE |
 | 1 | Models, rules, env, PDF slicer, batch planner | DONE |
-| 2 | Own Gemini caller, prompt, validation, summary | pending |
+| 2 | Own Gemini caller, prompt, validation, summary | DONE |
 | 3 | Durable job, worker, automatic upload trigger | pending |
 | 4 | API + notifications | pending |
 | 5 | Admin UI | pending |
@@ -99,4 +99,44 @@ The classifier now names this case `BILLING` (HTTP 402, never retried) - test ad
 
 **Next step:** Phase 2 - the petition's own Gemini caller (response schema, output budget, precise BILLING / QUOTA / BLOCKED / TRUNCATED / EMPTY handling, automatic fallbacks: halve on cut-off, re-send as text when blocked, repair prompt on bad JSON, switch to another configured AI provider or auto-resume when billing returns), the prompt with the case facts and rules, finding validation and the page summary. Waiting for your approval.
 
-*(Phases 2-6 are added below as they are completed.)*
+---
+
+## Phase 2 - AI layer (DONE)
+
+**Done** (all new files in `Backend/src/modules/petition-ai-review/`; still not connected to uploads, the server or the UI, so the live app behaves exactly as before):
+- `replyClassifier.js` - the Phase 0 reply rules moved here, shared by the scan and `scripts/diagnoseGemini.js` (the script now imports it; its output is unchanged).
+- `petitionGemini.js` - the petition's own Gemini caller (the shared `gemini.service.js` is not touched). Output budget (`maxOutputTokens`), small thinking budget (1024) and a response schema, so thinking tokens cannot cut the JSON off; every reply mapped to a precise code; 402 / 429 / 403 / 404 sent once, never hammered; 5xx / network / timeout retried with backoff (2 retries); an HTTP 400 on the settings themselves is re-sent once without thinking / schema and the caller stays on the plain settings. The key travels in the `x-goog-api-key` header, never in the URL, so it cannot appear in an error or a log.
+- `prompt.js` - system instruction with the case reference facts, expected addresses, every company rule, prohibited terms and the disclaimer; per-batch prompt for PDF mode and for text mode; repair prompt; the response schema. Pages are asked relative to the slice and mapped to real pages in code.
+- `findingValidator.js` - parses the answer (tolerates fences / surrounding text), maps pages to real pages and drops any outside the pages sent, enforces categories / severities (with common aliases), clamps confidence, trims text to the model limits, merges duplicates (most severe kept).
+- `summaryBuilder.js` - code-built summary (counts, page -> issues, category totals, plain text with unreadable pages and page-cap note, "AI-assisted - verify before acting"); optional short AI executive summary from the findings text only, falling back to the code-built text on any failure.
+- `fallbackProvider.js` - backup AI through the existing `ai-provider.registry`: the first non-Gemini provider with a key on the server (OpenAI, Anthropic, Azure OpenAI, private model), text mode only. None configured -> null (the scan pauses instead, Phase 3).
+- `batchReviewer.js` - reviews one batch with every backup applied automatically (table below). It only ever returns a result, or a typed "stop the run" error for billing / quota / rejected key when no backup exists - nothing else can escape.
+
+**Every failure solved in code (each one tested):**
+| Problem | Automatic solution |
+|---|---|
+| Answer cut off (`MAX_TOKENS`) | batch halved down to one page; a single page then sent as text; then flagged `unreadable_page` |
+| Blocked / empty answer for a PDF slice | same pages re-sent as extracted text; still blocked -> halved to isolate the page; that page alone flagged `unreadable_page` |
+| Answer not valid JSON | one stricter repair re-ask; then halved; a single page still bad -> re-queued for the end of the scan |
+| Page numbers outside the pages sent | dropped and noted in the diagnostics |
+| Slice over the 15 MB inline limit / slicing fails | halved; a single over-size page or a failed slice goes as text |
+| Page with no text in text mode (scanned image after pdf-lib failed) | flagged `unreadable_page` without spending an AI call |
+| 5xx / timeout / network (after backoff retries) / an unexpected error | batch re-queued (`requeue`, gaps marked `retry`) - pages are never lost |
+| Billing 402 / quota 429 / rejected key / no key | switch to the backup AI in text mode (Gemini not called again for that scan); no backup or backup also failing -> typed stop error (Phase 3 pauses the scan and resumes it on its own) |
+| AI summary fails | code-built summary kept |
+
+**Tested** - `petition-ai-review/tests/phase2.ai.test.js` (37 tests) + Phase 0/1 tests: **66 / 66 pass, 0 skipped, run twice (21 s)**, database-free, no network (Gemini stubbed). Includes an end-to-end run with the REAL PDF reader and the real Gemini caller on a stubbed network (8-page petition, two batches, findings on the right pages). One test expectation was corrected while building (a page number sent as the string "2" is correctly accepted). `node scripts/diagnoseGemini.js` still runs offline and makes no call.
+
+**Not done in this phase:** nothing planned for Phase 2 is left. The automatic pause + 30-minute re-check when billing / quota stops a run belongs to the Phase 3 worker (Phase 2 delivers the typed stop signal it acts on). Loading the case facts from the database (names of client / petitioner / beneficiary / employer) is done by the Phase 3 worker; the prompt already accepts them.
+
+**What you need to do:**
+1. Gemini billing: the live check on 2026-11-03 still answered HTTP 402 "prepayment credits are depleted" after the switch to pay-as-you-go - confirm in https://ai.studio/projects that the project behind the server's `GEMINI_API_KEY` is on pay-as-you-go, or put the new White Cedar key into `GEMINI_API_KEY` / `PETITION_AI_API_KEY` and restart the backend.
+2. **Decision before Phase 3:** the master switch `PETITION_AI_REVIEW` currently defaults to **on** in `config.js` and `.env.example` (harmless today - nothing is wired). Recommended: default **off** from Phase 3, so the scan only starts once you set `PETITION_AI_REVIEW=on`.
+3. Optional: if you want a backup AI when Gemini fails, set one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` on the server (it then reviews petition text automatically). Without one, a billing / quota stop just pauses the scan.
+4. Still open: the correct FedEx / filing address(es) and any extra rules.
+
+**Remaining:** Phases 3-6. Open items: Gemini billing, the master-switch default, FedEx / filing addresses, approval for one small live smoke test in Phase 6.
+
+**Next step:** Phase 3 - durable scan job (lease + fence, resume from the page cursor), worker started with the server, automatic trigger after a petition upload (after the response, never throwing), re-queued pages retried at the end, pause + automatic re-check on billing / quota, manual re-scan / cancel. Waiting for your approval.
+
+*(Phases 3-6 are added below as they are completed.)*
