@@ -92,6 +92,7 @@ class Query {
   lean() { return this; }
   sort(sort) { this.options.sort = sort; return this; }
   limit(limit) { this.options.limit = limit; return this; }
+  skip(skip) { this.options.skip = skip; return this; }
   then(resolve, reject) { return Promise.resolve().then(() => this.run(this.options)).then(resolve, reject); }
   catch(reject) { return this.then(null, reject); }
 }
@@ -130,9 +131,10 @@ function createFakeModel(RealModel, { unique } = {}) {
     findOne(filter) { return new Query(() => clone(docs.find((doc) => matches(doc, filter)) || null)); },
     findById(id) { return new Query(() => clone(docs.find((doc) => equal(doc._id, id)) || null)); },
     find(filter) {
-      return new Query(({ sort, limit }) => {
+      return new Query(({ sort, limit, skip }) => {
         let found = docs.filter((doc) => matches(doc, filter));
         if (sort) found = sortDocs(found, sort);
+        if (skip) found = found.slice(skip);
         if (limit) found = found.slice(0, limit);
         return found.map(clone);
       });
@@ -158,6 +160,7 @@ function createFakeModel(RealModel, { unique } = {}) {
       log.writes += 1;
       return { matchedCount: 1, modifiedCount: 1 };
     },
+    async countDocuments(filter) { return docs.filter((doc) => matches(doc, filter)).length; },
     async deleteMany(filter) {
       let deleted = 0;
       for (let index = docs.length - 1; index >= 0; index -= 1) if (matches(docs[index], filter)) { docs.splice(index, 1); deleted += 1; }

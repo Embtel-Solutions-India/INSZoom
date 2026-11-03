@@ -4,7 +4,7 @@
   Progress per phase is recorded in docs/PETITION_AI_REVIEW_REPORT.md - this file is the plan, not the status.
 -->
 
-> **Status as of 2026-11-04:** Phases 0-3 DONE (93/93 DB-free tests pass). Phases 4-6 pending, each waiting for owner approval. Master switch now defaults to OFF (owner decision 2026-11-03).
+> **Status as of 2026-11-04:** Phases 0-4 DONE (102/102 DB-free tests pass). Phases 5-6 pending, each waiting for owner approval. Master switch now defaults to OFF (owner decision 2026-11-03).
 > **One deliberate change from the plan text below:** the PDF reader runs in a separate **child process**, not a worker thread - terminating a worker thread after pdf.js had run crashed the whole Node process (segfault), so it was moved out of process during Phase 1. Everything else is as written.
 
 # Petition AI Review - plan (rev 3)

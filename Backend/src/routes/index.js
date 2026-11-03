@@ -29,6 +29,12 @@ router.use("/recycle-bin", require("../modules/recycle-bin/recycle-bin.routes"))
 router.use("/canonical", require("../modules/canonical/routes/canonicalRoutes"));
 router.use("/public-forms", require("../modules/public-forms/public-forms.routes")); // public, read-only: latest official blank USCIS forms (Landing + Client "Forms" page)
 router.use("/petition-review", require("../modules/petition-review/petitionReview.routes")); // petition release to attorney / client, client Petition page, petition feedback thread
+// Petition AI Review (staff): scans of uploaded petitions, findings, re-scan / retry / cancel. Loading it can never stop the API from starting.
+try {
+  router.use("/petition-ai-review", require("../modules/petition-ai-review/petitionAiReview.routes"));
+} catch (error) {
+  require("../utils/logger").error("petition_ai_review_routes_not_loaded", { error: error?.message });
+}
 router.use("/news", require("../modules/news/news.routes")); // USCIS News & Updates: public read-only list/article + staff-only sync status/controls
 router.use("/uscis-forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/uscis/forms", require("../modules/uscis-form-import/routes/uscisFormImportRoutes"));

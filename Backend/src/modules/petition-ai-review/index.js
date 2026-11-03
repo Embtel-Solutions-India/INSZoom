@@ -18,6 +18,7 @@ function buildRunner({ scanService, shouldStop }) {
   const { loadRules } = require("./rules");
   const Document = require("../../models/Document");
   const config = readConfig();
+  const notifier = require("./notifier").createNotifier({ logger });
   return createScanRunner({
     scanService,
     config,
@@ -33,6 +34,9 @@ function buildRunner({ scanService, shouldStop }) {
       return apiKey ? createGeminiCaller({ config: readConfig(), apiKey }) : null;
     },
     createFallback: () => createFallbackCaller({ provider: pickFallbackProvider(), maxOutputTokens: config.maxOutputTokens }),
+    // Phase 4: live progress + "finished" event and the bell for the person who started the scan (never awaited, never throws)
+    onProgress: (scan, info) => notifier.progress(scan, info),
+    onFinished: (scanId, outcome) => notifier.finished(scanId, outcome),
   });
 }
 
