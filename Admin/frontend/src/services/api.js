@@ -298,7 +298,7 @@ export const casesApi = {
 }
 
 export const usersApi = {
-  caseManagers: () => api.get('/users/case-managers'),
+  caseManagers: (params = {}) => api.get('/users/case-managers', { params }),
   assignable: (role, params = {}) => api.get('/users/assignable', { params: { role, ...params } }),
 }
 

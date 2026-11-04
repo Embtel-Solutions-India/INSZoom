@@ -178,6 +178,20 @@ async function getAssignableUsers(currentUser, role, options = {}) {
   return deduped;
 }
 
+// "Assign Staff" at case creation: the case managers (scoped exactly as before) plus EVERY active team lead - including the requesting team
+// lead - since some cases are handled by a team lead with no case manager. A team lead picked here takes the case manager's place on the case
+// (assignedCaseManager), so the existing assignment rules (emails, child cases, pipeline card) apply unchanged.
+async function getAssignableStaff(currentUser) {
+  const caseManagers = await getAssignableUsers(currentUser, "case_manager");
+  const teamLeads = await User.find({ role: "team_lead", isActive: true }).select(USER_SELECT).sort({ name: 1, displayName: 1, email: 1 });
+  const byId = new Map(caseManagers.map((user) => [String(user._id), user]));
+  teamLeads.forEach((user) => { if (!byId.has(String(user._id))) byId.set(String(user._id), user.toObject()); });
+  // every case manager first, then the team leads below them; alphabetical within each group
+  const nameOf = (user) => (user.name || user.displayName || user.email || "").toLowerCase();
+  const rank = (user) => (user.role === "team_lead" ? 1 : 0);
+  return [...byId.values()].sort((left, right) => rank(left) - rank(right) || nameOf(left).localeCompare(nameOf(right)));
+}
+
 async function getUserOrThrow(id, currentUser) {
   const user = await User.findById(id).select(USER_SELECT);
   if (!user) {
@@ -321,6 +335,7 @@ module.exports = {
   canViewUser,
   createUser,
   deactivateUser,
+  getAssignableStaff,
   getAssignableUsers,
   getDashboard,
   getUserActivity,
