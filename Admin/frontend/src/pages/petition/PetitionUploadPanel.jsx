@@ -57,6 +57,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
   const [justUploaded, setJustUploaded] = useState(null)
   const [chat, setChat] = useState(null)
   const [confirm, setConfirm] = useState(null) // { doc, target } waiting for the case manager's OK
+  const [releaseNote, setReleaseNote] = useState('') // optional note typed in the send popup: shown in the e-mail and to the attorney
   const [deleting, setDeleting] = useState(null) // the document waiting for the delete confirmation
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -171,6 +172,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
       setError(`This case has no client account that can receive the ${text.noun} yet.`)
       return
     }
+    setReleaseNote('')
     setConfirm({ doc, target })
   }
 
@@ -182,11 +184,11 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
     setNotice('')
     try {
       if (target === 'attorney') {
-        const res = await petitionReviewApi.sendToAttorney(caseId, documentId)
+        const res = await petitionReviewApi.sendToAttorney(caseId, documentId, releaseNote.trim())
         const count = res.data?.data?.attorneysNotified || 1
         setNotice(`Sent for attorney review - ${count} attorney${count > 1 ? 's were' : ' was'} notified.`)
       } else {
-        await petitionReviewApi.sendToClient(caseId, documentId)
+        await petitionReviewApi.sendToClient(caseId, documentId, releaseNote.trim())
         setNotice(`Sent for client review - ${audienceName} was notified.`)
       }
       if (justUploaded === documentId) setJustUploaded(null)
@@ -422,7 +424,22 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
           confirmLabel={confirm.target === 'attorney' ? 'Send to attorney' : 'Send to client'}
           onConfirm={() => release(confirm)}
           onCancel={() => setConfirm(null)}
-        />
+        >
+          <div className="mt-4 text-left">
+            <label htmlFor="release-note" className="mb-1 block text-xs font-semibold text-muted-foreground">Note (optional)</label>
+            <textarea
+              id="release-note"
+              value={releaseNote}
+              onChange={(event) => setReleaseNote(event.target.value.slice(0, 2000))}
+              onKeyDown={(event) => event.stopPropagation()}
+              rows={3}
+              maxLength={2000}
+              placeholder={confirm.target === 'attorney' ? 'Add a note for the attorney…' : 'Add a note for the client…'}
+              className="input-field w-full resize-y text-sm"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">Shown in the email{confirm.target === 'attorney' ? ' and next to the document in the Attorney Portal' : ''}. Leave it empty to send without a note.</p>
+          </div>
+        </ConfirmModal>
       )}
       {deleting && (
         <ConfirmModal

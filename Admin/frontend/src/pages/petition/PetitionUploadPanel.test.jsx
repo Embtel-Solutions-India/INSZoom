@@ -73,7 +73,7 @@ describe('PetitionUploadPanel', () => {
     expect(within(confirmation).getByText(/Pat Petitioner \(petitioner\) will be emailed/)).toBeTruthy()
     expect(nativeConfirm).not.toHaveBeenCalled() // the app's own dialog, never the browser's grey popup
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Send to client' }))
-    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1'))
+    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1', ''))
     await screen.findByText(/Sent for client review/)
     expect(screen.queryByRole('status')).toBeNull()
   })
@@ -89,7 +89,7 @@ describe('PetitionUploadPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Attorney review/ }))
     dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send to attorney' }))
-    await waitFor(() => expect(mocks.sendToAttorney).toHaveBeenCalledWith('c1', 'd1'))
+    await waitFor(() => expect(mocks.sendToAttorney).toHaveBeenCalledWith('c1', 'd1', ''))
     expect(await screen.findByText(/Sent for attorney review - 1 attorney was notified/)).toBeTruthy()
   })
 
@@ -241,5 +241,14 @@ describe('PetitionUploadPanel', () => {
     await act(async () => { fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } }) })
     await waitFor(() => expect(mocks.upload).toHaveBeenCalled())
     expect(mocks.upload.mock.calls[0][3]).toBe('petition_supporting_upload')
+  })
+
+  it('the send popup has an optional note: what is typed is sent with the release (empty = no note)', async () => {
+    render(<PetitionUploadPanel caseId="c1" canUpload />)
+    fireEvent.click(await screen.findByRole('button', { name: /Client review/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Note (optional)'), { target: { value: '  Please check page 3.  ' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send to client' }))
+    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1', 'Please check page 3.'))
   })
 })
