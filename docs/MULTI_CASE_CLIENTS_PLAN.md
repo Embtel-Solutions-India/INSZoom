@@ -59,6 +59,7 @@ Frontend (Client, Landing login)
 5. Header switcher in `PortalLayout.jsx`, shown **only with 2+ cases**; "My Cases" list page.
 6. Every page sends the selected case: Dashboard, Profile intake, PlanSelection, Messages (thread per case, list labelled by case), Payments, Petition (rows labelled by case), Documents — fix `useDocumentChecklist.js` to filter by case.
 7. Employer matters keep `PrincipalCaseWorkspace`; employee + own case both in the switcher; `AuthGate.jsx` confinement per selected case.
+8a. **Owner decision (2026-11-05): an employee / beneficiary login can hold two or more cases.** On a case where the person is the employee / beneficiary they see only what an employee / beneficiary sees today; on a case where they are the client, employer or petitioner they get every feature a normal client gets. Backend: such a login is allowed a case of its own (no more `EMAIL_OWNED_BY_NON_CLIENT` for a client-side person), and every permission check decides by the person's role ON THE SELECTED CASE, never by the login's single `role`.
 8. Login keeps a safe same-origin return-to so an e-mailed case link lands on that case.
 
 Exit gate: tests for 0 / 1 / 3 cases, switching never shows stale data, deep link → right case; builds; report updated.

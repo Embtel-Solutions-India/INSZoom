@@ -14,7 +14,7 @@ import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard, { isPremiumChecklist } from '../components/ChecklistApprovalCard'
 import WrappingSelect from '../components/ui/WrappingSelect'
-import { OtherCasesStrip } from '../components/PersonCases'
+import { OtherCasesStrip, AttachToLoginBanner } from '../components/PersonCases'
 import { usersApi, uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
@@ -2164,6 +2164,8 @@ const CRMCaseDetail = () => {
             </div>
             {/* one person, many cases: this person's other cases, each opening its own page */}
             <OtherCasesStrip caseId={caseData._id} />
+            {/* a case on no client login whose email belongs to an existing client (e.g. a second GHL card): add it to their login, after a confirmation */}
+            <AttachToLoginBanner caseData={caseData} onAttached={() => fetchCaseDetail(true)} />
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}

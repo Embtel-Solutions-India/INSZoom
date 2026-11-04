@@ -231,6 +231,7 @@ export const casesApi = {
   // one person, many cases (staff, read-only)
   lookupPerson: (email) => api.get('/cases/people/lookup', { params: { email } }),
   personCases: (id) => api.get(`/cases/${id}/person-cases`),
+  attachToLogin: (id) => api.post(`/cases/${id}/attach-to-login`),
   update: (id, payload) => api.put(`/cases/${id}`, payload),
   archive: (id) => api.delete(`/cases/${id}`),
   // Permanent: removes the case (and its child cases) from the database.

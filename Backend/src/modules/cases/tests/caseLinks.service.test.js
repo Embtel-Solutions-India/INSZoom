@@ -109,3 +109,33 @@ test("returning person: never a new set-password link; a working login (password
   assert.equal(links.needsSetPasswordInvite(withPassword, { hadCase: false }), false);
   assert.equal(links.needsSetPasswordInvite(google, { hadCase: false }), false, "a Google login is never turned into a set-password invitation");
 });
+
+test("single-party filings (H-4, EAD, I-765 EAD, change of status ...) belong to the CLIENT, with the same login flow as every other case", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "single-party-filings", "single-party-filing.controller.js"), "utf8");
+  assert.doesNotMatch(source, /user: req\.user\._id/, "the staff member is no longer recorded as the case's client");
+  assert.match(source, /clientAccount\.attachClientToCase\(\{ caseDoc: caseData, email: clientEmail/);
+  assert.match(source, /assignedTo: client\.user\._id/, "the checklist is the client's");
+  assert.match(source, /await client\.undo\(\)/, "a failed save puts the person's links back");
+  assert.match(source, /setImmediate\(\(\) => clientAccount\.notifyClientOfNewCase\(/, "the client is told after the response");
+  const service = fs.readFileSync(path.join(__dirname, "..", "clientAccount.service.js"), "utf8");
+  assert.match(service, /caseLinks\.needsSetPasswordInvite\(existing, \{ hadCase: multiCase && hadCase \}\)/, "a returning person never gets a new set-password link");
+  assert.match(service, /caseLinks\.planExistingPersonLinks\(/, "append, never replace");
+  assert.match(service, /emailTemplate: "client-portal-invitation"/);
+  assert.match(service, /emailTemplate: "case-created-client"/);
+});
+
+test("GHL second card / any unlinked single-person case: staff add it to the existing client's login with one confirmed click", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "case.controller.js"), "utf8");
+  const start = source.indexOf("exports.attachCaseToLogin");
+  const body = source.slice(start, start + 4000);
+  assert.ok(start > 0);
+  assert.match(body, /if \(caseData\.user \|\| caseData\.employerUser \|\| caseData\.petitionerUser\) return res\.status\(409\)/, "a case already on a login is never moved");
+  assert.match(body, /CASE_NOT_ATTACHABLE/, "only single-person cases");
+  assert.match(body, /attachClientToCase\(\{ caseDoc: caseData, email: caseData\.clientEmail/, "same login rules as every new case");
+  assert.match(body, /reasons\.every\(\(reason\) => reason === "Client already has a case"\)/, "the GHL flag is cleared only when that was its only reason");
+  assert.match(body, /await client\.undo\(\)/);
+  const routes = fs.readFileSync(path.join(__dirname, "..", "case.routes.js"), "utf8");
+  assert.match(routes, /"\/:id\/attach-to-login", authenticate, authorizeRoles\(\.\.\.staffRoles\), authorizePermissions\("cases:update"\)/);
+  const ghl = fs.readFileSync(path.join(__dirname, "..", "..", "..", "integrations", "ghl", "ghlCaseFactory.js"), "utf8");
+  assert.match(ghl, /return \{ action: "none", reason: "Client already has a case" \}/, "GHL itself still never links a second card automatically");
+});

@@ -4146,3 +4146,45 @@ exports.getPersonCases = async (req, res, next) => {
     return next(error);
   }
 };
+
+// POST /cases/:id/attach-to-login : a single-person case that is on NO client login (e.g. a second GHL card for someone who already has a case - GHL
+// cannot tell a new matter from a duplicate card, so it creates the case unlinked and flags it) is added to the login of the person whose e-mail is
+// on the case. Staff confirm it first. Same rules as every new case: append, never replace; a returning person gets the "case created - log in"
+// e-mail, never a new set-password link.
+const ATTACHABLE_STRUCTURES = new Set(["single", "", undefined, null]);
+exports.attachCaseToLogin = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.id);
+    if (!caseData || caseData.status === "removed" || !caseService.canAccessCase(req.user, caseData)) return res.status(404).json({ success: false, message: "Case not found" });
+    if (caseData.user || caseData.employerUser || caseData.petitionerUser) return res.status(409).json({ success: false, code: "CASE_ALREADY_ON_LOGIN", message: "This case is already on a client login." });
+    if (!ATTACHABLE_STRUCTURES.has(caseData.caseStructure) || caseData.parentCase) {
+      return res.status(409).json({ success: false, code: "CASE_NOT_ATTACHABLE", message: "Only a single-person case can be added to a login this way." });
+    }
+    if (!caseData.clientEmail) return res.status(400).json({ success: false, code: "CLIENT_EMAIL_REQUIRED", message: "This case has no client email." });
+    let client;
+    try {
+      client = await require("./clientAccount.service").attachClientToCase({ caseDoc: caseData, email: caseData.clientEmail, name: caseData.clientName });
+    } catch (linkError) {
+      if (linkError.status) return res.status(linkError.status).json({ success: false, code: linkError.code, message: linkError.message });
+      throw linkError;
+    }
+    // the GHL "needs attention" flag is cleared only when "client already has a case" was its only reason (other reasons still need a look)
+    const ghl = caseData.integrations?.ghl;
+    if (ghl?.flags?.needsAttention) {
+      const reasons = [...(caseData.timeline || [])].reverse().find((event) => Array.isArray(event?.metadata?.needsAttention))?.metadata?.needsAttention || [];
+      if (reasons.length && reasons.every((reason) => reason === "Client already has a case")) ghl.flags.needsAttention = false;
+    }
+    caseService.addTimelineEvent(caseData, "case", "Added to the client's login", `${caseData.clientEmail} - confirmed by ${req.user.name || req.user.displayName || "staff"}`, req.user, { userId: String(client.user._id) });
+    caseService.addAuditEntry(caseData, "attach_to_login", "Case added to the client's existing login", req.user, { userId: String(client.user._id) }, req);
+    try {
+      await caseData.save();
+    } catch (saveError) {
+      await client.undo();
+      throw saveError;
+    }
+    setImmediate(() => require("./clientAccount.service").notifyClientOfNewCase({ caseDoc: caseData, user: client.user, setupToken: client.setupToken, actor: req.user, req }));
+    return res.json({ success: true, data: { userId: String(client.user._id), email: client.user.email, invited: Boolean(client.setupToken) } });
+  } catch (error) {
+    return next(error);
+  }
+};

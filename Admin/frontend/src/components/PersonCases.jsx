@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Info, FolderOpen } from 'lucide-react'
 import { casesApi } from '../services/api'
+import ConfirmModal from './ConfirmModal'
 
 // One person, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md, Phase 1). Both pieces are read-only and quiet: if the lookup fails they show nothing,
 // so the New case form and the case page work exactly as before.
@@ -83,6 +84,76 @@ export function OtherCasesStrip({ caseId }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// A single-person case that is on NO client login, whose client email belongs to an existing client (e.g. a second GHL card for the same person -
+// GHL cannot tell a new matter from a duplicate, so the case arrives unlinked and flagged). One click, after a confirmation, adds it to their login;
+// they get the usual "case created - log in" e-mail. Shows nothing when there is nobody to attach to or the lookup fails.
+export function AttachToLoginBanner({ caseData, onAttached }) {
+  const email = caseData?.clientEmail || ''
+  const eligible = Boolean(caseData && email && !caseData.user && !caseData.employerUser && !caseData.petitionerUser && !caseData.parentCase
+    && ['single', '', undefined, null].includes(caseData.caseStructure))
+  const [info, setInfo] = useState(null)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState('')
+
+  useEffect(() => {
+    setInfo(null)
+    if (!eligible) return undefined
+    let cancelled = false
+    Promise.resolve().then(() => casesApi.lookupPerson(email))
+      .then((res) => { if (!cancelled) setInfo(res.data?.data || null) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [eligible, email])
+
+  if (done) {
+    return <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800" role="status">{done}</div>
+  }
+  const person = info?.person
+  if (!eligible || !person || person.role !== 'client') return null
+  const name = person.name || person.email
+  const count = info.cases?.length || 0
+
+  const attach = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await casesApi.attachToLogin(caseData._id)
+      setConfirming(false)
+      setDone(res.data?.data?.invited
+        ? `Added to ${name}'s login. They were sent an invitation to set their password.`
+        : `Added to ${name}'s login. They were emailed to log in with their existing details.`)
+      onAttached?.()
+    } catch (e) {
+      setError(e.response?.data?.message || 'Could not add this case to the login. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">
+      <p className="min-w-0 flex-1">
+        This case is not on any client login yet. <span className="font-semibold">{name}</span> ({person.email}) already has {count} case{count === 1 ? '' : 's'}.
+        If this is a new matter for them (not a duplicate), add it to their login.
+      </p>
+      <button type="button" onClick={() => { setError(''); setConfirming(true) }} className="btn-primary shrink-0 !py-1.5 !px-3 text-xs">Add to this person's login</button>
+      {confirming && (
+        <ConfirmModal
+          title="Add this case to their login?"
+          message={`${name} (${person.email}) will see this case in their portal next to their other cases and will be emailed to log in with their existing details. Do this only if it is a new matter, not a duplicate.`}
+          confirmLabel="Add to login"
+          busy={busy}
+          error={error}
+          onConfirm={attach}
+          onCancel={() => { if (!busy) setConfirming(false) }}
+        />
+      )}
     </div>
   )
 }

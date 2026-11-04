@@ -12,6 +12,7 @@ const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
+const clientAccount = require("../cases/clientAccount.service");
 const questionnaireService = require("../questionnaires/questionnaire.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
 const { getFilingType, resolveTransitionFilingType, groupedForSelection } = require("../../config/filingTypes");
@@ -43,8 +44,12 @@ exports.createFiling = async (req, res, next) => {
     // filings — kept as-is (a numbering-scheme change is a separate decision
     // from the INSZoom->Admin app rename); only the comparison value is
     // updated to match the renamed legacySource enum (models/*.js).
+    // The case belongs to the CLIENT named in the form, not to the staff member creating it (docs/MULTI_CASE_CLIENTS_PLAN.md): it is linked to their
+    // login (a new login gets a set-password invitation; an existing one gets this case added and a "case created - log in" e-mail).
+    const clientEmail = String(req.body.clientEmail || "").trim().toLowerCase();
+    if (!clientEmail) return res.status(400).json({ success: false, code: "CLIENT_EMAIL_REQUIRED", message: "Client email is required" });
     const caseNumber = await generateCaseNumber(req.body.legacySource === "Admin" ? "INS" : "Immiglance");
-    const caseData = await Case.create({
+    const caseData = new Case({
       ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
       caseNumber,
@@ -54,9 +59,8 @@ exports.createFiling = async (req, res, next) => {
       caseType: "individual_filing",
       petitionType: filingType.label,
       petitionSubType: filingType.key,
-      clientName: req.body.clientName || req.user.name || req.user.displayName,
-      clientEmail: req.body.clientEmail || req.user.email,
-      user: req.user._id,
+      clientName: req.body.clientName || clientEmail,
+      clientEmail,
       // Optional/nullable — see Case.js's principalCaseRef comment. Never
       // required; every filing type (including H-4 Extension/+EAD) works
       // fully without it.
@@ -67,6 +71,19 @@ exports.createFiling = async (req, res, next) => {
       lastModifiedBy: req.user._id,
       legacySource: req.body.legacySource || "Immiglance",
     });
+    let client;
+    try {
+      client = await clientAccount.attachClientToCase({ caseDoc: caseData, email: clientEmail, name: req.body.clientName, phone: req.body.clientPhone });
+    } catch (linkError) {
+      if (linkError.status) return res.status(linkError.status).json({ success: false, code: linkError.code, message: linkError.message });
+      throw linkError;
+    }
+    try {
+      await caseData.save();
+    } catch (saveError) {
+      await client.undo(); // the person's earlier links are put back
+      throw saveError;
+    }
     caseService.addTimelineEvent(
       caseData,
       "case",
@@ -89,13 +106,16 @@ exports.createFiling = async (req, res, next) => {
         questionnaire,
         {
           caseId: caseData._id,
-          assignedTo: req.user._id,
+          assignedTo: client.user._id, // the client fills the checklist (it used to be assigned to the staff member)
           message: `Auto-assigned on filing creation (${filingType.label}).`,
         },
         req.user,
         req
       );
     }
+
+    // the client is told after the response (in-app + browser + e-mail); a failure here never fails the request
+    setImmediate(() => clientAccount.notifyClientOfNewCase({ caseDoc: caseData, user: client.user, setupToken: client.setupToken, actor: req.user, req }));
 
     res.status(201).json({
       success: true,

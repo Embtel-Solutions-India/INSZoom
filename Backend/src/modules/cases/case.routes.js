@@ -77,6 +77,7 @@ router.post(
   ctrl.purchaseAddon
 );
 router.get("/:id/person-cases", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.getPersonCases);
+router.post("/:id/attach-to-login", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.attachCaseToLogin);
 router.get("/:id", authenticate, authorizePermissions("cases:read"), ctrl.getCase);
 router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.updateCase);
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);
