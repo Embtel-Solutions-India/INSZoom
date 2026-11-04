@@ -19,7 +19,8 @@ const { planBatches } = require("./batchPlanner");
 const { createBatchReviewer } = require("./batchReviewer");
 const { buildSystemInstruction } = require("./prompt");
 const { dedupeFindings, unreadableFinding } = require("./findingValidator");
-const { buildSummary, withAiSummary } = require("./summaryBuilder");
+const { buildSummary } = require("./summaryBuilder");
+const { isOrganisationNameFinding } = require("./rules");
 const { ScanLeaseLostError } = require("./scanService");
 const { PetitionAiError } = require("./petitionGemini");
 
@@ -95,7 +96,9 @@ function createScanRunner(deps) {
       const totalPages = scan.totalPages || reader.pages;
 
       const [facts, ruleSet] = await Promise.all([deps.loadFacts(scan.caseId), deps.loadRules()]);
-      const reviewer = createBatchReviewer({ reader, caller: caller || fallback, fallbackCaller: caller ? fallback : null, systemInstruction: buildSystemInstruction({ facts, ruleSet }) });
+      const reviewer = createBatchReviewer({ reader, caller: caller || fallback, fallbackCaller: caller ? fallback : null, systemInstruction: buildSystemInstruction({ facts, ruleSet, today: new Date() }),
+        keepFinding: ruleSet?.brandCheck ? null : (finding) => !isOrganisationNameFinding(finding), // the preparer's own name is not an issue (for now)
+      });
       const gapsSoFar = (scan.gaps || []).map((gap) => ({ from: gap.from, to: gap.to, reason: gap.reason }));
       let retryRanges = (scan.retryRanges || []).map((range) => ({ from: range.from, to: range.to, tries: range.tries || 0, reason: range.reason }));
 
@@ -115,7 +118,7 @@ function createScanRunner(deps) {
           retryRanges.push(...retry);
           await scanService.recordProgress(scan, lease, {
             from: batch.from, to: batch.to, findings: result.value.findings, gaps: kept, retryRanges: retry, diagnostics: result.value.diagnostics,
-            calls: result.value.calls, tokens: result.value.tokens, nextPage: batch.to + 1, pagesDone: batch.to, usedFallback: result.value.usedFallback, modelUsed: result.value.models[0],
+            calls: result.value.calls, tokens: result.value.tokens, usage: result.value.usage, nextPage: batch.to + 1, pagesDone: batch.to, usedFallback: result.value.usedFallback, modelUsed: result.value.models[0], modelVersion: result.value.modelVersions?.[0],
           });
           next = batch.to + 1;
           if (deps.onProgress) Promise.resolve().then(() => deps.onProgress(scan, { pagesDone: batch.to, lastPage })).catch(() => null); // live progress (throttled by the notifier); never awaited
@@ -138,7 +141,7 @@ function createScanRunner(deps) {
         const remaining = retryRanges.filter((item) => item !== range);
         if (retry.length) remaining.push(...retry.map((item) => ({ ...item, tries: range.tries + 1 })));
         gapsSoFar.push(...kept);
-        await scanService.recordProgress(scan, lease, { from: range.from, to: range.to, findings: result.findings, gaps: kept, diagnostics: result.diagnostics, calls: result.calls, tokens: result.tokens, usedFallback: result.usedFallback });
+        await scanService.recordProgress(scan, lease, { from: range.from, to: range.to, findings: result.findings, gaps: kept, diagnostics: result.diagnostics, calls: result.calls, tokens: result.tokens, usage: result.usage, usedFallback: result.usedFallback, modelVersion: result.modelVersions?.[0] });
         retryRanges = remaining;
         await scanService.setRetryRanges(scan._id, lease, retryRanges);
         if (config.batchDelayMs) await sleep(config.batchDelayMs * 4);
@@ -160,11 +163,12 @@ function createScanRunner(deps) {
       const keep = new Set(unique.map((item) => String(item._id)));
       await scanService.deleteFindings(stored.filter((item) => !keep.has(String(item._id))).map((item) => item._id));
       const gaps = mergeGaps(gapsSoFar);
-      let summary = buildSummary({ findings: unique, gaps, totalPages, lastPage, skippedFrom });
-      summary = await withAiSummary({ summary, findings: unique, caller: reviewer.usingFallback ? null : caller });
+      const summary = buildSummary({ findings: unique, gaps, totalPages, lastPage, skippedFrom });
+      // The summary is the page-by-page bullet list built in code from the findings (owner decision 2026-11-04): exact, complete, in page
+      // order and free - no AI call. (withAiSummary is kept in summaryBuilder.js but no longer used by the scan.)
       const status = gaps.length ? SCAN_STATUS.COMPLETED_WITH_GAPS : SCAN_STATUS.COMPLETED;
       const { counts, byPage, byCategory, text } = summary;
-      return finish(await scanService.complete(scan._id, lease, { status, counts, summary: { text, byPage, byCategory }, gaps }));
+      return finish(await scanService.complete(scan._id, lease, { status, counts, summary: { text, byPage, byCategory, points: summary.points, more: summary.more }, gaps }));
     } catch (error) {
       if (error instanceof ScanLeaseLostError || leaseLost) return { state: "lease_lost" };
       logger.error?.("petition_ai_scan_unexpected", { scanId: String(scan._id), error: error?.message });

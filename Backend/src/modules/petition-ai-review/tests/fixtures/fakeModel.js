@@ -86,14 +86,25 @@ function sortDocs(docs, sort = {}) {
   });
 }
 
+// .select("a b") keeps only those top-level fields (+ _id), .select("-a -b") drops them - as MongoDB does, so a field missing from a
+// projection fails the tests too (a summary once lost every finding's section that way).
+function project(value, select) {
+  if (!select || value == null) return value;
+  const fields = String(select).split(/\s+/).filter(Boolean);
+  const exclude = fields.every((field) => field.startsWith("-"));
+  const names = new Set(fields.map((field) => field.replace(/^-/, "")));
+  const one = (doc) => Object.fromEntries(Object.entries(doc).filter(([name]) => (exclude ? !names.has(name) : name === "_id" || names.has(name))));
+  return Array.isArray(value) ? value.map(one) : one(value);
+}
+
 class Query {
   constructor(run) { this.run = run; this.options = {}; }
-  select() { return this; }
+  select(fields) { this.options.select = typeof fields === "string" ? fields : null; return this; }
   lean() { return this; }
   sort(sort) { this.options.sort = sort; return this; }
   limit(limit) { this.options.limit = limit; return this; }
   skip(skip) { this.options.skip = skip; return this; }
-  then(resolve, reject) { return Promise.resolve().then(() => this.run(this.options)).then(resolve, reject); }
+  then(resolve, reject) { return Promise.resolve().then(() => project(this.run(this.options), this.options.select)).then(resolve, reject); }
   catch(reject) { return this.then(null, reject); }
 }
 

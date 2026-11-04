@@ -238,7 +238,7 @@ test("runner: a 10-page petition is scanned in order, every page once, and compl
   assert.equal(stored.open, false);
   assert.equal(stored.counts.warning, 10);
   assert.equal(stored.summary.byPage.length, 10);
-  assert.equal(stored.usage.calls, 3);
+  assert.equal(stored.usage.calls, 3); // 3 page batches; the summary is built in code (no AI call)
   assert.equal(ai.calls.filter((c) => !c.summary).map((c) => c.pageCount).join(","), "4,4,2");
   assert.equal(closed.count, 1, "the reader is always closed");
 });
@@ -435,7 +435,8 @@ test("runner: end to end with the REAL PDF reader and the real Gemini caller on 
   const stored = await scanOf(h, scan);
   assert.equal(stored.totalPages, 9);
   assert.deepEqual(await findingPages(h, scan), [1, 5, 9]);
-  assert.match(stored.summary.text, /^One small typo/);
+  assert.match(stored.summary.text, /^3 issues on 3 pages/);
+  assert.match(stored.summary.text, /• Page 1 - /);
   assert.equal(stored.usage.tokens, 21);
 });
 

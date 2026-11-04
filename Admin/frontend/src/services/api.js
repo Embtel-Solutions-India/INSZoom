@@ -856,6 +856,16 @@ export const ghlApi = {
 
 // Petition review: release an uploaded petition to the attorney(s) and / or the client-side audience (single applicant / petitioner / employer), and the feedback
 // conversation with that audience. Both release actions e-mail the people concerned.
+// Petition AI Review (staff only): scans of uploaded petitions and their findings (Backend modules/petition-ai-review).
+export const petitionAiReviewApi = {
+  listForCase: (caseId) => api.get(`/petition-ai-review/cases/${caseId}`),
+  getScan: (scanId) => api.get(`/petition-ai-review/scans/${scanId}`),
+  findings: (scanId, params = {}) => api.get(`/petition-ai-review/scans/${scanId}/findings`, { params }),
+  rescan: (caseId, documentId) => api.post(`/petition-ai-review/cases/${caseId}/documents/${documentId}/rescan`),
+  retry: (scanId) => api.post(`/petition-ai-review/scans/${scanId}/retry`),
+  cancel: (scanId) => api.post(`/petition-ai-review/scans/${scanId}/cancel`),
+}
+
 export const petitionReviewApi = {
   list: (caseId) => api.get(`/petition-review/cases/${caseId}`),
   sendToAttorney: (caseId, documentId, note) => api.post(`/petition-review/cases/${caseId}/documents/${documentId}/attorney-review`, { note }),

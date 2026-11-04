@@ -124,7 +124,8 @@ test("internal case uploads are limited to assigned case managers/team leads, pl
   // PetitionTab.jsx's canAssemble already renders/enables for this role).
   assert.equal(documentService.canUploadForCase({ _id: "admin-1", role: "admin" }, caseData), true);
   assert.equal(documentService.canUploadForCase({ _id: "superadmin-1", role: "super_admin" }, caseData), true);
-  assert.equal(documentService.canUploadForCase({ _id: "manager-2", role: "case_manager" }, caseData), false);
+  // owner decision 2026-11-04: every case manager works every case, like team leads - an unassigned case manager can upload too
+  assert.equal(documentService.canUploadForCase({ _id: "manager-2", role: "case_manager" }, caseData), true);
 });
 
 test("storage encryption is transparent and authenticated when configured", () => {

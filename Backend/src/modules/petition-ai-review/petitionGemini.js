@@ -26,6 +26,14 @@ class PetitionAiError extends Error {
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Token use of one reply, split the way Google prices it: input (prompt, including the PDF pages), output (the answer) and thinking
+// (billed as output). Missing numbers count as 0.
+function usageOf(payload) {
+  const meta = payload?.usageMetadata || {};
+  return { input: Number(meta.promptTokenCount) || 0, output: Number(meta.candidatesTokenCount) || 0, thinking: Number(meta.thoughtsTokenCount) || 0 };
+}
+const addUsage = (a = {}, b = {}) => ({ input: (a.input || 0) + (b.input || 0), output: (a.output || 0) + (b.output || 0), thinking: (a.thinking || 0) + (b.thinking || 0) });
+
 function generationConfig(config, { responseSchema, lean }) {
   const settings = { temperature: 0, responseMimeType: "application/json", maxOutputTokens: config.maxOutputTokens };
   if (!lean) {
@@ -69,6 +77,8 @@ function createGeminiCaller({ config, apiKey, fetchImpl = globalThis.fetch, slee
       httpStatus: response.status,
       finishReason: payload?.candidates?.[0]?.finishReason || null,
       tokens: Number(payload?.usageMetadata?.totalTokenCount) || 0,
+      usage: usageOf(payload),
+      modelVersion: payload?.modelVersion || null, // the exact model Google used behind the alias (e.g. gemini-flash-latest)
       latencyMs,
       model,
     };
@@ -81,15 +91,18 @@ function createGeminiCaller({ config, apiKey, fetchImpl = globalThis.fetch, slee
     if (!apiKey) throw new PetitionAiError(AI_ERROR.NOT_CONFIGURED, "no AI key is configured on the server", { model });
     let attempts = 0;
     let usedTokens = 0;
+    let usedUsage = { input: 0, output: 0, thinking: 0 }; // refused / failed attempts can still bill tokens: they are counted too
     for (;;) {
       attempts += 1;
       try {
         const result = await once(request);
-        return { ...result, tokens: result.tokens + usedTokens, attempts };
+        return { ...result, tokens: result.tokens + usedTokens, usage: addUsage(result.usage, usedUsage), attempts };
       } catch (error) {
         if (!(error instanceof PetitionAiError)) throw error;
         usedTokens += error.tokens || 0;
+        usedUsage = addUsage(usedUsage, error.usage);
         error.tokens = usedTokens;
+        error.usage = usedUsage;
         error.attempts = attempts;
         // Settings rejected: plain settings once, then keep them (a bad key is also a 400, so this costs at most one extra refused call).
         if (error.code === AI_ERROR.BAD_REQUEST && error.httpStatus === 400 && !lean) {
@@ -108,4 +121,4 @@ function createGeminiCaller({ config, apiKey, fetchImpl = globalThis.fetch, slee
   return { model, call, get lean() { return lean; } };
 }
 
-module.exports = { createGeminiCaller, PetitionAiError, THINKING_BUDGET };
+module.exports = { createGeminiCaller, PetitionAiError, THINKING_BUDGET, usageOf, addUsage };
