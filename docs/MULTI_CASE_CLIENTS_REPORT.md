@@ -5,8 +5,8 @@ Plan: `docs/MULTI_CASE_CLIENTS_PLAN.md`. One report for all phases; each phase a
 | Phase | Status |
 |---|---|
 | 1 — Link many cases to one login (backend) + staff see it (Admin) | Done (2026-11-05) |
-| 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) — awaiting owner approval for 2B |
-| 2B — A login that is an employee / beneficiary on one case and a client on another | Not started |
+| 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) |
+| 2B — A login that is an employee / beneficiary on one case and a client on another | Done (2026-11-05) — awaiting owner approval for Phase 3 |
 | 3 — Carry personal data into each new case | Not started |
 | 4 — Hardening, full verification, rollout | Not started |
 
@@ -72,3 +72,30 @@ Client: `context/ActiveCaseContext.jsx` (new), `context/ActiveCaseContext.test.j
 
 ### Production
 No new env vars, no migration. Restart the backend; rebuild the Client portal (order does not matter: an older backend ignores the extra `caseId`, an older portal never sends it).
+
+## Phase 2B — An employee / beneficiary login with cases of its own
+
+### Done
+- **Owner rule**: the same login can be the employee / beneficiary on one case and the client / employer / petitioner on others. On the invited case it sees only what an employee / beneficiary sees; on its own cases it gets every client feature.
+- **How (backend)**: the login keeps its stored role ("employee" / "beneficiary"), so its invited case works exactly as before. When it opens one of ITS OWN cases in the switcher, the portal sends `X-Active-Case: <id>`. `middleware/activeCaseRole.js` (called by `authenticate`) checks that case: it must exist, not be removed, have the person as `user` / `petitionerUser` / `employerUser` / `delegateEmployerUser`, and NOT as `employeeUser` / `beneficiaryUser`. Only then does that request act as a **client** (client permissions, no employee restriction). The switch is a property of that request's user object only — the stored user document is never changed and a `.save()` cannot write it (tested). Any doubt (no / bad header, someone else's case, the invited case, a removed case, a database error, a client login) leaves the stored role exactly as today.
+- `X-Active-Case` added to the API's allowed request headers (`app.js` CORS list). The portal only sends it for an employee / beneficiary login on its own case — such logins only exist after this backend is deployed, so the deploy order cannot break anyone.
+- **Case creation**: staff New case (`createCase`), single-party filings and "Add to this person's login" now accept an existing employee / beneficiary login as the client of a new case (the case is added to the same login, "Case Created - log in" e-mail, never a set-password link). Staff and attorney accounts are still refused (`EMAIL_OWNED_BY_NON_CLIENT`).
+- **Client portal**: the case switcher now also appears for employee / beneficiary logins that have 2+ cases. One rule, `employeeViewFor(user, openCase)` (`context/ActiveCaseContext.jsx`), decides the restricted employee view by the role on the OPEN case (one case: exactly the old role check) and replaces the role-only check in `AuthGate`, `ProtectedRoute` (BlockEmployeeRoute), `PortalLayout` (menu), `Dashboard`, `Documents` and `Profile`. The own-case signal is never sent on `/auth/*` calls, so the session always reports the login's real role.
+- **Admin**: "Add to this person's login" is offered for an invited employee / beneficiary as well as a client.
+
+### Not done in 2B
+- The reverse direction — an existing **client** login being invited as someone's **employee / beneficiary** — is unchanged (the invite flow still applies its existing checks). Can be added if wanted.
+- E-mail links that open a specific case after sign-in; the dashboard documents count badge (display only) — as in 2A.
+
+### Tests and builds
+- Backend: new `middleware/tests/activeCaseRole.test.js` (4): ownership matrix, the switch on the person's own case with the stored user untouched (`modifiedPaths()` empty), every other case keeps the stored role (no header, bad header, someone else's case, invited case, removed, unknown, client login, database error), wiring. Full database-free suite: see the 2B report in the conversation.
+- Client: `ActiveCaseContext.test.jsx` 7 / 7 (2B: employee login with its own case gets the switcher; own-case signal only on its own case; employee view follows the open case; signal never on `/auth`), whole Client suite green. Admin `PersonCases.test.jsx` 6 / 6.
+- Builds: Admin, Client, Landing, Attorney all green.
+
+### Files
+Backend: `middleware/activeCaseRole.js` (new), `middleware/authenticate.js`, `app.js`, `modules/cases/case.controller.js`, `modules/cases/clientAccount.service.js`, `middleware/tests/activeCaseRole.test.js` (new).
+Client: `services/api.js`, `context/ActiveCaseContext.jsx`, `context/ActiveCaseContext.test.jsx`, `components/AuthGate.jsx`, `components/ProtectedRoute.jsx`, `layout/PortalLayout.jsx`, `Pages/Dashboard/Dashboard.jsx`, `Pages/Dashboard/Documents.jsx`, `Pages/Dashboard/Profile.jsx`.
+Admin: `components/PersonCases.jsx`.
+
+### Production
+No new env vars, no migration. Restart the backend (the CORS header list changed); rebuild Client and Admin.

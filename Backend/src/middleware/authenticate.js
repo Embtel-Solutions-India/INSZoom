@@ -40,6 +40,8 @@ async function authenticate(req, res, next) {
       });
     }
 
+    // one login, many cases (Phase 2B): an employee / beneficiary on their OWN case acts as a client for this request (checked; else unchanged)
+    await require("./activeCaseRole").applyActiveCaseRole(req, user);
     req.user = user;
     next();
   } catch (error) {

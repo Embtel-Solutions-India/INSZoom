@@ -90,6 +90,9 @@ const longRequest = () => ({ signal: AbortSignal.timeout(LONG_REQUEST_TIMEOUT_MS
 
 async function request(path, options = {}, retry = true) {
   const headers = { ...options.headers };
+  // one login, many cases (Phase 2B): an employee / beneficiary login working on a case of their OWN tells the server so; the server checks it and
+  // treats this request as a client's. Never on sign-in / session calls, so the session always reports the login's real role.
+  if (activeCase.ownCase && activeCase.id && !String(path).startsWith("/auth")) headers["X-Active-Case"] = activeCase.id;
 
   // A caller that sends raw bytes (chunked uploads) sets its own Content-Type.
   if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
@@ -182,10 +185,10 @@ async function request(path, options = {}, retry = true) {
 // One login, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md, Phase 2): the case picked in the portal's case switcher (context/ActiveCaseContext.jsx).
 // It is set ONLY for a person with two or more cases; while it is empty every request below is exactly what it was before (the server picks the
 // default case), so a one-case client sends the same requests as always. The server honours it only within the person's own cases.
-let activeCase = { id: null, capacity: "" };
+let activeCase = { id: null, capacity: "", ownCase: false };
 export const activeCaseStore = {
   get: () => activeCase,
-  set: (next) => { activeCase = next?.id ? { id: String(next.id), capacity: next.capacity || "" } : { id: null, capacity: "" }; },
+  set: (next) => { activeCase = next?.id ? { id: String(next.id), capacity: next.capacity || "", ownCase: Boolean(next.ownCase) } : { id: null, capacity: "", ownCase: false }; },
 };
 const withCase = (path) => (activeCase.id ? `${path}${path.includes("?") ? "&" : "?"}caseId=${encodeURIComponent(activeCase.id)}` : path);
 

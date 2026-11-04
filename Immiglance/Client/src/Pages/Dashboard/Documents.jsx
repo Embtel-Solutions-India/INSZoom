@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
-import { isEmployeeAccount } from "../../utils/auth";
+import { useEmployeeView } from "../../context/ActiveCaseContext";
 import { profileApi, casesApi, employmentWorkflowApi, familyWorkflowApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import useDocumentChecklist from "../../hooks/useDocumentChecklist";
@@ -132,7 +132,8 @@ export default function Documents() {
   const navigate = useNavigate();
   const { caseId: routeCaseId } = useParams();
 
-  const isEmployerAccount = !isEmployeeAccount(user) && (user?.applicantType === "employer" || user?.role === "employer");
+  const employeeView = useEmployeeView(user); // follows the open case
+  const isEmployerAccount = !employeeView && (user?.applicantType === "employer" || user?.role === "employer");
   const useEmployerCaseResolution = isEmployerAccount;
 
   const { data: myCaseData, refetch: refetchMyCase } = useMyCase({ enabled: !useEmployerCaseResolution });

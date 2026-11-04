@@ -22,7 +22,9 @@ async function attachClientToCase({ caseDoc, email, name, phone }) {
   if (!cleanEmail) throw refuse(400, "CLIENT_EMAIL_REQUIRED", "Client email is required");
   const existing = await User.findOne({ email: cleanEmail }).select("+password +inviteTokenHash");
   if (existing && normalizeRole(existing.role) !== "client") await reclaimOrphanClientSideAccount(existing, "client");
-  if (existing && normalizeRole(existing.role) !== "client") throw refuse(409, "EMAIL_OWNED_BY_NON_CLIENT", "This email address belongs to a non-client account");
+  // an employee / beneficiary login may also hold cases of their own (Phase 2B); staff and attorney accounts never
+  const invitedPerson = existing && ["employee", "beneficiary"].includes(normalizeRole(existing.role)) && caseLinks.multiCaseClientsEnabled();
+  if (existing && normalizeRole(existing.role) !== "client" && !invitedPerson) throw refuse(409, "EMAIL_OWNED_BY_NON_CLIENT", "This email address belongs to a non-client account");
 
   if (!existing) {
     const setupToken = generateOpaqueToken();

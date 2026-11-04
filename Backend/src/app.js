@@ -40,7 +40,7 @@ app.use(
     origin: env.clientOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Payment-Request-Id", "X-Request-Id", "X-Correlation-Id", "x-api-key", "x-internal-api-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Payment-Request-Id", "X-Request-Id", "X-Correlation-Id", "x-api-key", "x-internal-api-key", "X-Active-Case"],
   })
 );
 

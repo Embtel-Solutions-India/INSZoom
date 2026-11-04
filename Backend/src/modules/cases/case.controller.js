@@ -1237,7 +1237,10 @@ exports.createCase = async (req, res, next) => {
     const existingUser = await User.findOne({ email }).select("+password +inviteTokenHash");
     // a leftover account of a deleted case (employee / employer with no live case) is reusable as the client
     if (existingUser && normalizeRole(existingUser.role) !== "client") await reclaimOrphanClientSideAccount(existingUser, "client");
-    if (existingUser && normalizeRole(existingUser.role) !== "client") {
+    // one login, many cases (Phase 2B): an employee / beneficiary login may also hold cases of their own (it keeps its role; the client portal
+    // switches it to a client view on its own case). Staff and attorney accounts are still refused.
+    const ownCaseForInvitedPerson = existingUser && ["employee", "beneficiary"].includes(normalizeRole(existingUser.role)) && caseLinks.multiCaseClientsEnabled();
+    if (existingUser && normalizeRole(existingUser.role) !== "client" && !ownCaseForInvitedPerson) {
       return res.status(409).json({
         success: false,
         code: "EMAIL_OWNED_BY_NON_CLIENT",

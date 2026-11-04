@@ -115,7 +115,8 @@ export function AttachToLoginBanner({ caseData, onAttached }) {
     return <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800" role="status">{done}</div>
   }
   const person = info?.person
-  if (!eligible || !person || person.role !== 'client') return null
+  // a client, or (Phase 2B) an invited employee / beneficiary who may now hold cases of their own; never a staff / attorney account
+  if (!eligible || !person || !['client', 'employee', 'beneficiary'].includes(person.role)) return null
   const name = person.name || person.email
   const count = info.cases?.length || 0
 

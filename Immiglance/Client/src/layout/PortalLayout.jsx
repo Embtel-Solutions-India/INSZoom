@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isEmployeeAccount } from "../utils/auth";
+import { useEmployeeView } from "../context/ActiveCaseContext";
 import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
 import { useActiveCase } from "../context/ActiveCaseContext";
 import CaseSwitcher from "../components/CaseSwitcher";
@@ -51,7 +51,7 @@ export default function PortalLayout() {
 
   const visaLabel = resolveDisplayVisa(caseData || {}) || caseData?.visaCategory || "Case";
   const caseRef = caseData?.caseId || caseData?._id?.slice?.(-8)?.toUpperCase() || "—";
-  const isEmployee = isEmployeeAccount(user);
+  const isEmployee = useEmployeeView(user); // follows the open case
 
   const visibleNavItems = isEmployee
     ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages", "Latest USCIS Forms"].includes(item.label))

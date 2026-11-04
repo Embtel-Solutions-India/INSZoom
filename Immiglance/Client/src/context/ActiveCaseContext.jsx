@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./AuthContext";
 import { activeCaseStore, casesApi } from "../services/api";
+import { isEmployeeAccount } from "../utils/auth";
 
 // One login, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md, Phase 2A). Knows every case of the signed-in person and which one is open.
 //   - one case (or none, or the list could not load): nothing is selected and nothing changes anywhere - every page works exactly as before
@@ -19,8 +20,9 @@ export function ActiveCaseProvider({ children }) {
   const { user, authStatus } = useAuth();
   const queryClient = useQueryClient();
   const userId = user?._id || user?.id || "";
-  // 2A: client-side logins (client / employer / petitioner). Employee / beneficiary logins keep their single-case view until Phase 2B.
-  const eligible = authStatus === "authenticated" && Boolean(userId) && !["employee", "beneficiary"].includes(user?.role);
+  // every client-side login (client / employer / petitioner, and since Phase 2B also employee / beneficiary logins that have a case of their own)
+  const eligible = authStatus === "authenticated" && Boolean(userId);
+  const invitedLogin = isEmployeeAccount(user); // stored role employee / beneficiary
 
   const { data } = useQuery({
     queryKey: ["cases", "mine", userId],
@@ -46,21 +48,39 @@ export function ActiveCaseProvider({ children }) {
   const activeCaseId = activeCase?._id || null;
 
   // the API client adds ?caseId= to the "my case" requests only while a case is selected (never for a one-case person)
-  activeCaseStore.set(activeCase ? { id: activeCase._id, capacity: activeCase.capacity } : null);
+  const ownCaseOf = (row) => Boolean(row && invitedLogin && !EMPLOYEE_CAPACITIES.has(row.capacity));
+  activeCaseStore.set(activeCase ? { id: activeCase._id, capacity: activeCase.capacity, ownCase: ownCaseOf(activeCase) } : null);
   useEffect(() => () => activeCaseStore.set(null), []);
 
   const selectCase = useCallback((id) => {
     if (!id || id === activeCaseId || !cases.some((row) => row._id === id)) return;
     const row = cases.find((item) => item._id === id);
-    activeCaseStore.set({ id: row._id, capacity: row.capacity });
+    activeCaseStore.set({ id: row._id, capacity: row.capacity, ownCase: ownCaseOf(row) });
     writeStored(userId, id);
     setChosenId(id);
     // nothing cached from the previous case may show for the new one
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "cases" || query.queryKey[1] !== "mine" });
-  }, [activeCaseId, cases, queryClient, userId]);
+  }, [activeCaseId, cases, queryClient, userId, invitedLogin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo(() => ({ cases, activeCaseId, activeCase, multiCase, selectCase }), [cases, activeCaseId, activeCase, multiCase, selectCase]);
   return <ActiveCaseContext.Provider value={value}>{children}</ActiveCaseContext.Provider>;
 }
 
 export const useActiveCase = () => useContext(ActiveCaseContext);
+
+const EMPLOYEE_CAPACITIES = new Set(["employee", "beneficiary"]);
+
+/**
+ * Pure: should the portal show the restricted employee / beneficiary view? It follows the OPEN case when the person has several (an employee login
+ * on a case of their own gets the full client view; a client login on a case where they are the employee gets the employee view); with one case it
+ * is exactly the old role check.
+ */
+export function employeeViewFor(user, activeCase) {
+  if (activeCase) return EMPLOYEE_CAPACITIES.has(activeCase.capacity);
+  return isEmployeeAccount(user);
+}
+
+export function useEmployeeView(user) {
+  const { activeCase } = useActiveCase();
+  return employeeViewFor(user, activeCase);
+}

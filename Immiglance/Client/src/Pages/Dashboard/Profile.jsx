@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { authApi, casesApi, employeeProfileApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
-import { isEmployeeAccount } from "../../utils/auth";
+import { useEmployeeView } from "../../context/ActiveCaseContext";
 import PasswordHint from "../../components/auth/PasswordHint";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
@@ -45,6 +45,7 @@ function canonicalValue(profile, path) {
 
 export default function Profile() {
   const { user } = useAuth();
+  const employeeView = useEmployeeView(user); // follows the open case (one login, many cases)
   const [data, setData] = useState(INITIAL);
   const [activeCaseId, setActiveCaseId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -64,7 +65,7 @@ export default function Profile() {
 
   useEffect(() => {
     let mounted = true;
-    if (isEmployeeAccount(user)) {
+    if (employeeView) {
       casesApi.my().then(async (caseResult) => {
         if (!mounted) return;
         const activeCase = caseResult?.case || caseResult?.data?.case || caseResult || {};
@@ -128,7 +129,7 @@ export default function Profile() {
     setSaving(true);
     setMessage("");
     try {
-      if (isEmployeeAccount(user)) {
+      if (employeeView) {
         if (!activeCaseId) throw new Error("Unable to resolve your case profile.");
         await employeeProfileApi.upsert(activeCaseId, {
           firstName: data.firstName,
