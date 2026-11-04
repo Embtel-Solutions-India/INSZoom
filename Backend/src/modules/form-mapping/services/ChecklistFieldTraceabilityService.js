@@ -37,6 +37,8 @@ const SEED_SCOPE_EXCLUDED_VISA_TYPES = new Set([
   "H-1B1 Chile", "H-1B1 Singapore", "H-2A", "H-2B", "H-3", "Q-1", "R-1", "R-2",
   "J-1", "J-2", "M-1", "M-2", "U-1", "U-2", "U-3", "U-4", "U-5",
   "Re-entry Permit", "EB-1C", "EB-4", "GC-NVC",
+  // MTR: Form I-290B with no checklist by design (case manager special requests) - checklistMappings.seed.js scope notes
+  "MTR",
   // "EB-5 Regional Center stay GAP (§16) - explicitly not reusing
   // e2_visa_checklist/e2_business_plan_checklist" - the whole visaType, not
   // one form, per the seed comment; confirmed live every EB-5 Regional

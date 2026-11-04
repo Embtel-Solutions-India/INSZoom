@@ -12,7 +12,8 @@
 // guessed at): H-1B1 Chile/Singapore, H-2A/H-2B/H-3, Q-1, R-1/R-2, J-1/J-2,
 // M-1/M-2, U-1/U derivative, Re-entry Permit, EB-1C, EB-4 are not touched by this
 // seed - they report as GAP by having an empty checklistMappings array,
-// exactly as intended.
+// exactly as intended. MTR (I-290B) has no checklist by design: the case
+// manager builds its questions per case with special requests.
 //
 // Family AOS/Consular processing paths share ONE VisaFormMapping document
 // per (visaType, formNumber) - VisaFormMapping's own unique index

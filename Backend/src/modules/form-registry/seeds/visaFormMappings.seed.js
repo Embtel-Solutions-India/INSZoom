@@ -574,6 +574,11 @@ add(g28("EB-1C"));
 add(
   m("Premium Processing", "I-907", "Request for Premium Processing Service", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-907", initialCaseCreation: true, immigrationNature: "POST_APPROVAL", notes: "Standalone Premium Processing case: the only form on the case." })
 );
+// MTR (Motion to Reopen) case: Form I-290B is the only form, created with the case. No checklist is mapped - like RFE / NOIR / NOID,
+// the case manager builds the questions per case with special requests (visaCategories.js customChecklist).
+add(
+  m("MTR", "I-290B", "Notice of Appeal or Motion", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-290b", initialCaseCreation: true, notes: "MTR (Motion to Reopen) case: the only form on the case; no checklist by design." })
+);
 
 // ===================== EB-2 =====================
 add(

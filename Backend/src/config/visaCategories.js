@@ -337,7 +337,8 @@ const VISA_CATEGORIES = {
   RFE: { caseStructure: "single", forms: [], customChecklist: true, label: "Request for Evidence" },
   NOIR: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Revoke" },
   NOID: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Deny" },
-  MTR: { caseStructure: "single", forms: [], customChecklist: true, label: "Motion to Reopen" },
+  // MTR: same no-checklist behaviour, but its case gets Form I-290B (Notice of Appeal or Motion) at creation.
+  MTR: { caseStructure: "single", forms: ["i-290b"], customChecklist: true, label: "Motion to Reopen" },
 };
 
 /**
