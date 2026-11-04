@@ -174,10 +174,10 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
-// RFE / NOIR / NOID: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
-export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid']
+// RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
+export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
 export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
-const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID)']
+const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID, MTR)']
 
 // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.
 export const groupVisaOptions = (options, registryTypes) => {

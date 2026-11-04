@@ -46,7 +46,7 @@ test("a beneficiary child case is offered as a beneficiary", () => {
 });
 
 test("RFE, NOIR and NOID are single-party case types with no checklist assigned (the case manager builds it per case)", () => {
-  for (const type of ["RFE", "NOIR", "NOID"]) {
+  for (const type of ["RFE", "NOIR", "NOID", "MTR"]) {
     assert.equal(getCaseStructure(type), "single");
     assert.equal(hasCustomChecklist(type), true);
     assert.deepEqual(VISA_CATEGORIES[type].forms, []);
