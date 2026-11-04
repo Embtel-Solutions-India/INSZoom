@@ -49,7 +49,11 @@ async function getAssignableUsers(req, res, next) {
 
 async function getCaseManagers(req, res, next) {
   try {
-    const caseManagers = await userService.getAssignableUsers(req.user, "case_manager");
+    // ?includeTeamLeads=true (case creation's "Assign Staff"): case managers plus every active team lead; without it, unchanged
+    const includeTeamLeads = req.query.includeTeamLeads === "true" || req.query.includeTeamLeads === true;
+    const caseManagers = includeTeamLeads
+      ? await userService.getAssignableStaff(req.user)
+      : await userService.getAssignableUsers(req.user, "case_manager");
     res.json({ success: true, count: caseManagers.length, caseManagers });
   } catch (error) {
     next(error);

@@ -76,12 +76,15 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'h4extension', label: 'H-4 Extension' },
   { value: 'h4ead', label: 'H-4 EAD' },
   { value: 'h4extensionead', label: 'H-4 Extension + EAD' },
+  { value: 'i765ead', label: 'I-765 EAD' },
   { value: 'cosf1', label: 'Change of Status to F-1' },
   { value: 'f1reinstatement', label: 'F-1 Reinstatement' },
   { value: 'cosf2', label: 'Change of Status to F-2' },
   { value: 'cosb1', label: 'Change of Status to B-1' },
   { value: 'cosb2', label: 'Change of Status to B-2' },
   { value: 'cosh4', label: 'Change of Status to H-4' },
+  // MTR: notice-response style case (no checklist) whose only form is I-290B - listed here so its label keeps "MTR".
+  { value: 'mtr', label: 'MTR - Motion to Reopen', canonicalLabel: 'MTR' },
 ]
 
 // The dropdown = the curated options above (they carry special routing/labels) + EVERY other case type the registry can create
@@ -163,6 +166,7 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
   h4extension: 'H4_EXTENSION',
   h4ead: 'H4_EAD',
   h4extensionead: 'H4_EXTENSION_EAD',
+  i765ead: 'I765_EAD',
   cosf1: 'COS_F1',
   f1reinstatement: 'F1_REINSTATEMENT',
   cosf2: 'COS_F2',
@@ -172,10 +176,10 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
-// RFE / NOIR / NOID: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
-export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid']
+// RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
+export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
 export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
-const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID)']
+const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID, MTR)']
 
 // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.
 export const groupVisaOptions = (options, registryTypes) => {

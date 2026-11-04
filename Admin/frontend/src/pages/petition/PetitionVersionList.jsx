@@ -7,6 +7,8 @@ export default function PetitionVersionList({ caseId, canAssemble }) {
   return (
     <div className="space-y-4">
       <PetitionUploadPanel caseId={caseId} canUpload={canAssemble} />
+      {/* below the petition: letters, reports ... shared with the client / attorney for review, separate from the petition (no AI review) */}
+      <PetitionUploadPanel caseId={caseId} canUpload={canAssemble} kind="supporting" />
     </div>
   )
 }

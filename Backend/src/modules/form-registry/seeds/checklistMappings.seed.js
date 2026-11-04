@@ -12,7 +12,8 @@
 // guessed at): H-1B1 Chile/Singapore, H-2A/H-2B/H-3, Q-1, R-1/R-2, J-1/J-2,
 // M-1/M-2, U-1/U derivative, Re-entry Permit, EB-1C, EB-4 are not touched by this
 // seed - they report as GAP by having an empty checklistMappings array,
-// exactly as intended.
+// exactly as intended. MTR (I-290B) has no checklist by design: the case
+// manager builds its questions per case with special requests.
 //
 // Family AOS/Consular processing paths share ONE VisaFormMapping document
 // per (visaType, formNumber) - VisaFormMapping's own unique index
@@ -165,6 +166,8 @@ for (const visaType of ["TN Canada", "TN Mexico"]) {
 set("H4EXTENSION", "I-539", [cm("h4_extension_questionnaire", AUTO)]);
 set("H4EXTENSION", "I-539A", [cm("h4_extension_questionnaire", COND)]);
 set("H4EAD", "I-765", [cm("h4_ead_questionnaire", AUTO)]);
+// I-765 EAD: the H-4 EAD checklist content under its own key
+set("I765EAD", "I-765", [cm("i765_ead_questionnaire", AUTO)]);
 set("H4EXTENSIONEAD", "I-539", [cm("h4_extension_ead_questionnaire", AUTO)]);
 set("H4EXTENSIONEAD", "I-539A", [cm("h4_extension_ead_questionnaire", COND)]);
 set("H4EXTENSIONEAD", "I-765", [cm("h4_extension_ead_questionnaire", AUTO)]);

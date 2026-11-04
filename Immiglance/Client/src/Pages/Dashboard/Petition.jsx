@@ -4,7 +4,25 @@ import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
 import PetitionThread from "../../components/petition/PetitionThread";
 import PetitionViewer from "../../components/petition/PetitionViewer";
-import { prefetchPetition, waitUntilReady } from "../../components/petition/usePetitionStream";
+import { prefetchPetition, waitUntilReady, getViewLink } from "../../components/petition/usePetitionStream";
+
+// Speed (2026-11-04): asking for a viewer link makes the server start reading the petition into memory, so it is usually ready by the time
+// "View" is clicked. The first few petitions, once each per visit; quiet, never throws, never blocks the page.
+const WARM_PETITIONS = 3;
+const warmedPetitions = new Map(); // documentId -> when it was last warmed
+const WARM_AGAIN_MS = 40 * 60 * 1000;
+function warmPetitions(items) {
+  try {
+    for (const item of (items || []).slice(0, WARM_PETITIONS)) {
+      const id = String(item?.documentId || "");
+      if (!id || Date.now() - (warmedPetitions.get(id) || 0) < WARM_AGAIN_MS) continue;
+      warmedPetitions.set(id, Date.now());
+      Promise.resolve().then(() => getViewLink(id)).catch(() => {});
+    }
+  } catch {
+    // only a speed-up
+  }
+}
 
 const dateLabel = (value) => {
   const date = value ? new Date(value) : null;
@@ -72,7 +90,7 @@ function PetitionRow({ item, myId, onView, onDownload, onChat }) {
           <span className="normal-case">Open conversation</span>
         </span>
         {latest.length === 0 ? (
-          <span className="mt-1 block text-[13px] text-muted-foreground">No feedback yet. Open the petition and use the Feedback panel to tell your case manager what you would like changed.</span>
+          <span className="mt-1 block text-[13px] text-muted-foreground">No feedback yet. Open the {item.kind === "supporting" ? "document" : "petition"} and use the Feedback panel to tell your case manager what you would like changed.</span>
         ) : (
           <span className="mt-1.5 block space-y-0.5">
             {latest.map((message) => (
@@ -105,6 +123,7 @@ export default function Petition() {
     try {
       const response = await petitionReviewApi.list();
       setState({ status: "ready", items: response?.data?.items || [], error: "" });
+      warmPetitions(response?.data?.items);
     } catch (error) {
       setState((current) => (silent ? current : { status: "error", items: [], error: error?.message || "We could not load your petitions." }));
     }
@@ -129,16 +148,19 @@ export default function Petition() {
       const token = await waitUntilReady(item.documentId);
       const anchor = document.createElement("a");
       anchor.href = petitionReviewApi.streamUrl(token, { download: true });
-      anchor.download = item.fileName || "petition.pdf";
+      anchor.download = item.fileName || (item.kind === "supporting" ? "document.pdf" : "petition.pdf");
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
     } catch (error) {
-      setNotice(error?.status === 404 ? "This petition is no longer available." : "We could not prepare the download just yet. Please try again in a moment.");
+      setNotice(error?.status === 404 ? `This ${item.kind === "supporting" ? "document" : "petition"} is no longer available.` : "We could not prepare the download just yet. Please try again in a moment.");
     }
   }, []);
 
   const refreshQuietly = useCallback(() => load({ silent: true }), [load]);
+  // Two sections: the petition(s), and below them "Supporting Documents" (letters, reports ... sent for review apart from the petition) - shown only once one was sent.
+  const petitions = state.items.filter((item) => item.kind !== "supporting");
+  const supportingDocuments = state.items.filter((item) => item.kind === "supporting");
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
@@ -159,7 +181,7 @@ export default function Petition() {
           <p className="mt-1 text-sm text-muted-foreground">{state.error}</p>
           <button type="button" onClick={() => load()} className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">Try again</button>
         </div>
-      ) : state.items.length === 0 ? (
+      ) : petitions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
           <FileIcon size={36} className="mx-auto text-muted-foreground" />
           <p className="mt-3 font-semibold text-foreground">No petition is ready for your review yet</p>
@@ -167,10 +189,24 @@ export default function Petition() {
         </div>
       ) : (
         <ul className="space-y-4">
-          {state.items.map((item) => (
+          {petitions.map((item) => (
             <PetitionRow key={item.documentId} item={item} myId={myId} onView={setViewing} onDownload={download} onChat={setChatting} />
           ))}
         </ul>
+      )}
+
+      {state.status === "ready" && supportingDocuments.length > 0 && (
+        <section className="mt-10" aria-labelledby="supporting-documents-heading">
+          <h2 id="supporting-documents-heading" className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Supporting Documents</h2>
+          <p className="mt-1.5 mb-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            Letters, reports and other documents your case manager has shared for your review, separate from the petition. Read them, download a copy, and send your feedback.
+          </p>
+          <ul className="space-y-4">
+            {supportingDocuments.map((item) => (
+              <PetitionRow key={item.documentId} item={item} myId={myId} onView={setViewing} onDownload={download} onChat={setChatting} />
+            ))}
+          </ul>
+        </section>
       )}
 
       {viewing && <PetitionViewer item={viewing} onClose={() => { setViewing(null); refreshQuietly(); }} onChanged={refreshQuietly} onDownload={download} />}

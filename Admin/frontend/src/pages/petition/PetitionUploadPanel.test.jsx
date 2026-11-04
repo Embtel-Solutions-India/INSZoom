@@ -4,11 +4,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 // The case manager's petition panel: the two release options (attorney review / client review), the status of each petition, the client's latest feedback under the row, and the
 // conversation window. The API and socket are faked.
 const mocks = vi.hoisted(() => ({
-  listUploads: vi.fn(), upload: vi.fn(), list: vi.fn(), sendToAttorney: vi.fn(), sendToClient: vi.fn(), messages: vi.fn(), send: vi.fn(), markRead: vi.fn(), viewLink: vi.fn(), ready: vi.fn(), handlers: {},
+  listUploads: vi.fn(), listSupporting: vi.fn(), upload: vi.fn(), list: vi.fn(), sendToAttorney: vi.fn(), sendToClient: vi.fn(), messages: vi.fn(), send: vi.fn(), markRead: vi.fn(), viewLink: vi.fn(), ready: vi.fn(), handlers: {},
 }))
 
 vi.mock('../../services/api', () => ({
-  documentsApi: { listPetitionUploads: (...a) => mocks.listUploads(...a), uploadPetition: (...a) => mocks.upload(...a), download: vi.fn(), preview: vi.fn() },
+  documentsApi: { listPetitionUploads: (...a) => mocks.listUploads(...a), listSupportingUploads: (...a) => mocks.listSupporting(...a), uploadPetition: (...a) => mocks.upload(...a), download: vi.fn(), preview: vi.fn() },
   petitionReviewApi: {
     list: (...a) => mocks.list(...a), sendToAttorney: (...a) => mocks.sendToAttorney(...a), sendToClient: (...a) => mocks.sendToClient(...a),
     messages: (...a) => mocks.messages(...a), send: (...a) => mocks.send(...a), markRead: (...a) => mocks.markRead(...a),
@@ -73,7 +73,7 @@ describe('PetitionUploadPanel', () => {
     expect(within(confirmation).getByText(/Pat Petitioner \(petitioner\) will be emailed/)).toBeTruthy()
     expect(nativeConfirm).not.toHaveBeenCalled() // the app's own dialog, never the browser's grey popup
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Send to client' }))
-    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1'))
+    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1', ''))
     await screen.findByText(/Sent for client review/)
     expect(screen.queryByRole('status')).toBeNull()
   })
@@ -89,7 +89,7 @@ describe('PetitionUploadPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Attorney review/ }))
     dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send to attorney' }))
-    await waitFor(() => expect(mocks.sendToAttorney).toHaveBeenCalledWith('c1', 'd1'))
+    await waitFor(() => expect(mocks.sendToAttorney).toHaveBeenCalledWith('c1', 'd1', ''))
     expect(await screen.findByText(/Sent for attorney review - 1 attorney was notified/)).toBeTruthy()
   })
 
@@ -223,5 +223,32 @@ describe('PetitionUploadPanel', () => {
       fireEvent.mouseEnter(await screen.findByRole('button', { name: /View/ }))
       await waitFor(() => expect(mocks.ready).toHaveBeenCalled())
     })
+  })
+
+  // Petition tab -> Supporting Documents: the same panel below the petition, its own document type, "Send to attorney" / "Send to client", no AI review
+  it('supporting documents: own heading, own list and upload type, "Send to attorney" / "Send to client", and no AI Review', async () => {
+    mocks.listSupporting.mockResolvedValue({ data: { documents: [doc('s1', 'Expert Letter.pdf')] } })
+    mocks.list.mockResolvedValue(review([row({ documentId: 's1', fileName: 'Expert Letter.pdf', kind: 'supporting' })]))
+    mocks.upload.mockResolvedValue({})
+    const { container } = render(<PetitionUploadPanel caseId="c1" canUpload kind="supporting" />)
+    expect(await screen.findByText('Expert Letter.pdf')).toBeTruthy()
+    expect(screen.getByText('Supporting Documents')).toBeTruthy()
+    expect(mocks.listUploads).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Send to attorney/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Send to client/ })).toBeTruthy()
+    expect(screen.queryByText(/AI Review/)).toBeNull()
+    const file = new File(['%PDF'], 'Report.pdf', { type: 'application/pdf' })
+    await act(async () => { fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } }) })
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalled())
+    expect(mocks.upload.mock.calls[0][3]).toBe('petition_supporting_upload')
+  })
+
+  it('the send popup has an optional note: what is typed is sent with the release (empty = no note)', async () => {
+    render(<PetitionUploadPanel caseId="c1" canUpload />)
+    fireEvent.click(await screen.findByRole('button', { name: /Client review/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Note (optional)'), { target: { value: '  Please check page 3.  ' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send to client' }))
+    await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1', 'Please check page 3.'))
   })
 })

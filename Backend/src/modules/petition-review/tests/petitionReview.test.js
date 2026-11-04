@@ -43,8 +43,9 @@ test("the gate lets every other kind of document through untouched, and hides pe
   assert.equal(await gate.viewerMaySee({ role: "client" }, { documentType: PETITION, _id: "x" }), false);
   assert.equal(await gate.viewerMaySee({ role: "case_manager" }, { documentType: PETITION, _id: "x" }), true);
   assert.equal(await gate.listCondition({ role: "admin" }, "c1"), null);
-  assert.deepEqual(await gate.listCondition({ role: "client" }, "c1"), { documentType: { $ne: PETITION } });
-  assert.deepEqual(await gate.listCondition({ role: "beneficiary" }), { documentType: { $ne: PETITION } });
+  // petitions and supporting documents (Petition tab -> Supporting Documents) are both kept out of client-like lists
+  assert.deepEqual(await gate.listCondition({ role: "client" }, "c1"), { documentType: { $nin: [PETITION, "petition_supporting_upload"] } });
+  assert.deepEqual(await gate.listCondition({ role: "beneficiary" }), { documentType: { $nin: [PETITION, "petition_supporting_upload"] } });
 });
 
 test("the Documents API is wired to the gate (list filter, open/download guard, record created at upload)", () => {

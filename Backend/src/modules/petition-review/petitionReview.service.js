@@ -5,9 +5,12 @@
 //   client review   -> ONLY the case's petition audience (single person / petitioner / employer, see petitionAudience.js) sees it and is e-mailed ("petition-client-review")
 //   feedback thread -> between that audience and the case team; attorneys are not in it (an attorney reads the released petition and answers through the case's staff-only Feedback thread)
 //
+// "Supporting Documents" (documentType petition_supporting_upload: letters, reports ... shared for review apart from the petition) go through exactly the same flow, with
+// their own e-mails ("supporting-document-attorney-review" / "supporting-document-client-review") and wording, and no AI review. Every listed item carries `kind`.
+//
 // Every function throws an Error with .status for a refusal; side effects after the main write (e-mail, bell, live events) are best-effort and can never fail the request.
 const { pickAudience, idOf } = require("./petitionAudience");
-const { PETITION_DOCUMENT_TYPE, roleOf } = require("./petitionGate");
+const { isReviewDocumentType, kindOf, roleOf } = require("./petitionGate");
 
 const MANAGER_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const LATEST = 5; // messages shown under a petition row
@@ -46,7 +49,7 @@ function createPetitionReviewService(deps = {}) {
   async function loadPetition(caseId, documentId) {
     const [caseData, document] = await Promise.all([data.getCase(caseId), data.getDocument(documentId)]);
     if (!caseData) throw refuse(404, "Case not found.");
-    if (!document || document.deletedAt || document.documentType !== PETITION_DOCUMENT_TYPE || idOf(document.caseId) !== idOf(caseData._id)) throw refuse(404, "This petition was not found on the case.");
+    if (!document || document.deletedAt || !isReviewDocumentType(document.documentType) || idOf(document.caseId) !== idOf(caseData._id)) throw refuse(404, "This petition was not found on the case.");
     return { caseData, document };
   }
 
@@ -54,6 +57,7 @@ function createPetitionReviewService(deps = {}) {
   const messageOut = (row) => ({ _id: String(row._id), documentId: String(row.documentId), side: row.side, authorId: idOf(row.authorId), authorName: row.authorName || "", body: row.body, createdAt: row.createdAt });
   const reviewOut = (part) => (part?.sentAt ? { sentAt: part.sentAt, count: part.count || 1 } : null);
   const caseLabel = (caseData) => caseData.caseNumber || caseData.caseId || String(caseData._id);
+  const isSupporting = (document) => kindOf(document?.documentType) === "supporting";
 
   function emit(userIds, event, payload) {
     try {
@@ -77,7 +81,7 @@ function createPetitionReviewService(deps = {}) {
     const { caseData, document } = await loadPetition(caseId, documentId);
     assertManager(actor, caseData);
     const grants = (caseData.attorneyAccess || []).filter((grant) => grant.status === "active" && grant.attorneyId);
-    if (!grants.length) throw refuse(409, "No attorney has access to this case yet. Grant an attorney access first, then send the petition for attorney review.");
+    if (!grants.length) throw refuse(409, `No attorney has access to this case yet. Grant an attorney access first, then send the ${isSupporting(document) ? "document" : "petition"} for attorney review.`);
     const cleanNote = String(note || "").trim().slice(0, 2000);
     const review = await data.release(documentId, caseData._id, "attorneyReview", { sentBy: actor._id, note: cleanNote, at: now() });
     warm(document);
@@ -86,14 +90,14 @@ function createPetitionReviewService(deps = {}) {
     await quietly("petition_attorney_feedback_failed", () => (deps.createFeedback || ((args) => require("../feedback/feedback.service").createFeedback(args)))({
       caseId: caseData._id,
       author: actor,
-      message: `The case manager has uploaded the petition for case ${caseLabel(caseData)}. Please review it and give your feedback.${cleanNote ? `\n\nNote: ${cleanNote}` : ""}`,
+      message: `${isSupporting(document) ? `The case manager has shared a supporting document (${fileNameOf(document)})` : "The case manager has uploaded the petition"} for case ${caseLabel(caseData)}. Please review it and give your feedback.${cleanNote ? `\n\nNote: ${cleanNote}` : ""}`,
     }));
 
     let emailed = 0;
     for (const grant of grants) {
       const attorney = await data.getUser(grant.attorneyId);
       if (!attorney?.email || attorney.isActive === false) continue;
-      const result = await quietly("petition_attorney_email_failed", () => emailService().sendTemplateEmail("petition-attorney-review", {
+      const result = await quietly("petition_attorney_email_failed", () => emailService().sendTemplateEmail(isSupporting(document) ? "supporting-document-attorney-review" : "petition-attorney-review", {
         to: attorney.email, recipientRole: "attorney", caseId: caseData._id, userId: attorney._id, source: "shared",
         data: { attorneyName: name(attorney), caseNumber: caseLabel(caseData), clientName: caseData.clientName || "", visaType: caseData.visaType || caseData.visaCategory || "", petitionName: fileNameOf(document), note: cleanNote },
       }));
@@ -102,11 +106,11 @@ function createPetitionReviewService(deps = {}) {
     // in-app notice + browser push to every attorney with access; opens straight on the case's Petition page. Best-effort, never blocks the release.
     for (const grant of grants) {
       bell(idOf(grant.attorneyId), actor, {
-        title: "Petition ready for your review", message: `Case ${caseLabel(caseData)}: ${fileNameOf(document)}`, caseId: caseData._id, documentId,
+        title: isSupporting(document) ? "Supporting document ready for your review" : "Petition ready for your review", message: `Case ${caseLabel(caseData)}: ${fileNameOf(document)}`, caseId: caseData._id, documentId,
         link: `/cases/${caseData._id}/petition`, kind: "review", channels: ["in_app", "socket", "push"],
       });
       quietly("petition_attorney_timeline_failed", () => (deps.recordTimeline || require("../attorney/attorneyTimeline.service").record)({
-        caseId: caseData._id, attorneyId: idOf(grant.attorneyId), type: "petition_received", title: "Petition received for review", description: fileNameOf(document), meta: { documentId: String(documentId) },
+        caseId: caseData._id, attorneyId: idOf(grant.attorneyId), type: "petition_received", title: isSupporting(document) ? "Supporting document received for review" : "Petition received for review", description: fileNameOf(document), meta: { documentId: String(documentId) },
       }));
     }
     quietly("petition_live_update_failed", () => require("../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "documents", { actor, reason: "petition_attorney_review" }));
@@ -118,20 +122,20 @@ function createPetitionReviewService(deps = {}) {
     const { caseData, document } = await loadPetition(caseId, documentId);
     assertManager(actor, caseData);
     const audience = await audienceOf(caseData);
-    if (!audience) throw refuse(409, "This case has no client account that can receive the petition yet.");
+    if (!audience) throw refuse(409, `This case has no client account that can receive the ${isSupporting(document) ? "document" : "petition"} yet.`);
     const cleanNote = String(note || "").trim().slice(0, 2000);
     const review = await data.release(documentId, caseData._id, "clientReview", { sentBy: actor._id, note: cleanNote, at: now() });
     warm(document);
 
     let emailed = false;
     if (audience.user.email) {
-      const result = await quietly("petition_client_email_failed", () => emailService().sendTemplateEmail("petition-client-review", {
+      const result = await quietly("petition_client_email_failed", () => emailService().sendTemplateEmail(isSupporting(document) ? "supporting-document-client-review" : "petition-client-review", {
         to: audience.user.email, recipientRole: audience.user.role, caseId: caseData._id, userId: audience.user._id, source: "shared",
         data: { clientName: name(audience.user), caseNumber: caseLabel(caseData), petitionName: fileNameOf(document), note: cleanNote },
       }));
       emailed = Boolean(result?.sent);
     }
-    bell(audience.user._id, actor, { title: "Your petition is ready for review", message: `Please review the petition for case ${caseLabel(caseData)} and share any changes you would like.`, caseId: caseData._id, link: "/dashboard/petition", documentId, kind: "review" });
+    bell(audience.user._id, actor, { title: isSupporting(document) ? "A supporting document is ready for your review" : "Your petition is ready for review", message: isSupporting(document) ? `Please review ${fileNameOf(document)} for case ${caseLabel(caseData)} on your Petition page.` : `Please review the petition for case ${caseLabel(caseData)} and share any changes you would like.`, caseId: caseData._id, link: "/dashboard/petition", documentId, kind: "review", ...(isSupporting(document) ? { channels: ["in_app", "socket", "push"] } : {}) });
     emit([audience.userId, ...teamIds(caseData)], "petition:review", { caseId: String(caseData._id), documentId: String(documentId), stage: "client" });
     return { audience: { role: audience.role, name: name(audience.user) }, emailed, clientReview: reviewOut(review.clientReview) };
   }
@@ -145,7 +149,7 @@ function createPetitionReviewService(deps = {}) {
       const key = String(document._id);
       const review = byDoc.get(key);
       return {
-        documentId: key, caseId: idOf(document.caseId), fileName: fileNameOf(document), uploadedAt: document.createdAt,
+        documentId: key, caseId: idOf(document.caseId), kind: kindOf(document.documentType), fileName: fileNameOf(document), uploadedAt: document.createdAt,
         attorneyReview: reviewOut(review?.attorneyReview), clientReview: reviewOut(review?.clientReview), clientNote: review?.clientReview?.note || "",
         messages: { total: totals.get(key) || 0, unread: unread.get(key) || 0, latest: (latest.get(key) || []).map(messageOut) },
       };
@@ -177,7 +181,7 @@ function createPetitionReviewService(deps = {}) {
     return {
       items: documents.filter((document) => released.has(String(document._id))).map((document) => {
         const review = released.get(String(document._id));
-        return { documentId: String(document._id), caseId: String(caseData._id), caseNumber: caseLabel(caseData), fileName: fileNameOf(document), uploadedAt: document.createdAt, sentAt: review.attorneyReview.sentAt, note: review.attorneyReview.note || "" };
+        return { documentId: String(document._id), caseId: String(caseData._id), kind: kindOf(document.documentType), caseNumber: caseLabel(caseData), fileName: fileNameOf(document), uploadedAt: document.createdAt, sentAt: review.attorneyReview.sentAt, note: review.attorneyReview.note || "" };
       }).sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt)),
     };
   }
@@ -191,7 +195,7 @@ function createPetitionReviewService(deps = {}) {
     if (!eligible.length) return { items: [] };
     const caseById = new Map(eligible.map((row) => [String(row._id), row]));
     const released = await data.releasedToClientForCases(eligible.map((row) => row._id));
-    const documents = (await Promise.all(released.map((review) => data.getDocument(review.documentId)))).filter((document) => document && !document.deletedAt && document.documentType === PETITION_DOCUMENT_TYPE);
+    const documents = (await Promise.all(released.map((review) => data.getDocument(review.documentId)))).filter((document) => document && !document.deletedAt && isReviewDocumentType(document.documentType));
     const items = await summarise(documents, released, user._id);
     return {
       items: items
@@ -203,7 +207,7 @@ function createPetitionReviewService(deps = {}) {
   // ---------------------------------------------------------------- thread + file access
   async function authorizeThread(user, documentId) {
     const document = await data.getDocument(documentId);
-    if (!document || document.deletedAt || document.documentType !== PETITION_DOCUMENT_TYPE) throw refuse(404, "This petition was not found.");
+    if (!document || document.deletedAt || !isReviewDocumentType(document.documentType)) throw refuse(404, "This petition was not found.");
     const caseData = await data.getCase(document.caseId);
     if (!caseData) throw refuse(404, "This petition was not found.");
     const review = await data.getReview(documentId);
@@ -247,7 +251,7 @@ function createPetitionReviewService(deps = {}) {
         if (!member?.email || member.isActive === false) continue;
         await quietly("petition_first_feedback_email_failed", () => emailService().sendTemplateEmail("petition-feedback-received", {
           to: member.email, recipientRole: member.role, caseId: caseData._id, userId: member._id, source: "shared",
-          data: { recipientName: name(member), caseNumber: caseLabel(caseData), clientName: name(author), petitionName: fileNameOf(document), messagePreview: preview(text) },
+          data: { recipientName: name(member), caseNumber: caseLabel(caseData), clientName: name(author), petitionName: fileNameOf(document), messagePreview: preview(text), kind: kindOf(document.documentType) },
         }));
       }
     });
@@ -305,7 +309,7 @@ function createPetitionReviewService(deps = {}) {
     if (payload.side === "staff") {
       if (!MANAGER_ROLES.has(roleOf(user))) throw refuse(403, "This account cannot open the petition.");
       const document = await data.getDocument(payload.doc);
-      if (!document || document.deletedAt || document.documentType !== PETITION_DOCUMENT_TYPE) throw refuse(404, "This petition was not found.");
+      if (!document || document.deletedAt || !isReviewDocumentType(document.documentType)) throw refuse(404, "This petition was not found.");
       return { document };
     }
     const { side, document } = await authorizeThread({ ...user, _id: payload.uid }, payload.doc);

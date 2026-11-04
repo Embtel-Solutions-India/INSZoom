@@ -281,6 +281,9 @@ add(
   i765("H4EAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "H-4 EAD filing type (standalone, no extension of H-4 status) — I-765 is the primary and only USCIS form." })
 );
 add(
+  i765("I765EAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "I-765 EAD filing type (same checklist as H-4 EAD) — I-765 is the primary and only USCIS form." })
+);
+add(
   i539AutoCreate("H4EXTENSIONEAD", { notes: "H-4 Extension + EAD combined filing type — I-539 filed together with I-765 per USCIS guidance." }),
   i539A("H4EXTENSIONEAD"),
   i765("H4EXTENSIONEAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "Filed together with I-539 for this combined filing type." })
@@ -570,6 +573,11 @@ add(g28("EB-1C"));
 // AUTO_CREATE" registry rule still holds.
 add(
   m("Premium Processing", "I-907", "Request for Premium Processing Service", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-907", initialCaseCreation: true, immigrationNature: "POST_APPROVAL", notes: "Standalone Premium Processing case: the only form on the case." })
+);
+// MTR (Motion to Reopen) case: Form I-290B is the only form, created with the case. No checklist is mapped - like RFE / NOIR / NOID,
+// the case manager builds the questions per case with special requests (visaCategories.js customChecklist).
+add(
+  m("MTR", "I-290B", "Notice of Appeal or Motion", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-290b", initialCaseCreation: true, notes: "MTR (Motion to Reopen) case: the only form on the case; no checklist by design." })
 );
 
 // ===================== EB-2 =====================

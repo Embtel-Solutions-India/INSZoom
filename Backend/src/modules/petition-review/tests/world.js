@@ -21,14 +21,17 @@ const cases = {
   employee: { _id: "c-emp-child", caseNumber: "E-1-A", user: U.employee, employeeUser: U.employee, parentCase: "c-emp", caseStructure: "employer_employee", caseRole: "employee", assignedCaseManager: U.cm, attorneyAccess: [{ status: "active", attorneyId: U.attorney }, { status: "revoked", attorneyId: "u-gone" }] },
 };
 const PETITION = "petition_manual_upload";
+const SUPPORTING = "petition_supporting_upload";
 
-function makeWorld() {
+// extraDocuments: added to the fixed set (the supporting-document tests add theirs here; every other test sees exactly the documents below)
+function makeWorld({ extraDocuments = {} } = {}) {
   const documents = {
     d1: { _id: "d1", caseId: "c-single", documentType: PETITION, originalName: "Petition.pdf", mimeType: "application/pdf", createdAt: new Date("2026-10-20") },
     d2: { _id: "d2", caseId: "c-family", documentType: PETITION, originalName: "Family Petition.pdf", createdAt: new Date("2026-10-21") },
     d3: { _id: "d3", caseId: "c-emp-child", documentType: PETITION, originalName: "H1B Petition.pdf", createdAt: new Date("2026-10-22") },
     d4: { _id: "d4", caseId: "c-team", documentType: PETITION, originalName: "Team Petition.pdf", createdAt: new Date("2026-10-23") },
     dx: { _id: "dx", caseId: "c-single", documentType: "passport", originalName: "Passport.pdf" },
+    ...extraDocuments,
   };
   const reviews = new Map();
   const claimed = new Set();
@@ -40,7 +43,7 @@ function makeWorld() {
     getCases: async (ids) => Object.values(cases).filter((row) => ids.map(String).includes(row._id)),
     getUser: async (id) => users[String(id)] || null,
     getDocument: async (id) => documents[String(id)] || null,
-    listPetitionDocuments: async (caseId) => Object.values(documents).filter((row) => row.caseId === String(caseId) && row.documentType === PETITION),
+    listPetitionDocuments: async (caseId) => Object.values(documents).filter((row) => row.caseId === String(caseId) && [PETITION, SUPPORTING].includes(row.documentType)),
     readDocumentBuffer: async (document) => Buffer.from(`PDF of ${document._id}`),
     getReview: async (id) => reviews.get(String(id)) || null,
     getReviews: async (ids) => ids.map((id) => reviews.get(String(id))).filter(Boolean),
@@ -81,4 +84,4 @@ function makeWorld() {
   return { service, data, sent, reviews, messages };
 }
 
-module.exports = { U, users, cases, PETITION, makeWorld };
+module.exports = { U, users, cases, PETITION, SUPPORTING, makeWorld };

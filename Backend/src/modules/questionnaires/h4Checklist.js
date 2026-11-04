@@ -205,8 +205,12 @@ function buildH4ExtensionQuestionnaire() {
 
 // ─────────────────────────────────────────────────────────────────────────
 // H-4 EAD (visaType: H4EAD, key: h4_ead_questionnaire)
+// Also builds the "I-765 EAD" case type (visaType: I765EAD, key:
+// i765_ead_questionnaire) - the SAME questions, question keys and
+// canonicalPaths, only the key/title/visaType differ (see
+// I765_EAD_CHECKLIST_DEFINITIONS below).
 // ─────────────────────────────────────────────────────────────────────────
-function buildH4EadQuestionnaire() {
+function buildH4EadQuestionnaire({ key = "h4_ead_questionnaire", title = "H-4 EAD — Applicant Checklist", visaType = "H4EAD" } = {}) {
   const questions = [];
 
   const eadTypeSection = "EAD Application Type";
@@ -303,9 +307,9 @@ function buildH4EadQuestionnaire() {
   const sections = [eadTypeSection, infoSection, ssnSection, lastArrivalSection, docsSection];
 
   return {
-    key: "h4_ead_questionnaire",
-    title: "H-4 EAD — Applicant Checklist",
-    visaType: "H4EAD",
+    key,
+    title,
+    visaType,
     checklistRole: "client",
     isDefault: true,
     description: "",
@@ -442,4 +446,11 @@ const H4_CHECKLIST_DEFINITIONS = [
   buildH4ExtensionEadQuestionnaire(),
 ];
 
-module.exports = { H4_CHECKLIST_DEFINITIONS };
+// "I-765 EAD" (filingTypes.js's I765_EAD): its own standalone case type with
+// exactly the H-4 EAD checklist (same questions, keys and canonicalPaths).
+// Kept out of H4_CHECKLIST_DEFINITIONS, which lists the three H-4 types only.
+const I765_EAD_CHECKLIST_DEFINITIONS = [
+  buildH4EadQuestionnaire({ key: "i765_ead_questionnaire", title: "I-765 EAD — Applicant Checklist", visaType: "I765EAD" }),
+];
+
+module.exports = { H4_CHECKLIST_DEFINITIONS, I765_EAD_CHECKLIST_DEFINITIONS };

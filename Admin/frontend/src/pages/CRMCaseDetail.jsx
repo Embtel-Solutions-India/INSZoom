@@ -13,7 +13,8 @@ import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard, { isPremiumChecklist } from '../components/ChecklistApprovalCard'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
+import WrappingSelect from '../components/ui/WrappingSelect'
+import { usersApi, uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
 import InformationRequestPanel from '../components/InformationRequestPanel'
@@ -673,6 +674,8 @@ const CRMCaseDetail = () => {
   // P12-S3: Case ID copy-to-clipboard feedback (case header).
   const [caseIdCopied, setCaseIdCopied] = useState(false)
   const [users, setUsers] = useState([])
+  // "Assign Staff" (Case Manager role) and "Edit Staff" (Add Case Manager): every case manager A-Z, then every team lead A-Z
+  const [assignStaff, setAssignStaff] = useState([])
   // Attorneys are deliberately NOT in ASSIGNABLE_ROLES (Backend/src/modules/
   // users/user.service.js) — mixing them into the general staff dropdown
   // would let someone assign an attorney as "Case Manager"/"Team Lead" by
@@ -901,6 +904,13 @@ const CRMCaseDetail = () => {
     try {
       const response = await api.get('/users/assignable')
       setUsers(response.data.users || [])
+      usersApi.caseManagers({ includeTeamLeads: true })
+        .then((res) => {
+          const nameOf = (person) => (person.name || person.displayName || person.email || '').toLowerCase()
+          const rank = (person) => (person.role === 'team_lead' ? 1 : 0)
+          setAssignStaff([...(res.data?.caseManagers || [])].sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b))))
+        })
+        .catch((err) => console.error('Error fetching staff:', err)) // the case-manager-only list below still works
     } catch (error) {
       usersLoaded.current = false
       console.error('Error fetching users:', error)
@@ -1619,8 +1629,8 @@ const CRMCaseDetail = () => {
   const canManageCaseTeam = ['super_admin', 'admin', 'team_lead'].includes(user?.role)
   const sameUserId = (a, b) => Boolean(a && b) && String(a._id || a.id || a) === String(b._id || b.id || b)
   const additionalCaseManagers = Array.isArray(caseData?.additionalCaseManagers) ? caseData.additionalCaseManagers : []
-  const addableCaseManagers = users.filter((candidate) => (
-    candidate.role === 'case_manager'
+  const addableCaseManagers = (assignStaff.length ? assignStaff : users).filter((candidate) => (
+    ['case_manager', 'team_lead'].includes(candidate.role)
     && !sameUserId(candidate, caseData?.assignedCaseManager)
     && !additionalCaseManagers.some((existing) => sameUserId(existing, candidate))
   ))
@@ -1920,6 +1930,7 @@ const CRMCaseDetail = () => {
 
   const getFilteredUsers = () => {
     if (assignType === 'case_manager') {
+      if (assignStaff.length) return assignStaff
       const caseManagers = users.filter(u => u.role === 'case_manager')
       if (user?.role === 'team_lead' && !caseManagers.some(u => u._id === user._id)) {
         return [{ ...user, name: `${user.name || user.displayName || 'Me'} (assign to myself)` }, ...caseManagers]
@@ -3788,17 +3799,17 @@ const CRMCaseDetail = () => {
               <div className="mb-6 rounded-lg border border-border p-3">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Add Case Manager</label>
                 <div className="flex gap-2">
-                  <select
+                  <WrappingSelect
+                    className="min-w-0 flex-1"
+                    openUp="auto"
+                    compact
+                    ariaLabel="Add Case Manager"
                     value={addCaseManagerId}
-                    onChange={(e) => setAddCaseManagerId(e.target.value)}
+                    onChange={(value) => setAddCaseManagerId(value)}
                     disabled={teamActionBusy}
-                    className="input-field min-w-0 flex-1"
-                  >
-                    <option value="">Select case manager</option>
-                    {addableCaseManagers.map((candidate) => (
-                      <option key={candidate._id} value={candidate._id}>{candidate.name || candidate.displayName || candidate.email}</option>
-                    ))}
-                  </select>
+                    placeholder="Select case manager"
+                    options={addableCaseManagers.map((candidate) => ({ value: candidate._id, label: candidate.name || candidate.displayName || candidate.email, ...(candidate.role === 'team_lead' ? { tag: 'Team Lead' } : {}) }))}
+                  />
                   <button
                     type="button"
                     onClick={handleAddCaseManager}
@@ -3875,17 +3886,17 @@ const CRMCaseDetail = () => {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">
                   {assignType === 'attorney' ? 'Attorney' : 'Staff Member'}
                 </label>
-                <select
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  className="input-field"
+                <WrappingSelect
                   required
-                >
-                  <option value="">{assignType === 'attorney' ? 'Select attorney' : 'Select staff member'}</option>
-                  {getFilteredUsers().map(user => (
-                    <option key={user._id} value={user._id}>{user.name || user.displayName || user.email}</option>
-                  ))}
-                </select>
+                  openUp="auto"
+                  compact
+                  ariaLabel={assignType === 'attorney' ? 'Attorney' : 'Staff Member'}
+                  value={assigneeId}
+                  onChange={(value) => setAssigneeId(value)}
+                  placeholder={assignType === 'attorney' ? 'Select attorney' : 'Select staff member'}
+                  // a team lead in the Case Manager list carries a soft grey "Team Lead" tag on the right of the row
+                  options={getFilteredUsers().map((person) => ({ value: person._id, label: person.name || person.displayName || person.email, ...(assignType === 'case_manager' && person.role === 'team_lead' ? { tag: 'Team Lead' } : {}) }))}
+                />
                 {assignType === 'attorney' && attorneyUsers.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">No attorney accounts exist yet.</p>
                 )}

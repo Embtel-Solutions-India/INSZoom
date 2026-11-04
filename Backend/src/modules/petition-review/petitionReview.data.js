@@ -4,7 +4,7 @@ const User = require("../../models/User");
 const Document = require("../../models/Document");
 const PetitionReview = require("../../models/PetitionReview");
 const PetitionFeedbackMessage = require("../../models/PetitionFeedbackMessage");
-const { PETITION_DOCUMENT_TYPE } = require("./petitionGate");
+const { PETITION_DOCUMENT_TYPE, REVIEW_DOCUMENT_TYPES } = require("./petitionGate");
 
 const CASE_FIELDS = "caseNumber caseId clientName clientEmail visaType visaCategory user parentCase caseStructure caseRole employerUser petitionerUser assignedCaseManager additionalCaseManagers primaryOwner assignedTeamLead attorneyAccess";
 const DOC_FIELDS = "caseId documentType originalName originalFileName fileName mimeType fileType storageKey filePath deletedAt createdAt";
@@ -15,7 +15,8 @@ module.exports = {
   getCase: (id) => Case.findById(id).select(CASE_FIELDS).lean(),
   getUser: (id) => User.findById(id).select("name displayName email role isActive").lean(),
   getDocument: (id) => Document.findById(id).select(DOC_FIELDS).lean(),
-  listPetitionDocuments: (caseId) => Document.find({ caseId, documentType: PETITION_DOCUMENT_TYPE, deletedAt: { $exists: false } }).select(DOC_FIELDS).sort({ createdAt: -1 }).lean(),
+  // petitions AND supporting documents (each item carries its kind; the portals show them in two sections)
+  listPetitionDocuments: (caseId) => Document.find({ caseId, documentType: { $in: [...REVIEW_DOCUMENT_TYPES] }, deletedAt: { $exists: false } }).select(DOC_FIELDS).sort({ createdAt: -1 }).lean(),
   readDocumentBuffer: (document) => require("../documents/document.service").readDocumentBuffer(document),
 
   getReview: (documentId) => PetitionReview.findOne({ documentId }).lean(),

@@ -519,11 +519,19 @@ async function createDocumentFromFile({ file, body, user, req }) {
   // Attorney Portal's Petition tab pick the new document up live via the
   // same case:updated push case.service.js's addAuditEntry already fans out
   // to every actively-granted attorney, instead of only on next reload.
-  if (context.caseData && body.documentType === "petition_manual_upload") {
-    caseService.addAuditEntry(context.caseData, "petition_manual_upload", `A petition document was uploaded by ${user.name || user.displayName || "staff"}.`, user, { documentId: document._id }, req);
+  // "petition_supporting_upload" (Petition tab -> Supporting Documents: letters, reports ...) follows the same path: visible to the case team only until released
+  if (context.caseData && (body.documentType === "petition_manual_upload" || body.documentType === "petition_supporting_upload")) {
+    const supporting = body.documentType === "petition_supporting_upload";
+    caseService.addAuditEntry(context.caseData, body.documentType, supporting ? `A supporting document was uploaded by ${user.name || user.displayName || "staff"}.` : `A petition document was uploaded by ${user.name || user.displayName || "staff"}.`, user, { documentId: document._id }, req);
     await context.caseData.save();
     // the petition starts out visible to the case team only; the case manager releases it to the attorney(s) and / or the client (modules/petition-review)
     await require("../petition-review/petitionReview.data").ensureReview(document._id, context.caseData._id).catch(() => null);
+    // keep the uploaded bytes in memory (same key readDocumentBuffer uses), so the first open of the petition needs no storage read; never throws
+    try {
+      require("../petition-review/petitionBufferCache").prime(`${document._id}:${document.storageKey}`, file.buffer);
+    } catch (_error) {
+      // only a speed-up
+    }
     // Petition AI Review: queues the page-by-page AI scan on a later tick - returns at once and never throws (does nothing unless PETITION_AI_REVIEW=on)
     try {
       require("../petition-ai-review").onPetitionUploaded({ document, caseData: context.caseData, user });
@@ -1051,7 +1059,7 @@ function populateDocumentQuery(query) {
 async function readDocumentBuffer(document) {
   const cache = require("../petition-review/petitionBufferCache");
   const read = () => cache.withRetries(() => readDocumentBufferOnce(document));
-  if (document.documentType === "petition_manual_upload" && document.storageKey) return cache.getOrLoad(`${document._id}:${document.storageKey}`, read);
+  if ((document.documentType === "petition_manual_upload" || document.documentType === "petition_supporting_upload") && document.storageKey) return cache.getOrLoad(`${document._id}:${document.storageKey}`, read);
   return read();
 }
 

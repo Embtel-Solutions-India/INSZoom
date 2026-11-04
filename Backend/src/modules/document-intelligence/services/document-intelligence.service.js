@@ -297,8 +297,12 @@ function hasPendingReview(extraction) {
 
 async function updateDocumentMetadata(document, extraction, user, req) {
   const type = extraction.documentType || extraction.classification?.documentType || "other";
-  document.documentType = documentEnumFor(type);
-  document.category = extraction.evidenceCategories?.includes("Identity") ? "identity"
+  // A petition / supporting document (Petition tab) keeps its type and category: its type is what the release gate, the viewer and the Petition pages key on.
+  // OCR re-labelling one (e.g. a letter as "resume") made it vanish from the Petition tab and its review links answer "not found".
+  const keepType = require("../../petition-review/petitionGate").isReviewDocumentType(document.documentType);
+  const previousCategory = document.category;
+  if (!keepType) document.documentType = documentEnumFor(type);
+  document.category = keepType ? previousCategory : extraction.evidenceCategories?.includes("Identity") ? "identity"
     : extraction.evidenceCategories?.includes("Immigration") ? "immigration"
       : extraction.evidenceCategories?.includes("Education") ? "education"
         : extraction.evidenceCategories?.includes("Employment") ? "employment"
@@ -393,6 +397,18 @@ async function processDocument(documentId, user, req) {
     const error = new Error("Document not found");
     error.statusCode = 404;
     throw error;
+  }
+  // Supporting documents (Petition tab -> Supporting Documents: letters, reports shared for review) are never scanned: no OCR, no document AI, no Gemini (owner decision)
+  if (document.documentType === "petition_supporting_upload") {
+    document.processing = document.processing || {};
+    document.processing.status = "completed";
+    document.processing.stage = "completed";
+    document.processing.completedAt = new Date();
+    document.processing.retryable = false;
+    documentService.addProcessingEvent(document, "ocr", "skipped", { message: "Supporting document shared for review; not scanned" });
+    documentService.addProcessingEvent(document, "completed", "completed");
+    await document.save();
+    return null;
   }
   if (["application/zip", "application/x-zip-compressed"].includes(document.mimeType || document.fileType)) {
     document.processing = document.processing || {};

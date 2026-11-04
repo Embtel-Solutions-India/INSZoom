@@ -56,3 +56,16 @@ test("h4_ead_questionnaire: the specific Phase 3A fields resolve to the same pat
     assert.equal(byKey.get(key)?.mapping?.canonicalPath, canonicalPath, `${key} should map to ${canonicalPath}`);
   });
 });
+
+// "I-765 EAD" case type: must stay an exact copy of the H-4 EAD checklist (same questions, keys, canonicalPaths, conditions) - only key/title/visaType differ.
+test("i765_ead_questionnaire: identical questions and canonicalPaths to h4_ead_questionnaire", () => {
+  const { I765_EAD_CHECKLIST_DEFINITIONS } = h4Checklist;
+  const h4Ead = h4Checklist.H4_CHECKLIST_DEFINITIONS.find((d) => d.key === "h4_ead_questionnaire");
+  const i765Ead = I765_EAD_CHECKLIST_DEFINITIONS.find((d) => d.key === "i765_ead_questionnaire");
+  assert.ok(i765Ead, "i765_ead_questionnaire must exist");
+  assert.equal(i765Ead.visaType, "I765EAD");
+  assert.equal(i765Ead.checklistRole, "client");
+  assert.equal(i765Ead.isDefault, true);
+  assert.deepEqual(i765Ead.sections, h4Ead.sections);
+  assert.deepEqual(i765Ead.questions, h4Ead.questions);
+});

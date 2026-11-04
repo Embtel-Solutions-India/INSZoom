@@ -33,7 +33,8 @@ const GROUPS = {
   },
 }
 
-const PAGE_SIZE = 25
+// 24 = 8 full rows of the 3-card grid (Corporations and Clients); the rest is paged
+const PAGE_SIZE = 24
 
 // same delete rule as the all-cases page (CRMCases.jsx). New Case and the Recycle bin live on that page only.
 const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
@@ -63,7 +64,9 @@ export default function CaseGroupPage({ caseGroup }) {
   const [sortOrder, setSortOrder] = useState('desc')
   // the same grouped visa list as the New case dropdown (utils/visaOptions.js); the chosen option is sent as the case's visa type
   const { options: visaOptions, registryTypes } = useVisaOptions()
+  // Corporations list only the employment-based visas, Clients every other group (family, single applicant, notice responses) - same list, the rest hidden
   const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
+    .filter((opt) => (caseGroup === 'corporations' ? opt.group === 'Employment based' : opt.group !== 'Employment based'))
   const [visaFilter, setVisaFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)

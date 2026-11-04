@@ -190,6 +190,20 @@ const FILING_TYPES = {
     visaType: "H4EXTENSIONEAD",
     questionnaireKey: "h4_extension_ead_questionnaire",
   },
+  // "I-765 EAD": standalone EAD case type with exactly the H-4 EAD checklist
+  // (h4Checklist.js's I765_EAD_CHECKLIST_DEFINITIONS) and Form I-765 only.
+  // Separate from EAD/EADI765 above (scaffold-only, never offered).
+  I765_EAD: {
+    key: "I765_EAD",
+    label: "I-765 EAD",
+    category: "ead",
+    includesEad: true,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "I765EAD",
+    questionnaireKey: "i765_ead_questionnaire",
+  },
 };
 
 function listFilingTypes() {

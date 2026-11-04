@@ -219,6 +219,8 @@ const VISA_CATEGORIES = {
   "H4EXTENSION": { caseStructure: "single", forms: ["i-539"], label: "H-4 Extension" },
   "H4EAD": { caseStructure: "single", forms: ["i-765"], label: "H-4 EAD" },
   "H4EXTENSIONEAD": { caseStructure: "single", forms: ["i-539", "i-765"], label: "H-4 Extension + EAD" },
+  // I-765 EAD (filingTypes.js's I765_EAD): same checklist as H4EAD, Form I-765 only.
+  "I765EAD": { caseStructure: "single", forms: ["i-765"], label: "I-765 EAD" },
   // Single-party filing-type variant (filingTypes.js's COS_F2) — distinct
   // visaType string stored on Case.visaType for cases created via
   // single-party-filing.controller.js, separate from the generic "F-2"
@@ -328,13 +330,15 @@ const VISA_CATEGORIES = {
   "Certificate of Citizenship": { caseStructure: "single", forms: ["n-600"], label: "Certificate of Citizenship" },
   "Replacement Citizenship Certificate": { caseStructure: "single", forms: ["n-565"], label: "Replacement Citizenship/Naturalization Document" },
 
-  // ─── NOTICE RESPONSES (RFE / NOIR / NOID) ─────────────────────────────────
-  // One workflow for the three USCIS notices: a single-party case with NO checklist assigned at creation (customChecklist). The case manager
+  // ─── NOTICE RESPONSES (RFE / NOIR / NOID / MTR) ───────────────────────────
+  // One workflow for the USCIS notices and the motion to reopen: a single-party case with NO checklist assigned at creation (customChecklist). The case manager
   // builds the checklist for each case through the Documents tab's special requests. They are offered in the New Case dropdown although no
   // authored checklist exists for them (the dropdown otherwise hides a case type without one).
   RFE: { caseStructure: "single", forms: [], customChecklist: true, label: "Request for Evidence" },
   NOIR: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Revoke" },
   NOID: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Deny" },
+  // MTR: same no-checklist behaviour, but its case gets Form I-290B (Notice of Appeal or Motion) at creation.
+  MTR: { caseStructure: "single", forms: ["i-290b"], customChecklist: true, label: "Motion to Reopen" },
 };
 
 /**
@@ -363,7 +367,7 @@ function getNoFormChecklistKeys(visaType) {
   return hasNoForms(visaType) ? [...(VISA_CATEGORIES[visaType].checklists || [])] : [];
 }
 
-// True for a case type whose checklist the case manager builds per case (RFE / NOIR / NOID): none is assigned at creation, and it is still offered at case creation.
+// True for a case type whose checklist the case manager builds per case (RFE / NOIR / NOID / MTR): none is assigned at creation, and it is still offered at case creation.
 function hasCustomChecklist(visaType) {
   return Boolean(VISA_CATEGORIES[visaType]?.customChecklist);
 }

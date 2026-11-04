@@ -158,8 +158,14 @@ const CreateCaseModal = ({
   }, [registryTypes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    usersApi.caseManagers()
-      .then((res) => setCaseManagers(res.data?.caseManagers || []))
+    // case managers + every team lead (some cases are handled by a team lead with no case manager)
+    usersApi.caseManagers({ includeTeamLeads: true })
+      .then((res) => {
+        // all case managers A-Z first, then all team leads A-Z below them
+        const nameOf = (user) => (user.name || user.displayName || user.email || '').toLowerCase()
+        const rank = (user) => (user.role === 'team_lead' ? 1 : 0)
+        setCaseManagers([...(res.data?.caseManagers || [])].sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b))))
+      })
       .catch((err) => console.error('Error fetching case managers:', err))
   }, [])
 
@@ -575,17 +581,20 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Assign Case Manager</label>
-            <select
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Assign Staff</label>
+            <WrappingSelect
+              ariaLabel="Assign Staff"
+              openUp
+              compact
               value={form.assignedCaseManager}
-              onChange={handleChange('assignedCaseManager')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Unassigned (team lead queue)</option>
-              {caseManagers.map((cm) => (
-                <option key={cm._id} value={cm._id}>{cm.name || cm.displayName || cm.email}</option>
-              ))}
-            </select>
+              onChange={(value) => handleChange('assignedCaseManager')({ target: { value } })}
+              options={[
+                { value: '', label: 'Unassigned' },
+                // team leads carry a soft grey "Team Lead" tag on the right of the row
+                ...caseManagers.map((cm) => ({ value: cm._id, label: cm.name || cm.displayName || cm.email, ...(cm.role === 'team_lead' ? { tag: 'Team Lead' } : {}) })),
+              ]}
+              placeholder="Unassigned"
+            />
           </div>
           </>
           )}

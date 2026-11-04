@@ -1,7 +1,7 @@
 // Sent ONCE per petition - when the client side gives the first feedback on it - to the case manager(s) and the team lead of the case. Later messages are not e-mailed; they appear in
 // the Petition tab of the case (and in the notification bell).
 function subject(data = {}) {
-  return `Client feedback received on the petition — ${data.caseNumber || "your case"}`;
+  return `Client feedback received on the ${data.kind === "supporting" ? "supporting document" : "petition"} — ${data.caseNumber || "your case"}`;
 }
 
 function bodyLines(data = {}) {
@@ -9,8 +9,8 @@ function bodyLines(data = {}) {
   const preview = String(data.messagePreview || "").replace(/</g, "&lt;").replace(/\n/g, "<br/>");
   const lines = [
     `Hello ${data.recipientName || "there"},`,
-    `${data.clientName || "The client"} has given feedback on the petition for case ${data.caseNumber || ""}.`,
-    `<strong>Petition:</strong> ${data.petitionName || "—"}`,
+    `${data.clientName || "The client"} has given feedback on the ${data.kind === "supporting" ? "supporting document" : "petition"} for case ${data.caseNumber || ""}.`,
+    `<strong>${data.kind === "supporting" ? "Supporting document" : "Petition"}:</strong> ${data.petitionName || "—"}`,
   ];
   if (preview) lines.push(`<strong>First comment:</strong><br/>“${preview}”`);
   lines.push(

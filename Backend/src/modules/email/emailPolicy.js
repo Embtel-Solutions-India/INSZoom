@@ -45,7 +45,8 @@ async function recentlySent({ templateKey, to, caseId, windowMs }) {
 const MIN = 60 * 1000;
 const DEFAULT_COOLDOWN_MS = 2 * MIN;
 // Credential / security mails are always sent - a user asking twice must get it twice.
-const NEVER_THROTTLED = new Set(["password-reset", "staff-credentials", "client-portal-invitation", "employee-case-invitation", "employee-access-restored", "family-beneficiary-invitation"]);
+// supporting-document-*: several letters / reports are often sent one after another - each one is its own e-mail (every send is a confirmed, deliberate action)
+const NEVER_THROTTLED = new Set(["supporting-document-client-review", "supporting-document-attorney-review", "password-reset", "staff-credentials", "client-portal-invitation", "employee-case-invitation", "employee-access-restored", "family-beneficiary-invitation"]);
 
 // ── per-trigger policy ───────────────────────────────────────────────────
 // auto: the email is sent by default (an admin can still switch it off, or
@@ -120,6 +121,8 @@ const SEND_RULES = {
   "checklist-incomplete-reminder": { when: "A client has a checklist they can see and have not SUBMITTED (Save progress does not count). First email 3 days after the checklist reached them, then every 3 days until they press Submit.", unless: "They have submitted; the case is closed, on hold or cancelled; the account is inactive; the checklist is still waiting for a case manager's approval; or CHECKLIST_REMINDER_EMAILS=false." },
   "petition-client-review": { when: "The case manager sends an uploaded petition for client review - sent only to the case's petition audience: the single applicant, the petitioner of a family case, or the employer of an employer-employee case.", unless: "The case has no client account that can receive it. Never sent to the beneficiary, the employee or staff." },
   "petition-feedback-received": { when: "The client side (single applicant / petitioner / employer) gives the FIRST feedback on a petition - sent once per petition to the case manager(s) and the team lead of the case.", unless: "Any later message on the same petition (those only appear in the Petition tab and the bell), or the person has no e-mail address." },
+  "supporting-document-client-review": { when: "The case manager sends a supporting document (letter, report ...) from the Petition tab's Supporting Documents section for client review - sent only to the case's petition audience: the single applicant, the petitioner of a family case, or the employer of an employer-employee case.", unless: "The case has no client account that can receive it. Never sent to the beneficiary, the employee or staff." },
+  "supporting-document-attorney-review": { when: "The case manager sends a supporting document (letter, report ...) from the Petition tab's Supporting Documents section for attorney review - sent to every attorney with active access to the case.", unless: "No attorney has access to the case (the case manager is told to grant access first)." },
   "petition-attorney-review": { when: "The case manager sends an uploaded petition for attorney review - sent to every attorney with active access to the case.", unless: "No attorney has access to the case (the case manager is told to grant access first)." },
   "checklist-received-client": { when: "A client presses Submit and every checklist they have to complete is submitted - sent once to the client.", unless: "The checklist was already acknowledged in the last 24 hours, or the case was already submitted before this email existed." },
   "case-created-team-lead": { when: "A new case is created and routed to a team lead.", unless: "No team lead is assigned to the case." },

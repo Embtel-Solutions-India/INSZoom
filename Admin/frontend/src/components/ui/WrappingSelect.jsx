@@ -3,12 +3,15 @@ import { ChevronDown, Search } from 'lucide-react'
 
 // A drop-down for long option labels: the list wraps each label onto as many lines as it needs (a native <select> clips them to the width of
 // the field) and can be searched. Keeps native form validation through a hidden `required` input, so a parent <form> behaves as before.
-// options: [{ value, label, group? }] - an option's `group` is shown once, as a small grey heading, above the first option of that group.
-export default function WrappingSelect({ value, onChange, options, placeholder = 'Select…', required = false, disabled = false, className = '', ariaLabel }) {
+// options: [{ value, label, group?, tag? }] - an option's `group` is shown once, as a small grey heading, above the first option of that group;
+// its optional `tag` (e.g. "Team Lead") is shown on the right of its row in a softer grey.
+// openUp: the list opens above the field (true), or above only when there is more room above than below ('auto', like a native select). compact: no search box and no scrolling - every option is shown at once (short lists only).
+export default function WrappingSelect({ value, onChange, options, placeholder = 'Select…', required = false, disabled = false, className = '', ariaLabel, openUp = false, compact = false }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef(null)
   const selected = options.find((option) => option.value === value)
+  const [dropUp, setDropUp] = useState(openUp === true)
 
   useEffect(() => {
     if (!open) return undefined
@@ -35,19 +38,27 @@ export default function WrappingSelect({ value, onChange, options, placeholder =
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (!open && openUp === 'auto' && rootRef.current) {
+            const rect = rootRef.current.getBoundingClientRect()
+            const below = window.innerHeight - rect.bottom
+            setDropUp(below < 320 && rect.top > below)
+          }
+          setOpen((current) => !current)
+        }}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
       >
-        <span className={`whitespace-normal break-words ${selected ? '' : 'text-muted-foreground'}`}>{selected ? selected.label : placeholder}</span>
+        <span className={`flex-1 whitespace-normal break-words ${selected ? '' : 'text-muted-foreground'}`}>{selected ? selected.label : placeholder}</span>
+        {selected?.tag && <span className="shrink-0 text-xs text-muted-foreground">{selected.tag}</span>}
         <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {required && <input tabIndex={-1} aria-hidden="true" required value={value || ''} onChange={() => {}} className="pointer-events-none absolute inset-x-0 bottom-0 h-px opacity-0" />}
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
-          <div className="relative border-b border-border p-2">
+        <div className={`absolute z-50 w-full rounded-lg border border-border bg-card shadow-lg ${dropUp ? 'bottom-full mb-1' : 'mt-1'}`}>
+          {!compact && <div className="relative border-b border-border p-2">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               autoFocus
@@ -58,8 +69,8 @@ export default function WrappingSelect({ value, onChange, options, placeholder =
               placeholder="Search…"
               className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
             />
-          </div>
-          <ul role="listbox" className="max-h-64 overflow-y-auto py-1">
+          </div>}
+          <ul role="listbox" className={compact ? 'py-1' : 'max-h-64 overflow-y-auto py-1'}>
             {visible.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">No match</li>}
             {visible.map((option, index) => (
               <li key={option.value}>
@@ -71,9 +82,10 @@ export default function WrappingSelect({ value, onChange, options, placeholder =
                   role="option"
                   aria-selected={option.value === value}
                   onClick={() => pick(option)}
-                  className={`block w-full whitespace-normal break-words px-3 py-2 text-left text-sm transition-colors hover:bg-secondary ${option.value === value ? 'bg-primary/10 font-medium text-primary' : 'text-foreground'}`}
+                  className={`flex w-full items-center justify-between gap-3 whitespace-normal break-words px-3 py-2 text-left text-sm transition-colors hover:bg-secondary ${option.value === value ? 'bg-primary/10 font-medium text-primary' : 'text-foreground'}`}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  {option.tag && <span className="shrink-0 text-xs font-normal text-muted-foreground">{option.tag}</span>}
                 </button>
               </li>
             ))}

@@ -8,6 +8,7 @@ import usePetitionStream from './usePetitionStream'
 // Esc or the close button returns to the list. The PDF streams into the browser's own viewer (page 1 shows while the rest loads); while the server prepares a big file the
 // attorney sees "Opening…" and we keep trying by ourselves - no timeout message. There is deliberately no Download button here.
 export default function PetitionViewer({ item, onClose }) {
+  const noun = item.kind === 'supporting' ? 'document' : 'petition' // a supporting document opens in the same viewer
   const { status, url, error, waited, retry } = usePetitionStream(item.documentId)
   const [painted, setPainted] = useState(false)
 
@@ -48,8 +49,8 @@ export default function PetitionViewer({ item, onClose }) {
               {opening && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center" role="status" aria-live="polite">
                   <div className="h-9 w-9 animate-spin rounded-full border-4 border-secondary border-t-primary" />
-                  <p className="text-sm font-semibold text-foreground">Opening the petition…</p>
-                  {waited && <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">A large petition can take a minute to prepare. We keep trying automatically - you do not need to do anything.</p>}
+                  <p className="text-sm font-semibold text-foreground">Opening the {noun}…</p>
+                  {waited && <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">A large {noun} can take a minute to prepare. We keep trying automatically - you do not need to do anything.</p>}
                 </div>
               )}
             </>
