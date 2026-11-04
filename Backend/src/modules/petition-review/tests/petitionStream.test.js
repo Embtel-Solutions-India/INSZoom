@@ -39,7 +39,7 @@ test("retries are bounded, and a file that is simply not there is not retried at
 test("every document read goes through the retry, and petition PDFs also through the cache (wiring)", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "documents", "document.service.js"), "utf8");
   assert.match(source, /cache\.withRetries\(\(\) => readDocumentBufferOnce\(document\)\)/);
-  assert.match(source, /document\.documentType === "petition_manual_upload" && document\.storageKey\) return cache\.getOrLoad\(/);
+  assert.match(source, /\(document\.documentType === "petition_manual_upload" \|\| document\.documentType === "petition_supporting_upload"\) && document\.storageKey\) return cache\.getOrLoad\(/);
 });
 
 // ---------------------------------------------------------------- memory cache

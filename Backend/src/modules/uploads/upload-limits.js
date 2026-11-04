@@ -11,8 +11,10 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const PETITION_DOCUMENT_TYPE = "petition_manual_upload";
 const PETITION_MAX_FILE_BYTES = 200 * 1024 * 1024;
 
+const SUPPORTING_DOCUMENT_TYPE = "petition_supporting_upload"; // Petition tab -> Supporting Documents
+
 function maxFileBytesFor(documentType) {
-  return documentType === PETITION_DOCUMENT_TYPE ? PETITION_MAX_FILE_BYTES : MAX_FILE_BYTES;
+  return documentType === PETITION_DOCUMENT_TYPE || documentType === SUPPORTING_DOCUMENT_TYPE ? PETITION_MAX_FILE_BYTES : MAX_FILE_BYTES;
 }
 
 // Safety posture: any file type is accepted EXCEPT things that execute or

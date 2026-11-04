@@ -48,3 +48,14 @@ Backend `src/modules/petition-review/tests/` (32): audience matrix, gate, releas
 ## Rollback
 
 Remove the `/petition-review` mount in `routes/index.js`, the two `petitionGate` hooks in `documents/document.service.js` + `document.controller.js` and the `ensureReview` line at upload; the Client route/nav item and the Admin panel changes can be reverted from git. The two collections can be dropped; no other data is touched.
+
+## Supporting Documents (added 2026-11-05)
+
+A second section under the petition on the Petition tab / page, for letters, reports and other documents shared for review apart from the petition.
+* **Admin:** `PetitionUploadPanel kind="supporting"` below the petition panel - Upload Document (PDF, 200 MB), View, Download, **Send to attorney**, **Send to client**, client feedback under each row. No AI review.
+* **Data:** a Document with `documentType: "petition_supporting_upload"`; it gets the same `petitionreviews` record at upload and uses the same viewer, stream, cache and feedback thread. Every listed item carries `kind: "petition" | "supporting"`.
+* **Gate:** like a petition, except there is no legacy exception - an attorney sees a supporting document only after it was sent for attorney review; clients never through the Documents API.
+* **Client / Attorney portals:** a "Supporting Documents" section below the petitions on the Petition page / tab, shown only once at least one document was sent through it.
+* **Notifications:** `supporting-document-client-review` / `supporting-document-attorney-review` e-mails (own templates and triggers, never throttled so several documents sent in a row each get their e-mail) plus the in-app bell and the browser push. The first-feedback e-mail to the case team names "supporting document".
+* **Tests:** `petition-review/tests/supportingDocuments.test.js`, Admin `PetitionUploadPanel.test.jsx`, Client `Petition.test.jsx`.
+* **Never scanned:** a supporting document skips document intelligence entirely (no OCR, no document AI, no Gemini; `processDocument` returns before any scan). OCR also never re-labels the type / category of a petition or supporting document (`updateDocumentMetadata` keeps it) - before this fix a letter was re-labelled "resume", vanished from its Petition-tab review links ("not found") and its send buttons stopped working.

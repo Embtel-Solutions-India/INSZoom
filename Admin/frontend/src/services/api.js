@@ -516,14 +516,18 @@ export const documentsApi = {
   // createDocumentFromFile for the matching caseService.addAuditEntry hook
   // that makes this show up live on the Attorney side.
   listPetitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
+  // Petition tab -> Supporting Documents (letters, reports ... shared for review apart from the petition): same upload path, its own documentType
+  listSupportingUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_supporting_upload' } }),
+  // Petition tab: delete an uploaded petition / supporting document (the server soft-deletes it; it disappears for the client and attorney too)
+  remove: (documentId) => api.delete(`/documents/${documentId}`),
   // Petitions can be very large (up to 200 MB): anything over one chunk goes
   // through the resumable chunked-session API (3 retries per chunk, reassembled
   // server-side) instead of one long request. Chunks stay under 1 MB so every request
   // passes a web server / reverse proxy that caps request bodies at its 1 MB default
   // (a larger body is refused with 413 before it ever reaches the API).
-  uploadPetition: async (caseId, file, onProgress) => {
+  uploadPetition: async (caseId, file, onProgress, documentType = 'petition_manual_upload') => {
     const chunkSize = 896 * 1024
-    const context = { caseId, documentType: 'petition_manual_upload', category: 'legal', legacySource: 'Admin' }
+    const context = { caseId, documentType, category: 'legal', legacySource: 'Admin' }
     if (file.size <= chunkSize) {
       const formData = new FormData()
       formData.append('file', file)

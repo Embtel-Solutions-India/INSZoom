@@ -228,3 +228,31 @@ describe("Feedback conversation window", () => {
     expect(await screen.findByRole("dialog", { name: "Feedback for H-1B Petition.pdf" })).toBeTruthy();
   });
 });
+
+// Supporting Documents (letters, reports ... sent for review apart from the petition): their own section below the petitions, shown ONLY once one was sent.
+describe("Supporting Documents section", () => {
+  it("is hidden when nothing was sent through it", async () => {
+    render(<Petition />);
+    await screen.findByText("H-1B Petition.pdf");
+    expect(screen.queryByRole("heading", { name: "Supporting Documents" })).toBeNull();
+  });
+
+  it("appears below the petitions with its own documents (View / Download / Feedback), and the petition list keeps only petitions", async () => {
+    api.list.mockResolvedValue({ data: { items: [item(), item({ documentId: "s1", kind: "supporting", fileName: "Expert Opinion Letter.pdf", messages: { total: 0, unread: 0, latest: [] } })] } });
+    render(<Petition />);
+    const heading = await screen.findByRole("heading", { name: "Supporting Documents" });
+    const section = heading.closest("section");
+    expect(within(section).getByText("Expert Opinion Letter.pdf")).toBeTruthy();
+    expect(within(section).queryByText("H-1B Petition.pdf")).toBeNull();
+    expect(within(section).getByRole("button", { name: "View" })).toBeTruthy();
+    expect(within(section).getByText(/Open the document and use the Feedback panel/)).toBeTruthy();
+  });
+
+  it("with only a supporting document sent, the petition part still says no petition is ready, and the document is listed below", async () => {
+    api.list.mockResolvedValue({ data: { items: [item({ documentId: "s1", kind: "supporting", fileName: "Report.pdf" })] } });
+    render(<Petition />);
+    expect(await screen.findByText("No petition is ready for your review yet")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Supporting Documents" })).toBeTruthy();
+    expect(screen.getByText("Report.pdf")).toBeTruthy();
+  });
+});

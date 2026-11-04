@@ -62,36 +62,53 @@ export default function PetitionTab() {
   if (error && !items) return <p className="text-sm text-destructive">{error}</p>
   if (!items) return <Loader2 className="w-6 h-6 animate-spin text-primary" />
 
+  // Two sections: the petition(s), and below them "Supporting Documents" (letters, reports ... sent for review apart from the petition) - shown only once one was sent.
+  const petitions = items.filter((item) => item.kind !== 'supporting')
+  const supportingDocuments = items.filter((item) => item.kind === 'supporting')
+  const rowsOf = (list) => (
+    <ul className="card !p-0 divide-y divide-border">
+      {list.map((item) => (
+        <li key={item.documentId} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="w-5 h-5" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground truncate">{item.fileName}</p>
+            <p className="text-xs text-muted-foreground">Sent for your review {dateLabel(item.sentAt)}</p>
+            {item.note && <p className="mt-1 text-xs text-foreground/80 whitespace-pre-wrap break-words">Note from the case manager: {item.note}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => setViewing(item)}
+            onMouseEnter={() => prefetchPetition(item.documentId)}
+            onFocus={() => prefetchPetition(item.documentId)}
+            className="btn-primary inline-flex items-center gap-1.5"
+          >
+            <Eye className="w-4 h-4" /> Open
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+
   return (
     <div className="space-y-4">
-      {items.length === 0 ? (
+      {petitions.length === 0 ? (
         <div className="card text-center py-10">
           <FileText className="w-8 h-8 mx-auto text-muted-foreground/60" />
           <p className="mt-3 text-sm font-semibold text-foreground">No petition has been sent for your review yet</p>
           <p className="mt-1 text-sm text-muted-foreground">When the case manager sends the petition for attorney review it appears here, and you are notified by email and in your browser.</p>
         </div>
       ) : (
-        <ul className="card !p-0 divide-y divide-border">
-          {items.map((item) => (
-            <li key={item.documentId} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="w-5 h-5" /></span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground truncate">{item.fileName}</p>
-                <p className="text-xs text-muted-foreground">Sent for your review {dateLabel(item.sentAt)}</p>
-                {item.note && <p className="mt-1 text-xs text-foreground/80 whitespace-pre-wrap break-words">Note from the case manager: {item.note}</p>}
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewing(item)}
-                onMouseEnter={() => prefetchPetition(item.documentId)}
-                onFocus={() => prefetchPetition(item.documentId)}
-                className="btn-primary inline-flex items-center gap-1.5"
-              >
-                <Eye className="w-4 h-4" /> Open
-              </button>
-            </li>
-          ))}
-        </ul>
+        rowsOf(petitions)
+      )}
+
+      {supportingDocuments.length > 0 && (
+        <section className="space-y-2 pt-4" aria-labelledby="supporting-documents-heading">
+          <div>
+            <h2 id="supporting-documents-heading" className="text-base font-bold text-foreground">Supporting Documents</h2>
+            <p className="text-sm text-muted-foreground">Letters, reports and other documents the case manager has shared for your review, separate from the petition.</p>
+          </div>
+          {rowsOf(supportingDocuments)}
+        </section>
       )}
 
       {viewing && <PetitionViewer item={viewing} onClose={() => setViewing(null)} />}
