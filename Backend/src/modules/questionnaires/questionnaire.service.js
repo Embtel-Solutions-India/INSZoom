@@ -36,7 +36,7 @@ const { applyRequirementLogicToAll } = require("./requirementLogic");
 const adminEdits = require("./adminEdits");
 const employerViewAccess = require("../cases/employer-view-access");
 const requestedFields = require("../information-requests/requested-fields");
-const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
+const { H4_CHECKLIST_DEFINITIONS, I765_EAD_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
@@ -2466,6 +2466,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // authored content replacing singlePartyChecklists.js's generic scaffold
   // for these three filing types — see h4Checklist.js's own banner.
   ...H4_CHECKLIST_DEFINITIONS,
+  // I-765 EAD (visaType I765EAD): standalone case type with the H-4 EAD checklist content - see h4Checklist.js.
+  ...I765_EAD_CHECKLIST_DEFINITIONS,
   // COS to F-2 — a REAL, standalone case-creation visaType (COSF2),
   // isDefault:true, auto-resolved the moment a case exists with that
   // visaType - exactly like the H-4 filing types above. One combined

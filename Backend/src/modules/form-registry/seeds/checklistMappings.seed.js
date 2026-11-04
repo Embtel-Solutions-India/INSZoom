@@ -165,6 +165,8 @@ for (const visaType of ["TN Canada", "TN Mexico"]) {
 set("H4EXTENSION", "I-539", [cm("h4_extension_questionnaire", AUTO)]);
 set("H4EXTENSION", "I-539A", [cm("h4_extension_questionnaire", COND)]);
 set("H4EAD", "I-765", [cm("h4_ead_questionnaire", AUTO)]);
+// I-765 EAD: the H-4 EAD checklist content under its own key
+set("I765EAD", "I-765", [cm("i765_ead_questionnaire", AUTO)]);
 set("H4EXTENSIONEAD", "I-539", [cm("h4_extension_ead_questionnaire", AUTO)]);
 set("H4EXTENSIONEAD", "I-539A", [cm("h4_extension_ead_questionnaire", COND)]);
 set("H4EXTENSIONEAD", "I-765", [cm("h4_extension_ead_questionnaire", AUTO)]);

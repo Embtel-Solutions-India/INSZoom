@@ -219,6 +219,8 @@ const VISA_CATEGORIES = {
   "H4EXTENSION": { caseStructure: "single", forms: ["i-539"], label: "H-4 Extension" },
   "H4EAD": { caseStructure: "single", forms: ["i-765"], label: "H-4 EAD" },
   "H4EXTENSIONEAD": { caseStructure: "single", forms: ["i-539", "i-765"], label: "H-4 Extension + EAD" },
+  // I-765 EAD (filingTypes.js's I765_EAD): same checklist as H4EAD, Form I-765 only.
+  "I765EAD": { caseStructure: "single", forms: ["i-765"], label: "I-765 EAD" },
   // Single-party filing-type variant (filingTypes.js's COS_F2) — distinct
   // visaType string stored on Case.visaType for cases created via
   // single-party-filing.controller.js, separate from the generic "F-2"

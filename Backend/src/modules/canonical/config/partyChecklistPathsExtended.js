@@ -1808,6 +1808,7 @@ const EXTENDED_ROWS = {
   cos_h4_questionnaire: T12,
   h4_extension_questionnaire: T13,
   h4_ead_questionnaire: T14,
+  i765_ead_questionnaire: T14,
   h4_extension_ead_questionnaire: T15,
   cos_b2_questionnaire: T11,
   green_card_ir1_beneficiary_checklist: T16,

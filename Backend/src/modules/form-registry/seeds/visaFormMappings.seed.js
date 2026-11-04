@@ -281,6 +281,9 @@ add(
   i765("H4EAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "H-4 EAD filing type (standalone, no extension of H-4 status) — I-765 is the primary and only USCIS form." })
 );
 add(
+  i765("I765EAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "I-765 EAD filing type (same checklist as H-4 EAD) — I-765 is the primary and only USCIS form." })
+);
+add(
   i539AutoCreate("H4EXTENSIONEAD", { notes: "H-4 Extension + EAD combined filing type — I-539 filed together with I-765 per USCIS guidance." }),
   i539A("H4EXTENSIONEAD"),
   i765("H4EXTENSIONEAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "Filed together with I-539 for this combined filing type." })
