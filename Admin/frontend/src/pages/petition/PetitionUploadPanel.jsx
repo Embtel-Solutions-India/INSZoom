@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Upload, Loader2, FileText, Download, Eye, X, AlertCircle, CheckCircle, MessageSquare, UserCheck, Users } from 'lucide-react'
-import { documentsApi, petitionReviewApi } from '../../services/api'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Upload, Loader2, FileText, Download, Eye, X, AlertCircle, CheckCircle, MessageSquare, UserCheck, Users, Sparkles } from 'lucide-react'
+import { documentsApi, petitionReviewApi, petitionAiReviewApi } from '../../services/api'
+import { aiStatusOf, TONE_CLASS } from './petitionAiStatus'
 import { useOptionalSocket } from '../../contexts/SocketContext'
 import { PetitionChatModal, timeLabel } from './PetitionFeedbackThread'
 import ConfirmModal from '../../components/ConfirmModal'
@@ -8,6 +9,8 @@ import usePetitionStream, { prefetchPetition, waitUntilReady } from './usePetiti
 import { petitionReviewApi as reviewApi } from '../../services/api'
 
 const AUDIENCE_LABEL = { client: 'the client', petitioner: 'the petitioner', employer: 'the employer' }
+// Petition AI Review: the findings panel is loaded only when opened, so this page's own code and first paint are unchanged
+const PetitionAiReviewPanel = lazy(() => import('./PetitionAiReviewPanel'))
 
 // Manual petition upload - separate from the auto-assembled
 // PetitionPackage pipeline (PetitionVersionList/PetitionViewer above this on
@@ -35,6 +38,10 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
   const [justUploaded, setJustUploaded] = useState(null)
   const [chat, setChat] = useState(null)
   const [confirm, setConfirm] = useState(null) // { doc, target } waiting for the case manager's OK
+  // Petition AI Review (staff): null = not available (switched off with no results, or the API answered with an error) - then nothing new is shown
+  const [ai, setAi] = useState(null) // { enabled, byDoc: Map(documentId -> scan summary) }
+  const [aiOpen, setAiOpen] = useState(null) // the petition whose AI Review panel is open
+  const [aiSignal, setAiSignal] = useState(0) // bumped on a live event so the open panel re-reads
   const hasLoadedOnce = useRef(false)
 
   const loadReview = useCallback(async () => {
@@ -46,19 +53,30 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
     }
   }, [caseId])
 
+  const loadAi = useCallback(async () => {
+    try {
+      const res = await petitionAiReviewApi.listForCase(caseId)
+      const data = res.data?.data || {}
+      const byDoc = new Map((data.petitions || []).map((item) => [String(item.documentId), item.scan]))
+      setAi(data.enabled || [...byDoc.values()].some(Boolean) ? { enabled: Boolean(data.enabled), byDoc } : null)
+    } catch {
+      setAi(null) // an add-on: the petition list works exactly as before without it
+    }
+  }, [caseId])
+
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true)
     try {
       const res = await documentsApi.listPetitionUploads(caseId)
       setUploads(res.data.documents || res.data.data || [])
-      await loadReview()
+      await Promise.all([loadReview(), loadAi()])
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to load uploaded petitions')
     } finally {
       hasLoadedOnce.current = true
       setLoading(false)
     }
-  }, [caseId, loadReview])
+  }, [caseId, loadReview, loadAi])
 
   useEffect(() => { load() }, [load, refreshSignal])
 
@@ -68,8 +86,10 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
     const caseMatches = (payload) => !payload?.caseId || String(payload.caseId) === String(caseId)
     const offMessage = socket.subscribe('petition:message', (payload) => { if (caseMatches(payload)) loadReview() })
     const offReview = socket.subscribe('petition:review', (payload) => { if (caseMatches(payload)) loadReview() })
-    return () => { offMessage?.(); offReview?.() }
-  }, [socket, caseId, loadReview])
+    // AI review progress / finished (the server sends at most one progress event per scan every 2 s)
+    const offAi = socket.subscribe('petition:ai_review', (payload) => { if (caseMatches(payload)) { loadAi(); setAiSignal((n) => n + 1) } })
+    return () => { offMessage?.(); offReview?.(); offAi?.() }
+  }, [socket, caseId, loadReview, loadAi])
 
   const reviewByDoc = useMemo(() => new Map((review.items || []).map((item) => [String(item.documentId), item])), [review.items])
   const audienceName = review.audience ? `${review.audience.name || 'the client'} (${review.audience.role})` : ''
@@ -93,7 +113,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
       const res = await documentsApi.listPetitionUploads(caseId)
       const docs = res.data.documents || res.data.data || []
       setUploads(docs)
-      await loadReview()
+      await Promise.all([loadReview(), loadAi()])
       // the two options right after an upload: the newest petition is the one just uploaded
       const newest = [...docs].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]
       setJustUploaded(newest ? String(newest._id) : null)
@@ -228,6 +248,17 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
+                    {ai && (() => {
+                      const status = aiStatusOf(ai.byDoc.get(String(doc._id)))
+                      return (
+                        <>
+                          <span className={`hidden items-center rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline-flex ${TONE_CLASS[status.tone]}`} data-testid={`ai-chip-${doc._id}`}>{status.text}</span>
+                          <button type="button" onClick={() => setAiOpen(doc)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                            <Sparkles className="h-3.5 w-3.5" /> AI Review
+                          </button>
+                        </>
+                      )
+                    })()}
                     <button onClick={() => setPreviewDoc(doc)} onMouseEnter={() => prefetchPetition(String(doc._id))} onFocus={() => prefetchPetition(String(doc._id))} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
                       <Eye className="h-3.5 w-3.5" /> View
                     </button>
@@ -309,6 +340,20 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
         />
       )}
       {chat && <PetitionChatModal item={chat} onClose={() => { setChat(null); loadReview() }} onChanged={loadReview} />}
+      {aiOpen && (
+        <Suspense fallback={null}>
+          <PetitionAiReviewPanel
+            caseId={caseId}
+            documentId={String(aiOpen._id)}
+            documentName={aiOpen.originalName || aiOpen.fileName}
+            scanId={ai?.byDoc.get(String(aiOpen._id))?.id || ''}
+            refreshSignal={aiSignal}
+            onClose={() => setAiOpen(null)}
+            onChanged={loadAi}
+            onOpenPage={(page) => { setPreviewDoc({ ...aiOpen, _page: page }); setAiOpen(null) }}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }
@@ -354,7 +399,7 @@ export function PetitionUploadPreviewModal({ doc, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-neutral-900" role="dialog" aria-modal="true" aria-label={`Petition: ${name}`}>
-      {status === 'ready' && <iframe title="petition-preview" src={url} onLoad={() => setPainted(true)} className="h-full w-full border-0" />}
+      {status === 'ready' && <iframe title="petition-preview" src={doc._page ? `${url}#page=${doc._page}` : url} onLoad={() => setPainted(true)} className="h-full w-full border-0" />}
 
       {status === 'error' && (
         <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-white">

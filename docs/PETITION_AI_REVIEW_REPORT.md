@@ -17,7 +17,7 @@ This file is the one place that records every phase of the Petition AI Review su
 | 2 | Own Gemini caller, prompt, validation, summary | DONE |
 | 3 | Durable job, worker, automatic upload trigger | DONE |
 | 4 | API + notifications | DONE |
-| 5 | Admin UI | pending |
+| 5 | Admin UI | DONE |
 | 6 | Full verification + final report | pending |
 
 ---
@@ -218,4 +218,29 @@ REGRESSION4_PLACEHOLDER
 
 **Next step:** Phase 5 - the Admin screen: an **AI Review** button and live status chip in each petition row, and the findings panel (severity counts, issues grouped by page, filters, "Open page N", Re-scan / Retry / Cancel, "AI-assisted - verify before acting"). Waiting for your approval.
 
-*(Phases 5-6 are added below as they are completed.)*
+---
+
+## Phase 5 - Admin UI (DONE)
+
+**Done** (Admin frontend; new files in `Admin/frontend/src/pages/petition/`, a few guarded lines in `PetitionUploadPanel.jsx` and `services/api.js`):
+- `services/api.js` - `petitionAiReviewApi` (list for a case, scan, findings, re-scan, retry, cancel).
+- `petitionAiStatus.js` - the plain-language status of a scan ("Scanning 40 of 120 pages", "3 issues (1 to fix)", "Waiting - AI billing", "No issues found", "AI review not set up", "AI review stopped"), shared by the row and the panel.
+- `PetitionUploadPanel.jsx` - in each petition row a **status chip** and an **AI Review** button. Shown only when AI review is available (switched on, or results exist); if the AI API is off or answers with an error, nothing new appears and the petition list is exactly as before. Live updates through `petition:ai_review` (the chip and an open panel refresh by themselves). "Open page N" opens the existing petition viewer at that page (`#page=N`).
+- `PetitionAiReviewPanel.jsx` - the findings window, centred and themed: status, severity counts (to fix / to check / minor), the summary, findings **grouped by page** with severity and kind filters and paging (50 at a time), "Open page N", a one-line note when some AI calls needed a retry or fallback, the pause / stop message (e.g. AI billing), and the actions **Re-scan** (asks first in the themed confirmation window), **Retry now**, **Cancel scan** (asks first). Footer: "AI-assisted - verify before acting." It is **loaded only when opened** (`React.lazy`): a separate 10 kB file (4 kB compressed), so the petition page's own code and first paint are unchanged.
+
+**Tested** - `PetitionAiReview.test.jsx` (10 tests): every status wording; the panel's counts / summary / page groups / disclaimer; Open page N; filters re-ask the server; Re-scan confirmation (Cancel does nothing, confirm starts a new scan and the panel follows it); stopping a running scan; Retry now on a waiting scan; the fallback line; an API error shown, never a crash; a never-scanned petition; the row chip + button opening the panel; nothing shown when the feature is off with no results or the API fails; a live event refreshing the chip. The 14 existing `PetitionUploadPanel.test.jsx` tests pass unchanged. **Admin: all 37 test files pass; production build OK** (the panel is its own chunk).
+
+REGRESSION5_PLACEHOLDER
+
+**Not done in this phase:** nothing planned for Phase 5 is left.
+
+**What you need to do:**
+1. Deploy the backend (Phases 3-4) and Admin (Phase 5).
+2. To start scanning, set `PETITION_AI_REVIEW=on` on the server and restart the backend. Gemini answers again (HTTP 200 at the last check, 2026-11-04), so scans can run; each scan spends AI credits (about one call per 4 pages).
+3. Still open: the FedEx / filing addresses for the address check; optional backup AI key.
+
+**Remaining:** Phase 6 (full verification, one small capped live scan of a real petition - needs your approval because it spends credits - and the final report).
+
+**Next step:** Phase 6. Waiting for your approval.
+
+*(Phase 6 is added below when it is completed.)*
