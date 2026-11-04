@@ -279,6 +279,9 @@ function serializePremiumProcessingAddon(caseData) {
 }
 
 function canAssignCase(user, caseData) {
+  // Owner rule (2026-11-05): a case manager can open and work every case but never assigns one - not to someone else, not to themselves, not as an
+  // additional case manager, not a team lead, not an ownership transfer. Team leads, admins and super admins assign.
+  if (normalizeRole(user?.role) === "case_manager") return false;
   if (caseService.canAccessCase(user, caseData)) return true;
   return normalizeRole(user?.role) === "team_lead" && !caseData.assignedCaseManager;
 }

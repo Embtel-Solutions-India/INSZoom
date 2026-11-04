@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import WrappingSelect from './ui/WrappingSelect'
 import { ExistingPersonNotice } from './PersonCases'
+import { sortStaff, staffOption } from '../utils/staffOptions'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
@@ -161,12 +162,8 @@ const CreateCaseModal = ({
   useEffect(() => {
     // case managers + every team lead (some cases are handled by a team lead with no case manager)
     usersApi.caseManagers({ includeTeamLeads: true })
-      .then((res) => {
-        // all case managers A-Z first, then all team leads A-Z below them
-        const nameOf = (user) => (user.name || user.displayName || user.email || '').toLowerCase()
-        const rank = (user) => (user.role === 'team_lead' ? 1 : 0)
-        setCaseManagers([...(res.data?.caseManagers || [])].sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b))))
-      })
+      // everyone at my level and below: case managers A-Z, then team leads, admins, super admins (utils/staffOptions.js)
+      .then((res) => setCaseManagers(sortStaff(res.data?.caseManagers)))
       .catch((err) => console.error('Error fetching case managers:', err))
   }, [])
 
@@ -594,7 +591,7 @@ const CreateCaseModal = ({
               options={[
                 { value: '', label: 'Unassigned' },
                 // team leads carry a soft grey "Team Lead" tag on the right of the row
-                ...caseManagers.map((cm) => ({ value: cm._id, label: cm.name || cm.displayName || cm.email, ...(cm.role === 'team_lead' ? { tag: 'Team Lead' } : {}) })),
+                ...caseManagers.map(staffOption), // grey role label on the right for team leads / admins
               ]}
               placeholder="Unassigned"
             />
