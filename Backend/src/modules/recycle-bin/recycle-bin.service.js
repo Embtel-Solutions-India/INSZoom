@@ -123,7 +123,11 @@ async function restoreEntry(entryId, actor) {
     // re-attach what the deletion detached from records that were not deleted: the account's case list and a parent's child list
     const caseDocs = await database.collection("cases").find({ _id: { $in: entry.caseIds } }).project({ user: 1, parentCase: 1 }).toArray();
     for (const item of caseDocs) {
-      if (item.user) await database.collection("users").updateOne({ _id: item.user }, { $addToSet: { caseIds: item._id } });
+      if (item.user) {
+        await database.collection("users").updateOne({ _id: item.user }, { $addToSet: { caseIds: item._id } });
+        // a person left with no landing case (it was this one) gets it back; one who has another landing case keeps it (one login, many cases)
+        if (!item.parentCase) await database.collection("users").updateOne({ _id: item.user, $or: [{ primaryCaseId: null }, { primaryCaseId: { $exists: false } }] }, { $set: { primaryCaseId: item._id } });
+      }
       if (item.parentCase && !entry.caseIds.some((id) => String(id) === String(item.parentCase))) {
         await database.collection("cases").updateOne({ _id: item.parentCase }, { $addToSet: { childCases: item._id } });
       }

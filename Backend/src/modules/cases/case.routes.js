@@ -17,6 +17,8 @@ const managerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 
 router.get("/my", authenticate, ctrl.getMyCase);
 router.get("/my/pipeline", authenticate, ctrl.getMyPipeline);
+// one person, many cases (staff, read-only): who already owns this e-mail, and a case's people's other cases
+router.get("/people/lookup", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.lookupPersonByEmail);
 router.get("/config", authenticate, authorizePermissions("cases:read"), ctrl.getCaseConfig);
 router.get("/dashboard/stats", authenticate, authorizePermissions("cases:read"), ctrl.getDashboardStats);
 router.get("/dashboard/team-lead", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:read"), ctrl.getTeamLeadDashboard);
@@ -74,6 +76,8 @@ router.post(
   authorizePermissions("payments:create"),
   ctrl.purchaseAddon
 );
+router.get("/:id/person-cases", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.getPersonCases);
+router.post("/:id/attach-to-login", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.attachCaseToLogin);
 router.get("/:id", authenticate, authorizePermissions("cases:read"), ctrl.getCase);
 router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.updateCase);
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);

@@ -14,6 +14,8 @@ import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard, { isPremiumChecklist } from '../components/ChecklistApprovalCard'
 import WrappingSelect from '../components/ui/WrappingSelect'
+import { OtherCasesStrip, AttachToLoginBanner } from '../components/PersonCases'
+import { sortStaff, staffOption } from '../utils/staffOptions'
 import { usersApi, uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
@@ -380,6 +382,8 @@ const CRMCaseDetail = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
+  // case managers never assign a case (owner rule): no Assign Staff / Edit, no "Awaiting staff assignment" bar; they can still see who is on it
+  const canAssignStaff = user?.role !== 'case_manager'
   const { subscribe, connected } = useSocket()
   const [liveUpdateBanner, setLiveUpdateBanner] = useState('')
   const [activeTab, setActiveTab] = useState('overview')
@@ -905,11 +909,7 @@ const CRMCaseDetail = () => {
       const response = await api.get('/users/assignable')
       setUsers(response.data.users || [])
       usersApi.caseManagers({ includeTeamLeads: true })
-        .then((res) => {
-          const nameOf = (person) => (person.name || person.displayName || person.email || '').toLowerCase()
-          const rank = (person) => (person.role === 'team_lead' ? 1 : 0)
-          setAssignStaff([...(res.data?.caseManagers || [])].sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b))))
-        })
+        .then((res) => setAssignStaff(sortStaff(res.data?.caseManagers))) // everyone at my level and below
         .catch((err) => console.error('Error fetching staff:', err)) // the case-manager-only list below still works
     } catch (error) {
       usersLoaded.current = false
@@ -944,7 +944,7 @@ const CRMCaseDetail = () => {
     if (['overview', 'documents', 'forms', 'petition', 'tracking', 'feedback'].includes(requestedTab)) {
       setActiveTab(requestedTab)
     }
-    if (!assignmentPrompted && params.get('assign')) {
+    if (!assignmentPrompted && params.get('assign') && canAssignStaff) {
       setAssignType(params.get('assign'))
       setShowAssignModal(true)
       setAssignmentPrompted(true)
@@ -1630,7 +1630,7 @@ const CRMCaseDetail = () => {
   const sameUserId = (a, b) => Boolean(a && b) && String(a._id || a.id || a) === String(b._id || b.id || b)
   const additionalCaseManagers = Array.isArray(caseData?.additionalCaseManagers) ? caseData.additionalCaseManagers : []
   const addableCaseManagers = (assignStaff.length ? assignStaff : users).filter((candidate) => (
-    ['case_manager', 'team_lead'].includes(candidate.role)
+    ['case_manager', 'team_lead', 'admin', 'super_admin'].includes(candidate.role)
     && !sameUserId(candidate, caseData?.assignedCaseManager)
     && !additionalCaseManagers.some((existing) => sameUserId(existing, candidate))
   ))
@@ -1938,7 +1938,9 @@ const CRMCaseDetail = () => {
       return caseManagers
     }
     if (assignType === 'team_lead') {
-      return users.filter(u => u.role === 'team_lead')
+      // every team lead (a team lead sees the other team leads, not only their own team); the older list is only a fallback
+      const leads = assignStaff.filter((person) => person.role === 'team_lead')
+      return leads.length ? leads : users.filter(u => u.role === 'team_lead')
     }
     if (assignType === 'attorney') {
       return attorneyUsers
@@ -2161,15 +2163,20 @@ const CRMCaseDetail = () => {
               </div>
               <span className="text-xs text-muted-foreground">Share with client for Immiglance portal login</span>
             </div>
+            {/* one person, many cases: this person's other cases, each opening its own page */}
+            <OtherCasesStrip caseId={caseData._id} />
+            {/* a case on no client login whose email belongs to an existing client (e.g. a second GHL card): add it to their login, after a confirmation */}
+            <AttachToLoginBanner caseData={caseData} onAttached={() => fetchCaseDetail(true)} />
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}
             {caseData.caseRole === 'employee' && (
               <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
             )}
+            {(canAssignStaff || !isAwaitingAssignment()) && (
             <button
               onClick={() => {
-                if (isAwaitingAssignment()) {
+                if (isAwaitingAssignment() && canAssignStaff) {
                   setAssignError('')
                   setShowAssignModal(true)
                 } else {
@@ -2179,13 +2186,14 @@ const CRMCaseDetail = () => {
               className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
             >
               <User className="w-4 h-4" />
-              {isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
+              {!canAssignStaff ? 'View Staff' : isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
             </button>
+            )}
           </div>
         </div>
       </div>
 
-      {isAwaitingAssignment() && (
+      {canAssignStaff && isAwaitingAssignment() && (
         <div
           role="status"
           className="flex flex-col gap-1.5 rounded-md border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-3 py-1.5 sm:flex-row sm:items-center sm:justify-between"
@@ -3808,7 +3816,7 @@ const CRMCaseDetail = () => {
                     onChange={(value) => setAddCaseManagerId(value)}
                     disabled={teamActionBusy}
                     placeholder="Select case manager"
-                    options={addableCaseManagers.map((candidate) => ({ value: candidate._id, label: candidate.name || candidate.displayName || candidate.email, ...(candidate.role === 'team_lead' ? { tag: 'Team Lead' } : {}) }))}
+                    options={addableCaseManagers.map(staffOption)}
                   />
                   <button
                     type="button"
@@ -3836,6 +3844,7 @@ const CRMCaseDetail = () => {
               >
                 Close
               </button>
+              {canAssignStaff && (
               <button
                 type="button"
                 onClick={() => {
@@ -3848,6 +3857,7 @@ const CRMCaseDetail = () => {
               >
                 Edit
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -3895,7 +3905,7 @@ const CRMCaseDetail = () => {
                   onChange={(value) => setAssigneeId(value)}
                   placeholder={assignType === 'attorney' ? 'Select attorney' : 'Select staff member'}
                   // a team lead in the Case Manager list carries a soft grey "Team Lead" tag on the right of the row
-                  options={getFilteredUsers().map((person) => ({ value: person._id, label: person.name || person.displayName || person.email, ...(assignType === 'case_manager' && person.role === 'team_lead' ? { tag: 'Team Lead' } : {}) }))}
+                  options={getFilteredUsers().map((person) => (assignType === 'case_manager' ? staffOption(person) : { value: person._id, label: person.name || person.displayName || person.email }))}
                 />
                 {assignType === 'attorney' && attorneyUsers.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">No attorney accounts exist yet.</p>

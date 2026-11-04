@@ -8,11 +8,12 @@ const { idOf, isCaseManagerOfCase, syncPrincipalChildManagers } = require("./cas
 // live in case-managers.controller.js. The primary case manager (assignedCaseManager) is still changed through the
 // existing assign-case-manager flow; nothing here touches it.
 
-// The assignable pool is the users holding the case_manager role, plus team leads (some cases are handled by a team lead with no case manager).
+// The assignable pool: case managers, team leads, admins and super admins - the same people the main assignment accepts (REASSIGNABLE_ROLES);
+// the Admin lists only offer people at the assigner's own level and below (user.service.js assignableStaffRoles).
 async function findAssignableCaseManager(userId) {
   const user = await User.findById(userId).select("_id name displayName email role isActive");
   if (!user || user.isActive === false) return { error: "Case manager was not found or is inactive" };
-  if (!["case_manager", "team_lead"].includes(normalizeRole(user.role))) return { error: "Selected user is not a case manager or team lead" };
+  if (!["case_manager", "team_lead", "admin", "super_admin"].includes(normalizeRole(user.role))) return { error: "Selected user is not a staff member who can work on a case" };
   return { user };
 }
 

@@ -56,6 +56,8 @@ const CRMCases = ({ caseGroup } = {}) => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
+  // case managers never assign a case (owner rule): no "Awaiting assignment" prompt for them
+  const canAssign = user?.role !== 'case_manager'
   const { subscribe, connected } = useSocket()
   const [cases, setCases] = useState([])
   const canDeleteCase = CAN_DELETE_CASE_ROLES.includes(user?.role)
@@ -714,9 +716,9 @@ const CRMCases = ({ caseGroup } = {}) => {
                     <div className="flex items-center justify-between gap-2 pt-1">
                       {caseManagerName ? (
                         <p className="text-xs text-muted-foreground truncate">{caseManagerName}</p>
-                      ) : (
+                      ) : canAssign ? (
                         <span className="text-xs text-amber-700 font-medium dark:text-amber-400">Awaiting assignment</span>
-                      )}
+                      ) : <span className="text-xs text-muted-foreground">—</span>}
                       <div className="flex items-center gap-2 shrink-0">
                           {canDeleteCase && (
                             <button
@@ -831,9 +833,9 @@ const CRMCases = ({ caseGroup } = {}) => {
                           <p className="truncate" title={caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName}>
                             {caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName}
                           </p>
-                        ) : (
+                        ) : canAssign ? (
                           <span className="text-amber-700 font-medium text-xs dark:text-amber-400">Awaiting assignment</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center justify-end gap-1.5">

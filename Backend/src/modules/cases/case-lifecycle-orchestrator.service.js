@@ -469,9 +469,14 @@ class CaseLifecycleOrchestrator {
       // button) - sending case-created-client as well would be a second,
       // redundant email for the same event.
       const clientUser = caseData.user
-        ? await User.findById(caseData.user).select("+password role").catch(() => null)
+        ? await User.findById(caseData.user).select("+password +inviteTokenHash role isActive mustSetPassword caseIds").catch(() => null)
         : null;
-      const invitePending = Boolean(clientUser) && clientUser.role === "client" && !clientUser.password;
+      // The set-password invitation (sent by createCase) replaces this e-mail ONLY for a brand-new login. A person with a working login (password or
+      // Google) or with another case on the same login (one login, many cases) always gets "case created - log in" with their existing details.
+      const caseLinks = require("./caseLinks.service");
+      const ownIds = new Set([String(caseData._id), ...(caseData.childCases || []).map((id) => String(id?._id || id))]);
+      const hasOtherCase = (clientUser?.caseIds || []).some((id) => !ownIds.has(String(id)));
+      const invitePending = Boolean(clientUser) && clientUser.role === "client" && !caseLinks.hasWorkingLogin(clientUser) && !hasOtherCase;
       await notificationService.createNotification({
         userId: caseData.user,
         type: "case_created",

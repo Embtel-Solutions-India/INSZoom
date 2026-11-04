@@ -73,6 +73,8 @@ export default function CaseGroupPage({ caseGroup }) {
   const [overallTotal, setOverallTotal] = useState(null)
   const fetchSeq = useRef(0)
   const { user } = useAuth()
+  // case managers never assign a case (owner rule): no assign button and no "Awaiting assignment" prompt for them
+  const canAssign = user?.role !== 'case_manager'
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState('')
   const canDelete = CAN_DELETE_CASE_ROLES.includes(user?.role)
@@ -300,7 +302,7 @@ export default function CaseGroupPage({ caseGroup }) {
                       <td className="px-4 py-3 text-foreground">{resolveDisplayVisa(item)}</td>
                       <td className="px-4 py-3"><StageSummary caseItem={item} /></td>
                       <td className="px-4 py-3 capitalize text-muted-foreground">{titleCase(item.status)}</td>
-                      <td className="px-4 py-3 text-foreground">{manager || <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting assignment</span>}</td>
+                      <td className="px-4 py-3 text-foreground">{manager || (canAssign ? <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting assignment</span> : <span className="text-xs text-muted-foreground">—</span>)}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(item.createdAt)}</td>
                       {canDelete && (
                         <td className="px-4 py-3 text-right">
@@ -374,6 +376,8 @@ export default function CaseGroupPage({ caseGroup }) {
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold uppercase text-primary">{manager.charAt(0)}</span>
                         <span className="truncate">{manager}</span>
                       </p>
+                    ) : !canAssign ? (
+                      <span className="text-xs text-muted-foreground">—</span>
                     ) : (
                       <button
                         type="button"

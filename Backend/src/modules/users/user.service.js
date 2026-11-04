@@ -5,7 +5,7 @@ const StaffPerformance = require("../../models/StaffPerformance");
 const User = require("../../models/User");
 const sessionService = require("../auth/session.service");
 const { canCreateUserRole, canModifyUser } = require("../authorization/rbac.service");
-const { normalizeRole } = require("../authorization/roleHierarchy");
+const { normalizeRole, ROLE_HIERARCHY } = require("../authorization/roleHierarchy");
 const caseService = require("../cases/case.service");
 const { invalidateUserCache } = require("../../config/redis");
 const { caseManagerMatch } = require("../cases/caseManagerAccess");
@@ -181,15 +181,22 @@ async function getAssignableUsers(currentUser, role, options = {}) {
 // "Assign Staff" at case creation: the case managers (scoped exactly as before) plus EVERY active team lead - including the requesting team
 // lead - since some cases are handled by a team lead with no case manager. A team lead picked here takes the case manager's place on the case
 // (assignedCaseManager), so the existing assignment rules (emails, child cases, pipeline card) apply unchanged.
+// Owner rule (2026-11-05): whoever assigns sees every active person at THEIR OWN level and below - a team lead sees all team leads and all case
+// managers (not only their team), an admin also the admins, a super admin everyone. Listed case managers first, then team leads, admins, super
+// admins; A-Z within each group.
+const ASSIGNABLE_STAFF_ORDER = ["case_manager", "team_lead", "admin", "super_admin"];
+function assignableStaffRoles(currentUser) {
+  const viewerRank = ROLE_HIERARCHY[normalizeRole(currentUser?.role)];
+  if (viewerRank === undefined) return ["case_manager"];
+  return ASSIGNABLE_STAFF_ORDER.filter((role) => ROLE_HIERARCHY[role] >= viewerRank);
+}
+
 async function getAssignableStaff(currentUser) {
-  const caseManagers = await getAssignableUsers(currentUser, "case_manager");
-  const teamLeads = await User.find({ role: "team_lead", isActive: true }).select(USER_SELECT).sort({ name: 1, displayName: 1, email: 1 });
-  const byId = new Map(caseManagers.map((user) => [String(user._id), user]));
-  teamLeads.forEach((user) => { if (!byId.has(String(user._id))) byId.set(String(user._id), user.toObject()); });
-  // every case manager first, then the team leads below them; alphabetical within each group
+  const roles = assignableStaffRoles(currentUser);
+  const staff = await User.find({ role: { $in: roles }, isActive: true }).select(USER_SELECT).lean();
   const nameOf = (user) => (user.name || user.displayName || user.email || "").toLowerCase();
-  const rank = (user) => (user.role === "team_lead" ? 1 : 0);
-  return [...byId.values()].sort((left, right) => rank(left) - rank(right) || nameOf(left).localeCompare(nameOf(right)));
+  const rank = (user) => ASSIGNABLE_STAFF_ORDER.indexOf(normalizeRole(user.role));
+  return staff.sort((left, right) => rank(left) - rank(right) || nameOf(left).localeCompare(nameOf(right)));
 }
 
 async function getUserOrThrow(id, currentUser) {
@@ -336,6 +343,7 @@ module.exports = {
   createUser,
   deactivateUser,
   getAssignableStaff,
+  assignableStaffRoles,
   getAssignableUsers,
   getDashboard,
   getUserActivity,
