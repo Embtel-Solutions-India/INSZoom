@@ -178,8 +178,19 @@ async function s3GetObject(key) {
   const cached = readCacheGet(key);
   if (cached) return cached;
   const { client, commands } = getS3();
-  const response = await client.send(new commands.GetObjectCommand({ Bucket: env.storage.aws.bucket, Key: key }));
-  const buffer = await s3BodyToBuffer(response.Body);
+  // Large files are read as several ranges at once (s3ParallelGet.js); small ones in one request as before. Any problem -> one whole GET.
+  const { getObjectInParts, settings } = require("./s3ParallelGet");
+  const { partBytes, concurrency } = settings();
+  const buffer = await getObjectInParts({
+    send: (command) => client.send(command),
+    makeGet: (input) => new commands.GetObjectCommand(input),
+    Bucket: env.storage.aws.bucket,
+    Key: key,
+    partBytes,
+    concurrency,
+    readBody: s3BodyToBuffer,
+    onFallback: (reason) => console.warn(`[storage] parallel read of ${key} fell back to one whole GET: ${reason}`),
+  });
   readCachePut(key, buffer);
   return buffer;
 }

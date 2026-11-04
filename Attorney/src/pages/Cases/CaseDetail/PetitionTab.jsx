@@ -4,7 +4,25 @@ import { Loader2, Eye, FileText } from 'lucide-react'
 import { petitionReviewApi } from '../../../services/api'
 import { useSocket } from '../../../context/SocketContext'
 import PetitionViewer from '../../../components/petition/PetitionViewer'
-import { prefetchPetition } from '../../../components/petition/usePetitionStream'
+import { prefetchPetition, getViewLink } from '../../../components/petition/usePetitionStream'
+
+// Speed (2026-11-04): asking for a viewer link makes the server start reading the petition into memory, so it is usually ready by the time
+// "View" is clicked. The first few petitions, once each per visit; quiet, never throws, never blocks the tab.
+const WARM_PETITIONS = 3
+const warmedPetitions = new Map() // documentId -> when it was last warmed
+const WARM_AGAIN_MS = 40 * 60 * 1000
+function warmPetitions(items) {
+  try {
+    for (const item of (items || []).slice(0, WARM_PETITIONS)) {
+      const id = String(item?.documentId || '')
+      if (!id || Date.now() - (warmedPetitions.get(id) || 0) < WARM_AGAIN_MS) continue
+      warmedPetitions.set(id, Date.now())
+      Promise.resolve().then(() => getViewLink(id)).catch(() => {})
+    }
+  } catch {
+    // only a speed-up
+  }
+}
 
 const dateLabel = (value) => {
   const date = value ? new Date(value) : null
@@ -26,7 +44,7 @@ export default function PetitionTab() {
     () =>
       petitionReviewApi
         .list(caseId)
-        .then(({ data }) => { setItems(data?.data?.items || []); setError('') })
+        .then(({ data }) => { setItems(data?.data?.items || []); setError(''); warmPetitions(data?.data?.items) })
         .catch((err) => setError(err.response?.data?.message || 'Could not load the petitions.')),
     [caseId]
   )

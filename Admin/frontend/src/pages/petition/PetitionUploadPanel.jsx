@@ -5,9 +5,10 @@ import { aiStatusOf, TONE_CLASS } from './petitionAiStatus'
 import { useOptionalSocket } from '../../contexts/SocketContext'
 import { PetitionChatModal, timeLabel } from './PetitionFeedbackThread'
 import ConfirmModal from '../../components/ConfirmModal'
-import usePetitionStream, { prefetchPetition, waitUntilReady } from './usePetitionStream'
+import usePetitionStream, { prefetchPetition, waitUntilReady, getViewLink } from './usePetitionStream'
 import { petitionReviewApi as reviewApi } from '../../services/api'
 
+const WARM_PETITIONS = 3
 const AUDIENCE_LABEL = { client: 'the client', petitioner: 'the petitioner', employer: 'the employer' }
 // Petition AI Review: the findings panel is loaded only when opened, so this page's own code and first paint are unchanged
 const PetitionAiReviewPanel = lazy(() => import('./PetitionAiReviewPanel'))
@@ -64,11 +65,30 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
     }
   }, [caseId])
 
+  // Speed (2026-11-04): asking for a viewer link makes the server start reading the petition into memory, so by the time someone clicks View
+  // it is usually ready. Only the newest few petitions, once per petition while this page is open; quiet, never throws, never blocks the list.
+  const warmed = useRef(new Set())
+  const warmLatest = useCallback((list) => {
+    try {
+      const newest = [...(list || [])].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, WARM_PETITIONS)
+      for (const doc of newest) {
+        const id = String(doc?._id || '')
+        if (!id || warmed.current.has(id)) continue
+        warmed.current.add(id)
+        Promise.resolve().then(() => getViewLink(id)).catch(() => {})
+      }
+    } catch {
+      // only a speed-up
+    }
+  }, [])
+
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true)
     try {
       const res = await documentsApi.listPetitionUploads(caseId)
-      setUploads(res.data.documents || res.data.data || [])
+      const list = res.data.documents || res.data.data || []
+      setUploads(list)
+      warmLatest(list)
       await Promise.all([loadReview(), loadAi()])
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to load uploaded petitions')
@@ -76,7 +96,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
       hasLoadedOnce.current = true
       setLoading(false)
     }
-  }, [caseId, loadReview, loadAi])
+  }, [caseId, loadReview, loadAi, warmLatest])
 
   useEffect(() => { load() }, [load, refreshSignal])
 

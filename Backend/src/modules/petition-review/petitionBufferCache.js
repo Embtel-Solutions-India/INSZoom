@@ -1,14 +1,15 @@
 // A petition PDF can be hundreds of pages. Reading it from storage and decrypting it takes far longer than sending it, so the decrypted bytes of the petitions that are being
 // looked at are kept in memory for a while: the first open pays for the read once (it is also started in the background the moment a petition is released or a viewer link is
 // asked for), every later open and every byte-range request of the PDF viewer is served from memory. Bounded by total size, entry size and age; a failed read is never kept;
-// concurrent opens share one read. PETITION_CACHE_MAX_MB (default 300) = 0 switches it off.
+// concurrent opens share one read. PETITION_CACHE_MAX_MB (default 300) = 0 switches it off; PETITION_CACHE_TTL_MINUTES (default 120 since
+// 2026-11-04, was 30) is how long an unused petition stays in memory. prime() stores a petition right at upload, so the first open is instant too.
 const MB = 1024 * 1024;
 const entries = new Map(); // key -> { promise, bytes, at }
 
 const limits = () => ({
   maxBytes: Math.max(Number(process.env.PETITION_CACHE_MAX_MB ?? 300), 0) * MB,
   maxEntry: 200 * MB,
-  ttlMs: Number(process.env.PETITION_CACHE_TTL_MINUTES || 30) * 60 * 1000,
+  ttlMs: Number(process.env.PETITION_CACHE_TTL_MINUTES || 120) * 60 * 1000,
 });
 
 function totalBytes() {
@@ -74,7 +75,20 @@ async function withRetries(fn, { attempts = Number(process.env.DOCUMENT_READ_ATT
   throw lastError;
 }
 
+/** Stores bytes already in hand (the upload itself) so the first open needs no storage read. Never throws; ignored when the cache is off. */
+function prime(key, buffer) {
+  try {
+    const { maxBytes, maxEntry } = limits();
+    if (!maxBytes || !key || !Buffer.isBuffer(buffer) || !buffer.length || buffer.length > maxEntry) return false;
+    entries.set(key, { promise: Promise.resolve(buffer), bytes: buffer.length, at: Date.now() });
+    evict();
+    return entries.has(key);
+  } catch (_error) {
+    return false;
+  }
+}
+
 const clear = () => entries.clear();
 const stats = () => ({ entries: entries.size, bytes: totalBytes() });
 
-module.exports = { getOrLoad, evict, clear, stats, withRetries, isPermanent };
+module.exports = { getOrLoad, prime, evict, clear, stats, withRetries, isPermanent };

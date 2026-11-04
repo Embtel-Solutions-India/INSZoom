@@ -524,6 +524,12 @@ async function createDocumentFromFile({ file, body, user, req }) {
     await context.caseData.save();
     // the petition starts out visible to the case team only; the case manager releases it to the attorney(s) and / or the client (modules/petition-review)
     await require("../petition-review/petitionReview.data").ensureReview(document._id, context.caseData._id).catch(() => null);
+    // keep the uploaded bytes in memory (same key readDocumentBuffer uses), so the first open of the petition needs no storage read; never throws
+    try {
+      require("../petition-review/petitionBufferCache").prime(`${document._id}:${document.storageKey}`, file.buffer);
+    } catch (_error) {
+      // only a speed-up
+    }
     // Petition AI Review: queues the page-by-page AI scan on a later tick - returns at once and never throws (does nothing unless PETITION_AI_REVIEW=on)
     try {
       require("../petition-ai-review").onPetitionUploaded({ document, caseData: context.caseData, user });
