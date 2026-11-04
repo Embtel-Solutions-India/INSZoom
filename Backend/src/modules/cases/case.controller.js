@@ -20,6 +20,7 @@ const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
 const { scopedChildIdsFor, syncPrincipalChildManagers } = require("./caseManagerAccess");
 const { pruneStaleCaseLinks, reclaimOrphanClientSideAccount } = require("../auth/staleCaseLinks");
+const caseLinks = require("./caseLinks.service");
 const caseManagersService = require("./case-managers.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
@@ -1235,7 +1236,11 @@ exports.createCase = async (req, res, next) => {
     }
     // links to cases that were deleted (they are in the recycle bin) do not count: the email is free for a new case, and the new case becomes the client's landing case
     if (existingUser) await pruneStaleCaseLinks(existingUser);
-    if (existingUser?.primaryCaseId || (existingUser?.caseIds || []).length) {
+    // One login, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md): a client who already has a case gets this one ADDED to the same login.
+    // MULTI_CASE_CLIENTS=false restores the old refusal below.
+    const multiCase = caseLinks.multiCaseClientsEnabled();
+    const existingHadCase = caseLinks.hasLinkedCase(existingUser);
+    if (!multiCase && existingHadCase) {
       return res.status(409).json({
         success: false,
         code: "CLIENT_ALREADY_HAS_CASE",
@@ -1436,7 +1441,9 @@ exports.createCase = async (req, res, next) => {
       }
 
       if (existingUser) {
-        if (!clientUser.password && !clientUser.inviteTokenHash) {
+        // a set-password invitation only for a person who cannot sign in yet and has no other case; a returning person keeps their login as it is
+        // (no new link, never made inactive) and gets the "case created - log in" e-mail instead (lifecycle orchestrator)
+        if (caseLinks.needsSetPasswordInvite(clientUser, { hadCase: multiCase && existingHadCase })) {
           setupToken = generateOpaqueToken();
           clientUser.inviteTokenHash = hashToken(setupToken);
           clientUser.inviteTokenExpiresAt = new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS);
@@ -1444,10 +1451,13 @@ exports.createCase = async (req, res, next) => {
           clientUser.isActive = false;
           clientUser.isEmailVerified = false;
         }
-        clientUser.primaryCaseId = principalCase._id;
-        clientUser.caseIds = [principalCase._id];
-        clientUser.caseRole = caseStructure === "single" ? "single" : "principal";
-        clientUser.principalCaseId = null;
+        // append (never replace) for a person who already has cases; a person with none gets exactly the old fields
+        Object.assign(clientUser, caseLinks.planExistingPersonLinks(
+          clientUser,
+          [principalCase._id],
+          { caseRole: caseStructure === "single" ? "single" : "principal", principalCaseId: null },
+          { enabled: multiCase }
+        ));
         if (sourceLead?._id) clientUser.leadId = sourceLead._id;
         await clientUser.save();
       }
@@ -1549,7 +1559,11 @@ exports.createCase = async (req, res, next) => {
       }
 
       principalCase.childCases = childCases.map((childCase) => childCase._id);
-      clientUser.caseIds = [principalCase._id, ...childCases.map((childCase) => childCase._id)];
+      // the person's earlier cases stay linked (rollback restores the snapshot taken above if anything fails)
+      clientUser.caseIds = caseLinks.mergeCaseIds(
+        multiCase && existingHadCase ? created.updatedUsers.find((row) => String(row._id) === String(clientUser._id))?.set?.caseIds || [] : [],
+        [principalCase._id, ...childCases.map((childCase) => childCase._id)]
+      );
       await clientUser.save();
       await principalCase.save();
       if (delegateInput) {
@@ -4094,5 +4108,41 @@ exports.createCaseWithClient = async (req, res, next) => {
     });
   } catch (error) {
     handleError(error, next);
+  }
+};
+
+// ---------------------------------------------------------------- one person, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md, Phase 1) - staff read-only
+const PERSON_SELECT = "name displayName email role isActive";
+const personOut = (user) => ({ _id: String(user._id), name: user.displayName || user.name || "", email: user.email, role: user.role, isActive: user.isActive !== false });
+
+// GET /cases/people/lookup?email= : does this e-mail already belong to a person, and what cases do they have? (New case: "added to the same login")
+exports.lookupPersonByEmail = async (req, res, next) => {
+  try {
+    const email = String(req.query.email || "").trim().toLowerCase();
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) return res.json({ success: true, data: { person: null, cases: [], multiCase: caseLinks.multiCaseClientsEnabled() } });
+    const user = await User.findOne({ email }).select(PERSON_SELECT).lean();
+    if (!user) return res.json({ success: true, data: { person: null, cases: [], multiCase: caseLinks.multiCaseClientsEnabled() } });
+    const cases = await caseLinks.listPersonCases(user._id);
+    return res.json({ success: true, data: { person: personOut(user), cases, multiCase: caseLinks.multiCaseClientsEnabled() } });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// GET /cases/:id/person-cases : for each person on this case (client / employer / petitioner / beneficiary), their OTHER live cases
+exports.getPersonCases = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.id).select("user employerUser petitionerUser beneficiaryUser assignedCaseManager additionalCaseManagers assignedTeamLead primaryOwner teamId caseRole parentCase").lean();
+    if (!caseData) return res.status(404).json({ success: false, message: "Case not found" });
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(404).json({ success: false, message: "Case not found" });
+    const ids = [...new Set(["user", "employerUser", "petitionerUser", "beneficiaryUser"].map((field) => caseData[field] && String(caseData[field])).filter(Boolean))];
+    const people = ids.length ? await User.find({ _id: { $in: ids }, role: { $in: ["client", "employee", "beneficiary", "user"] } }).select(PERSON_SELECT).lean() : [];
+    const data = await Promise.all(people.map(async (person) => ({
+      person: personOut(person),
+      cases: (await caseLinks.listPersonCases(person._id)).filter((row) => row._id !== String(caseData._id) && row._id !== String(caseData.parentCase || "")),
+    })));
+    return res.json({ success: true, data: data.filter((row) => row.cases.length) });
+  } catch (error) {
+    return next(error);
   }
 };

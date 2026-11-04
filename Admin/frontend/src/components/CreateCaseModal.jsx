@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import WrappingSelect from './ui/WrappingSelect'
+import { ExistingPersonNotice } from './PersonCases'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
@@ -372,6 +373,8 @@ const CreateCaseModal = ({
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder={isEmployerCase ? 'hr@acme.com' : 'jane@example.com'}
             />
+            {/* this email already has cases: the new one is added to the same login (single-party filings are not linked to a client login yet) */}
+            {!SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType] && <ExistingPersonNotice email={form.clientEmail} />}
           </div>
 
           <div>
