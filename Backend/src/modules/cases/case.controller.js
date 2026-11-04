@@ -527,7 +527,10 @@ exports.getCaseConfig = async (req, res, next) => {
 exports.getMyPipeline = async (req, res, next) => {
   try {
     const filter = caseService.buildCaseFilter({}, req.user);
-    let own = req.user.primaryCaseId ? await Case.findOne({ ...filter, _id: req.user.primaryCaseId }).select("integrations.ghl").lean() : null;
+    // the case selected in the client portal's switcher (one login, many cases); only within this person's own filter, else the usual default
+    const requested = caseLinks.requestedCaseId(req.query.caseId);
+    let own = requested ? await Case.findOne({ $and: [filter, { _id: requested }] }).select("integrations.ghl").lean() : null;
+    if (!own && req.user.primaryCaseId) own = await Case.findOne({ ...filter, _id: req.user.primaryCaseId }).select("integrations.ghl").lean();
     if (!own) own = await Case.findOne(filter).sort({ createdAt: -1 }).select("integrations.ghl").lean();
     const pipeline = own ? await require("../../integrations/ghl/ghlCaseOutbound").clientPipelineForCase(own) : null;
     res.json({ success: true, pipeline });
@@ -571,9 +574,13 @@ exports.getMyCase = async (req, res, next) => {
     // repointed at a child case for the original employer account, so it
     // reliably names "this login's own case" for both an employer and an
     // invited employee (whose primaryCaseId points at their own child case).
-    let caseData = req.user.primaryCaseId
-      ? await caseService.populateCaseQueryForClient(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean())
+    // one login, many cases: the case selected in the client portal's switcher (`?caseId=`), only if it is within this person's own filter;
+    // otherwise (no id, an old / deleted / someone else's id) exactly the default below - never an error, never another person's case
+    const requestedId = caseLinks.requestedCaseId(req.query.caseId);
+    let caseData = requestedId
+      ? await caseService.populateCaseQueryForClient(Case.findOne({ $and: [filter, { _id: requestedId }] }).lean())
       : null;
+    if (!caseData && req.user.primaryCaseId) caseData = await caseService.populateCaseQueryForClient(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean());
     if (!caseData) {
       caseData = await caseService.populateCaseQueryForClient(Case.findOne(filter).sort({ createdAt: -1 }).lean());
     }
@@ -4187,6 +4194,20 @@ exports.attachCaseToLogin = async (req, res, next) => {
     }
     setImmediate(() => require("./clientAccount.service").notifyClientOfNewCase({ caseDoc: caseData, user: client.user, setupToken: client.setupToken, actor: req.user, req }));
     return res.json({ success: true, data: { userId: String(client.user._id), email: client.user.email, invited: Boolean(client.setupToken) } });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// GET /cases/mine : every case of the signed-in client-side person, for the client portal's case switcher (one login, many cases). Their own matters
+// (and, for an employee / beneficiary, the case they are on); an employer's employee cases stay inside the employer's matter. `defaultCaseId` is the
+// landing case (primaryCaseId).
+exports.getMyCases = async (req, res, next) => {
+  try {
+    const cases = await caseLinks.listPersonCases(req.user._id);
+    const primary = req.user.primaryCaseId ? String(req.user.primaryCaseId) : "";
+    const defaultCaseId = cases.some((row) => row._id === primary) ? primary : (cases[cases.length - 1]?._id || "");
+    return res.json({ success: true, data: { cases, defaultCaseId } });
   } catch (error) {
     return next(error);
   }

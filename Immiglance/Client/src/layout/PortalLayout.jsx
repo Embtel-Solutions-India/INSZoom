@@ -3,6 +3,8 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
 import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
+import { useActiveCase } from "../context/ActiveCaseContext";
+import CaseSwitcher from "../components/CaseSwitcher";
 import { resolveDisplayVisa } from "../utils/visaDisplay";
 import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
@@ -38,6 +40,7 @@ export default function PortalLayout() {
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { multiCase, activeCaseId } = useActiveCase();
   const { data: rawCase } = useMyCase();
   const { data: profileData = {} } = useMyProfile();
   const caseData = rawCase?.case || rawCase?.data?.case || rawCase;
@@ -140,10 +143,15 @@ export default function PortalLayout() {
             </svg>
           </button>
 
+          {/* two or more cases: the same case number + visa, as a menu to open another case; one case: exactly as before */}
+          {multiCase ? (
+            <CaseSwitcher caseRef={caseRef} visaLabel={visaLabel} displayName={displayName} onSwitched={() => navigate("/dashboard")} />
+          ) : (
           <div className="min-w-0 flex-1 sm:flex-none">
             <p className="mono text-sm font-bold text-foreground truncate">{caseRef}</p>
             <p className="text-xs text-muted-foreground truncate">{visaLabel} — {displayName}</p>
           </div>
+          )}
 
           <div className="sm:ml-auto flex items-center gap-1 sm:gap-2 shrink-0">
             <span className="hidden sm:inline-block px-3 py-1.5 rounded-full bg-secondary text-xs font-bold text-foreground">
@@ -164,7 +172,13 @@ export default function PortalLayout() {
         </header>
 
         <main className="flex-1 min-w-0 overflow-x-hidden">
-          <Outlet />
+          {/* a person with several cases: wait for the open case to be known, and give each case its own page instance so nothing of the
+              previous case can show after switching. One case: rendered exactly as before. */}
+          {multiCase && !activeCaseId ? (
+            <div className="flex items-center justify-center min-h-[40vh]"><div className="w-8 h-8 rounded-full border-4 border-secondary border-t-primary animate-spin" /></div>
+          ) : (
+            <Outlet key={activeCaseId || "default"} />
+          )}
         </main>
       </div>
       {/* Its floating button would sit on top of the Messages composer's Send button. */}

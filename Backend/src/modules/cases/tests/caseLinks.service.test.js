@@ -139,3 +139,19 @@ test("GHL second card / any unlinked single-person case: staff add it to the exi
   const ghl = fs.readFileSync(path.join(__dirname, "..", "..", "..", "integrations", "ghl", "ghlCaseFactory.js"), "utf8");
   assert.match(ghl, /return \{ action: "none", reason: "Client already has a case" \}/, "GHL itself still never links a second card automatically");
 });
+
+test("Phase 2A: the client portal's selected case is honoured only within the person's own cases, never an error", () => {
+  assert.equal(links.requestedCaseId(A), A);
+  assert.equal(links.requestedCaseId([A, B]), A);
+  for (const bad of [undefined, "", "abc", "{$ne:1}", "x".repeat(24)]) assert.equal(links.requestedCaseId(bad), null);
+  const cases = fs.readFileSync(path.join(__dirname, "..", "case.controller.js"), "utf8");
+  assert.match(cases, /Case\.findOne\(\{ \$and: \[filter, \{ _id: requestedId \}\] \}\)/, "/cases/my: inside the person's own filter");
+  assert.match(cases, /Case\.findOne\(\{ \$and: \[filter, \{ _id: requested \}\] \}\)\.select\("integrations\.ghl"\)/, "/cases/my/pipeline: inside the person's own filter");
+  assert.match(cases, /if \(!caseData && req\.user\.primaryCaseId\)/, "falls back to the old default");
+  const routes = fs.readFileSync(path.join(__dirname, "..", "case.routes.js"), "utf8");
+  assert.ok(routes.indexOf('router.get("/mine"') > 0 && routes.indexOf('router.get("/mine"') < routes.indexOf('router.get("/:id", '), "/mine is matched before /:id");
+  const intake = fs.readFileSync(path.join(__dirname, "..", "..", "client-intake", "client-intake.service.js"), "utf8");
+  assert.match(intake, /assertCaseAccess\(requestedCaseId, user\)\.catch\(\(\) => null\)/, "intake: an inaccessible case falls back, never errors");
+  const payments = fs.readFileSync(path.join(__dirname, "..", "..", "payments", "payment.controller.js"), "utf8");
+  assert.match(payments, /Case\.findOne\(\{ _id: id, user: req\.user\._id \}\)/, "payments: only the person's own case");
+});

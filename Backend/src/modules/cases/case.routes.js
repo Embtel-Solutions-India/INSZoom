@@ -17,6 +17,8 @@ const managerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 
 router.get("/my", authenticate, ctrl.getMyCase);
 router.get("/my/pipeline", authenticate, ctrl.getMyPipeline);
+// one login, many cases: the signed-in person's cases for the client portal's switcher
+router.get("/mine", authenticate, ctrl.getMyCases);
 // one person, many cases (staff, read-only): who already owns this e-mail, and a case's people's other cases
 router.get("/people/lookup", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.lookupPersonByEmail);
 router.get("/config", authenticate, authorizePermissions("cases:read"), ctrl.getCaseConfig);

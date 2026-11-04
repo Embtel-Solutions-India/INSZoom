@@ -8,6 +8,7 @@ import { startBranding } from "./utils/branding";
 startBranding(API_BASE_URL);
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
+import { ActiveCaseProvider } from "./context/ActiveCaseContext.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import ThemeSync from "./context/ThemeSync.jsx";
@@ -34,7 +35,10 @@ createRoot(document.getElementById("root")).render(
         <AuthProvider>
           <ThemeSync />
           <SocketProvider>
-            <App />
+            {/* one login, many cases: which case is open (nothing changes for a one-case client) */}
+            <ActiveCaseProvider>
+              <App />
+            </ActiveCaseProvider>
           </SocketProvider>
         </AuthProvider>
       </ThemeProvider>

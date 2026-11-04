@@ -179,6 +179,16 @@ async function request(path, options = {}, retry = true) {
   return res;
 }
 
+// One login, many cases (docs/MULTI_CASE_CLIENTS_PLAN.md, Phase 2): the case picked in the portal's case switcher (context/ActiveCaseContext.jsx).
+// It is set ONLY for a person with two or more cases; while it is empty every request below is exactly what it was before (the server picks the
+// default case), so a one-case client sends the same requests as always. The server honours it only within the person's own cases.
+let activeCase = { id: null, capacity: "" };
+export const activeCaseStore = {
+  get: () => activeCase,
+  set: (next) => { activeCase = next?.id ? { id: String(next.id), capacity: next.capacity || "" } : { id: null, capacity: "" }; },
+};
+const withCase = (path) => (activeCase.id ? `${path}${path.includes("?") ? "&" : "?"}caseId=${encodeURIComponent(activeCase.id)}` : path);
+
 export const api = {
   get: (path, options) => request(path, { method: "GET", ...options }),
   post: (path, body, options) =>
@@ -313,14 +323,15 @@ export const profileApi = {
   get: () => api.get("/clients/me"),
   save: (data, completed, lastStep) =>
     api.put("/clients/me", { data, completed, lastStep }),
-  getIntake: () => api.get("/client-intake/me"),
+  getIntake: () => api.get(withCase("/client-intake/me")),
   saveIntake: (data, context = {}) => api.put("/client-intake/me", { data, ...context }),
   submitIntake: (caseId) => api.post("/client-intake/me/submit", { caseId }),
 };
 
 // ── Documents ────────────────────────────────────────
 export const documentsApi = {
-  list: () => api.get("/documents/me"),
+  // the selected case's documents only (an employer matter keeps listing its employees' documents, so it is never narrowed)
+  list: () => api.get(activeCase.capacity && !activeCase.capacity.startsWith("employer") ? withCase("/documents/me") : "/documents/me"),
   count: () => api.get("/documents/me/count"),
   upload: (file, category, documentType, context = {}) => {
     const fd = new FormData();
@@ -517,8 +528,10 @@ export const telemetryApi = {
 
 // ── Cases ────────────────────────────────────────────
 export const casesApi = {
-  my: () => api.get("/cases/my"),
-  myPipeline: () => api.get("/cases/my/pipeline"),
+  my: () => api.get(withCase("/cases/my")),
+  myPipeline: () => api.get(withCase("/cases/my/pipeline")),
+  // every case of this login, for the case switcher: { cases: [...], defaultCaseId }
+  mine: () => api.get("/cases/mine"),
   dashboardStats: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return api.get(`/cases/dashboard/stats${q ? "?" + q : ""}`);
@@ -829,12 +842,12 @@ export const questionnairesApi = {
 };
 
 export const paymentsApi = {
-  summary: () => api.get("/payments/summary"),
+  summary: () => api.get(withCase("/payments/summary")),
   confirmCheckoutSession: (sessionId) => api.post("/payments/confirm-checkout-session", { sessionId }),
 
   // amount is in cents when opts.amountUnit === "cents"; otherwise dollars.
   createPartialCheckoutSession: (amount, opts = {}) =>
-    api.post("/payments/create-partial-checkout-session", { amount, ...opts }),
+    api.post("/payments/create-partial-checkout-session", { amount, ...(activeCase.id ? { caseId: activeCase.id } : {}), ...opts }),
   downloadReceipt: async (paymentId, transactionId) => {
     const response = await api.get(`/payments/${paymentId}/receipt/${transactionId}/download`);
     const blob = await response.blob();

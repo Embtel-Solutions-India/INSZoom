@@ -4,8 +4,9 @@ Plan: `docs/MULTI_CASE_CLIENTS_PLAN.md`. One report for all phases; each phase a
 
 | Phase | Status |
 |---|---|
-| 1 — Link many cases to one login (backend) + staff see it (Admin) | Done (2026-11-05) — awaiting owner approval for Phase 2 |
-| 2 — Client Portal: My Cases + switching | Not started |
+| 1 — Link many cases to one login (backend) + staff see it (Admin) | Done (2026-11-05) |
+| 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) — awaiting owner approval for 2B |
+| 2B — A login that is an employee / beneficiary on one case and a client on another | Not started |
 | 3 — Carry personal data into each new case | Not started |
 | 4 — Hardening, full verification, rollout | Not started |
 
@@ -42,3 +43,32 @@ Admin: `components/PersonCases.jsx` (new), `components/PersonCases.test.jsx` (ne
 ### Production
 - Env: `MULTI_CASE_CLIENTS` — leave unset (on) to allow many cases per login; set `false` to keep the old one-case rule.
 - No data migration. Restart the backend; rebuild Admin.
+
+## Phase 2A — Client Portal: case switcher (client / employer / petitioner logins)
+
+### Done
+- **Backend** (all additive; with no case id every request answers exactly as before):
+  - `GET /api/cases/mine` — the signed-in person's cases for the switcher (visa, case number, status, how they are on it) + `defaultCaseId` (their landing case).
+  - Optional `caseId` on `GET /cases/my`, `GET /cases/my/pipeline`, `GET /client-intake/me`, `GET /payments/summary`, `POST /payments/create-partial-checkout-session`. Honoured **only within the person's own cases** (`/cases/my` inside the same access filter as before; payments only `user` = the person; intake through `getAccessibleCaseOrThrow`). An old, deleted or someone else's id silently falls back to the usual default — never an error, never another person's case.
+- **Client Portal**:
+  - `context/ActiveCaseContext.jsx` knows the person's cases and the open one. **One case (or none, or the list cannot load): nothing is selected and nothing changes.** Two or more: the open case comes from `?case=` in the address, else the last one opened in this browser tab, else the landing case; only an id from the person's own list is ever used.
+  - Header: for a person with 2+ cases the case number / visa line becomes a menu ("N cases") listing every case (visa, case number, Employer / Petitioner role, status); picking one opens that case's dashboard. One case: the header is unchanged.
+  - Every page follows the open case: the "my case" requests carry it (`services/api.js` `activeCaseStore`, set only while a case is open), the cached case is keyed by it, the page is re-created on a switch and the cache is cleared, so nothing of the previous case can show. Documents list only the open case's documents (an employer matter keeps its employees' documents). Messages opens the open case's own conversation (created if the case has none yet).
+- `services/api.js` is changed in the **Client** copy only: the Landing copy was already different and has no case switcher.
+
+### Not done in 2A (next steps)
+- **2B**: a login that is an employee / beneficiary on one case and the client / employer / petitioner on another (owner decision). About 30 backend modules decide permissions by the login's single role ("employee" / "beneficiary" have a reduced permission set), so 2B makes permissions follow the person's role on the open case.
+- E-mail links that open a specific case (`?case=` after sign-in): the sign-in page is in the Landing app and always lands on the dashboard; the switcher already reads `?case=` once signed in. Planned with 2B / Phase 4.
+- The documents count badge on the dashboard still counts all the person's documents (display only).
+
+### Tests and builds
+- Backend: new `caseLinks.service.test.js` cases (14 / 14 in the file); client-intake, payments and cases tests 154 / 154.
+- Client: new `context/ActiveCaseContext.test.jsx` (5): one case -> nothing selected; three cases -> default / `?case=` / foreign id ignored; employee login untouched; switcher lists and switches (remembered per tab); `?caseId=` only while a case is open. Whole Client suite 115 / 115 before the new file. Client build green.
+- Read-only DB check: a real employer login with two links (matter + its employee case) lists ONE matter, so it sees no switcher (unchanged); its own case is found with `?caseId=`, someone else's case is not (falls back to the default).
+
+### Files
+Backend: `modules/cases/caseLinks.service.js`, `modules/cases/case.controller.js`, `modules/cases/case.routes.js`, `modules/client-intake/client-intake.service.js`, `modules/client-intake/client-intake.controller.js`, `modules/payments/payment.controller.js`.
+Client: `context/ActiveCaseContext.jsx` (new), `context/ActiveCaseContext.test.jsx` (new), `components/CaseSwitcher.jsx` (new), `services/api.js`, `hooks/useMyCaseProfile.js`, `layout/PortalLayout.jsx`, `main.jsx`, `Pages/Dashboard/Messages.jsx`.
+
+### Production
+No new env vars, no migration. Restart the backend; rebuild the Client portal (order does not matter: an older backend ignores the extra `caseId`, an older portal never sends it).

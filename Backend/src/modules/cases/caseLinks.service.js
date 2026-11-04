@@ -18,6 +18,12 @@ function multiCaseClientsEnabled(env = process.env) {
   return String(env.MULTI_CASE_CLIENTS ?? "true").trim().toLowerCase() !== "false";
 }
 
+/** Pure: a case id the client portal asked for (`?caseId=` / body), or null. Only a well-formed id; access is still checked by the caller. */
+function requestedCaseId(value) {
+  const id = String(Array.isArray(value) ? value[0] : value || "").trim();
+  return /^[a-f0-9]{24}$/i.test(id) ? id : null;
+}
+
 /** Pure: the existing ids followed by the new ones, each once, order kept (earlier cases first). */
 function mergeCaseIds(existing = [], added = []) {
   const seen = new Set();
@@ -90,6 +96,7 @@ async function listPersonCases(userId, { CaseModel = Case } = {}) {
     .filter((row) => !row.parentCase || idOf(row.employeeUser) === id || idOf(row.beneficiaryUser) === id)
     .map((row) => ({
       _id: String(row._id),
+      caseNumber: row.caseNumber || "",
       visaType: row.visaType || row.visaCategory || "",
       status: row.status || "",
       stage: row.stage || "",
@@ -101,4 +108,4 @@ async function listPersonCases(userId, { CaseModel = Case } = {}) {
     }));
 }
 
-module.exports = { multiCaseClientsEnabled, mergeCaseIds, hasWorkingLogin, needsSetPasswordInvite, hasLinkedCase, planExistingPersonLinks, capacityOf, listPersonCases, PERSON_FIELDS };
+module.exports = { requestedCaseId, multiCaseClientsEnabled, mergeCaseIds, hasWorkingLogin, needsSetPasswordInvite, hasLinkedCase, planExistingPersonLinks, capacityOf, listPersonCases, PERSON_FIELDS };
