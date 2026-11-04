@@ -116,6 +116,43 @@ describe('AI Review panel', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Scan not found.')
   })
 
+  it('shows the AI use of the scan (calls, tokens, cost, model version); hidden when nothing was used', async () => {
+    fake.answers.getScan = ok(scan({ usage: { calls: 25, tokens: 180000, costUsd: 0.2468 }, modelVersion: 'gemini-3.8-flash' }))
+    open()
+    expect((await screen.findByTestId('ai-usage')).textContent).toBe('AI use: 25 calls · 180,000 tokens · about $0.25 · gemini-3.8-flash')
+    cleanup()
+    fake.answers.getScan = ok(scan({ usage: { calls: 0, tokens: 0, costUsd: null } }))
+    open()
+    expect(await screen.findByText('Page 3')).toBeTruthy()
+    expect(screen.queryByTestId('ai-usage')).toBeNull()
+  })
+
+  it('shows the summary as bullets by page: one issue on the line, several as sub-points, with the section; "Page N" opens that page', async () => {
+    const points = [
+      { page: 4, items: [{ section: 'Part 1, Applicant Information', severity: 'error', category: 'wrong_name', text: 'Beneficiary entered as petitioner → Consello Technologies Inc' }] },
+      { page: 47, items: [{ section: 'Ability to pay', severity: 'error', category: 'consistency', text: 'Wrong tax year' }, { section: '', severity: 'info', category: 'typo', text: 'Missing space → company. We' }] },
+    ]
+    fake.answers.getScan = ok(scan({ counts: { error: 2, warning: 0, info: 1 }, summary: { text: 'x', points, more: 0 } }))
+    const onOpenPage = vi.fn()
+    open({ onOpenPage })
+    const box = await screen.findByTestId('ai-summary-points')
+    expect(box.textContent).toContain('3 issues on 2 pages: 2 to fix, 0 to check, 1 minor.')
+    const pages = within(box).getAllByRole('listitem').filter((li) => li.parentElement.parentElement === box)
+    expect(pages).toHaveLength(2)
+    expect(pages[0].textContent).toContain('Page 4 - Part 1, Applicant Information: Beneficiary entered as petitioner')
+    expect(within(pages[1]).getAllByRole('listitem')).toHaveLength(2)
+    expect(pages[1].textContent).toContain('Ability to pay: Wrong tax year')
+    fireEvent.click(within(box).getByRole('button', { name: 'Page 47' }))
+    expect(onOpenPage).toHaveBeenCalledWith(47)
+  })
+
+  it('an older scan without points still shows its summary text', async () => {
+    fake.answers.getScan = ok(scan({ summary: { text: 'Old paragraph summary.' } }))
+    open()
+    expect(await screen.findByText('Old paragraph summary.')).toBeTruthy()
+    expect(screen.queryByTestId('ai-summary-points')).toBeNull()
+  })
+
   it('a petition never scanned shows that, with a Scan now button', async () => {
     open({ scanId: '' })
     expect(await screen.findByText('This petition has not been scanned yet.')).toBeTruthy()

@@ -12,6 +12,38 @@ const SEVERITY_ORDER = ['error', 'warning', 'info']
 const SEVERITY_DOT = { error: 'bg-red-500', warning: 'bg-amber-500', info: 'bg-slate-400' }
 const PAGE_SIZE = 50
 
+// The summary as the owner asked for it (2026-11-04): one bullet per page in page order; one issue sits on the page's line, two or more
+// become sub-points; each names the section of the page. Built in code on the server (summary.points), so it is exact and complete.
+function SummaryPoints({ summary, counts = {}, onOpenPage }) {
+  const total = (counts.error || 0) + (counts.warning || 0) + (counts.info || 0)
+  const line = (item) => (
+    <>
+      <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${SEVERITY_DOT[item.severity] || 'bg-slate-400'}`} />
+      {item.section && <span className="font-semibold">{item.section}: </span>}
+      {item.text}
+      <span className="ml-1 text-xs text-muted-foreground">({SEVERITY_LABEL[item.severity] || item.severity})</span>
+    </>
+  )
+  return (
+    <div className="max-h-72 overflow-y-auto rounded-lg bg-muted/60 p-3 text-sm leading-6 text-foreground" data-testid="ai-summary-points">
+      <p className="mb-1 font-semibold">{total} issue{total === 1 ? '' : 's'} on {summary.points.length} page{summary.points.length === 1 ? '' : 's'}: {counts.error || 0} to fix, {counts.warning || 0} to check, {counts.info || 0} minor.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        {summary.points.map((point) => (
+          <li key={point.page}>
+            <button type="button" className="font-semibold text-primary hover:underline" onClick={() => onOpenPage?.(point.page)}>Page {point.page}</button>
+            {point.items.length === 1 ? <> - {line(point.items[0])}</> : (
+              <ul className="list-[circle] space-y-0.5 pl-5">
+                {point.items.map((item, index) => <li key={index}>{line(item)}</li>)}
+              </ul>
+            )}
+          </li>
+        ))}
+        {summary.more > 0 && <li>... and {summary.more} more issue{summary.more === 1 ? '' : 's'} in the list below.</li>}
+      </ul>
+    </div>
+  )
+}
+
 export default function PetitionAiReviewPanel({ caseId, documentId, documentName, scanId: initialScanId, refreshSignal, onClose, onOpenPage, onChanged }) {
   const [scanId, setScanId] = useState(initialScanId || '')
   const [scan, setScan] = useState(null)
@@ -124,13 +156,25 @@ export default function PetitionAiReviewPanel({ caseId, documentId, documentName
                 ))}
               </div>
 
-              {scan.summary?.text && <p className="rounded-lg bg-muted/60 p-3 text-sm leading-6 text-foreground">{scan.summary.text}</p>}
+              {scan.summary?.points?.length > 0 ? (
+                <SummaryPoints summary={scan.summary} counts={scan.counts} onOpenPage={onOpenPage} />
+              ) : (
+                scan.summary?.text && <p className="whitespace-pre-line rounded-lg bg-muted/60 p-3 text-sm leading-6 text-foreground">{scan.summary.text}</p>
+              )}
               {(scan.paused?.message || scan.error?.message) && (
                 <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {scan.paused?.message || scan.error?.message}</p>
               )}
               {failedBatches.length > 0 && (
                 <p className="text-xs text-muted-foreground" data-testid="ai-diagnostics">
                   {failedBatches.length} AI call{failedBatches.length === 1 ? '' : 's'} needed a retry or fallback (latest: pages {failedBatches.at(-1).from}-{failedBatches.at(-1).to}, {failedBatches.at(-1).outcome}).
+                </p>
+              )}
+
+              {scan.usage?.calls > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="ai-usage">
+                  AI use: {scan.usage.calls} call{scan.usage.calls === 1 ? '' : 's'} · {Number(scan.usage.tokens || 0).toLocaleString('en-US')} tokens
+                  {scan.usage.costUsd != null && <> · about ${Number(scan.usage.costUsd).toFixed(2)}</>}
+                  {scan.modelVersion && <> · {scan.modelVersion}</>}
                 </p>
               )}
 
@@ -160,6 +204,7 @@ export default function PetitionAiReviewPanel({ caseId, documentId, documentName
                           <p className="flex flex-wrap items-center gap-2">
                             <span className={`h-2 w-2 rounded-full ${SEVERITY_DOT[finding.severity] || 'bg-slate-400'}`} />
                             <span className="font-semibold text-foreground">{CATEGORY_LABEL[finding.category] || finding.category}</span>
+                            {finding.section && <span className="text-xs text-foreground/80">· {finding.section}</span>}
                             <span className="text-xs text-muted-foreground">{SEVERITY_LABEL[finding.severity] || finding.severity}</span>
                           </p>
                           {finding.excerpt && <p className="mt-0.5 text-xs italic text-muted-foreground">"{finding.excerpt}"</p>}

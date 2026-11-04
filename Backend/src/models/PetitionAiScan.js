@@ -49,12 +49,31 @@ const petitionAiScanSchema = new mongoose.Schema(
       text: { type: String, default: "" },
       byPage: { type: [{ page: Number, count: Number, worst: { type: String, enum: SEVERITIES }, _id: false }], default: [] },
       byCategory: { type: Map, of: Number, default: {} },
+      // The bullet summary: one point per page in page order, each issue on that page a sub-point (built in code from the findings)
+      points: {
+        type: [{
+          page: Number,
+          items: { type: [{ section: String, severity: { type: String, enum: SEVERITIES }, category: String, text: String, _id: false }], default: [] },
+          _id: false,
+        }],
+        default: [],
+      },
+      more: { type: Number, default: 0 }, // issues not written into the points (very large scans); they are in the findings list
       builtAt: Date,
     },
     diagnostics: { type: [diagnosticSchema], default: [] },
     rulesVersion: { type: Number, default: 0 },
     modelUsed: { type: String, default: "" },
-    usage: { calls: { type: Number, default: 0 }, tokens: { type: Number, default: 0 } },
+    // Token use, split the way Google bills it (input / output / thinking; thinking is billed as output), and the exact model version
+    // that answered (the configured name can be an alias such as gemini-flash-latest). Phase 6.
+    usage: {
+      calls: { type: Number, default: 0 },
+      tokens: { type: Number, default: 0 },
+      input: { type: Number, default: 0 },
+      output: { type: Number, default: 0 },
+      thinking: { type: Number, default: 0 },
+    },
+    modelVersion: { type: String, default: "" },
     error: { code: String, message: String, at: Date },
     attempts: { type: Number, default: 0, min: 0 },
     maxAttempts: { type: Number, default: 5, min: 1 },

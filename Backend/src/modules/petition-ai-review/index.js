@@ -9,7 +9,8 @@ const logger = require("../../utils/logger");
 const PETITION_DOCUMENT_TYPE = "petition_manual_upload";
 let handle = null;
 
-function buildRunner({ scanService, shouldStop }) {
+// `overrides` (optional) replaces single dependencies, e.g. scripts/runPetitionAiScan.js prints progress instead of notifying the screens.
+function buildRunner({ scanService, shouldStop, overrides = {} }) {
   const { createScanRunner } = require("./scanRunner");
   const { PdfSlicer } = require("./pdfSlicer");
   const { createGeminiCaller } = require("./petitionGemini");
@@ -37,6 +38,7 @@ function buildRunner({ scanService, shouldStop }) {
     // Phase 4: live progress + "finished" event and the bell for the person who started the scan (never awaited, never throws)
     onProgress: (scan, info) => notifier.progress(scan, info),
     onFinished: (scanId, outcome) => notifier.finished(scanId, outcome),
+    ...overrides,
   });
 }
 
@@ -84,4 +86,4 @@ function onPetitionUploaded({ document, caseData, user } = {}) {
   }
 }
 
-module.exports = { startPetitionAiReview, onPetitionUploaded, getHandle: () => handle, PETITION_DOCUMENT_TYPE, _setHandleForTests: (value) => { handle = value; } };
+module.exports = { startPetitionAiReview, onPetitionUploaded, buildRunner, getHandle: () => handle, PETITION_DOCUMENT_TYPE, _setHandleForTests: (value) => { handle = value; } };

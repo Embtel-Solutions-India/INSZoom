@@ -194,7 +194,8 @@ test("summary: totals equal the finding counts; pages, categories, gaps and page
   assert.equal(Object.values(summary.byCategory).reduce((a, b) => a + b, 0), findings.length);
   assert.deepEqual(summary.byPage, [{ page: 2, count: 2, worst: "error" }, { page: 7, count: 1, worst: "warning" }, { page: 9, count: 1, worst: "error" }]);
   assert.match(summary.text, /4 issues on 3 pages: 2 to fix, 1 to check, 1 minor/);
-  assert.match(summary.text, /Pages with errors: 2, 9/);
+  assert.match(summary.text, /• Page 2\n    ◦ /); // two issues on page 2: sub-points (the bullet layout itself is tested in phase6)
+  assert.match(summary.text, /• Page 9 - /);
   assert.match(summary.text, /2 pages could not be read/);
   assert.match(summary.text, /Pages 31-40 were not scanned/);
   assert.match(summary.text, /verify before acting/);

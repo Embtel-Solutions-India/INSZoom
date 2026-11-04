@@ -173,7 +173,7 @@ The classifier now names this case `BILLING` (HTTP 402, never retried) - test ad
 
 **Tested** - `petition-ai-review/tests/phase3.job.test.js` (27 tests; in-memory store built on the real schemas, AI stubbed, no database, no network) + Phases 0-2: **93 / 93 pass, 0 skipped, run twice (30 s)**. They prove all of the above, including: a worker frozen mid-scan is taken over and every page is still scanned exactly once with zero writes from the stale worker; billing pause and automatic resume from the failing page; the upload hook is off by default, ignores other documents and duplicates, writes nothing during the request, takes < 5 ms and never throws (even when queueing fails); an end-to-end run with the REAL PDF reader and the real Gemini caller on a stubbed network; a 700-page petition completed with every page once and event-loop lag < 250 ms. While building, three test expectations were corrected (the code was right): an expired lease makes a scan claimable again; a stop before the first claim claims nothing; a page number sent as text is accepted.
 
-REGRESSION_PLACEHOLDER
+**Full regression (2026-11-04, `runSafeTests`, 380 database-free test files, run after Phases 3-5):** 3,009 tests, **2,990 pass**. The suite was run without `form-pipeline/tests/sim/errorScenarios.sim.localdb.test.js`, which hangs indefinitely on this machine (it waits for a local test database; it stopped the first full run for about 2 hours). Of the 19 failures: **none is caused by Petition AI Review**; 1 was the old case-manager upload rule (test updated to the owner-approved "case managers work every case" rule - now passes); 1 is the timing of the Phase 1 "reader hangs" backup test under full-suite load (passes on its own, 102/102 twice); 1 ("a renderer that CUTS a long text") is the owner-requested `PDFRenderer.js` rollback (the removed lines are saved to re-apply later); the other 16 are on code not changed by this work (form pipeline / edition policy / questionnaires / compliance / form import / family-workflow text checks / 2 information-request tests proven to fail without these changes too), matching the known failures recorded after the form-pipeline Phase 6.
 
 **Not done in this phase:** nothing planned for Phase 3 is left. Notifications when a scan finishes, and the API for cancel / retry / re-scan, are Phase 4 (the service functions exist; `onFinished` is the hook point).
 
@@ -205,7 +205,7 @@ REGRESSION_PLACEHOLDER
 
 **Tested** - `phase4.api.test.js` (9 tests; the real router in a local HTTP server, an in-memory store on the real schemas, no database, no network): sign-in required; clients / attorneys refused; a case manager of another case gets 403 on that case, its scans and its actions; unknown / malformed ids 404; counts-only case list; scan detail without the lease and with 50 diagnostics; paging and filters (and the 200 cap, unknown filter values ignored); re-scan creates one scan and wakes the worker once, refuses non-petitions, deleted petitions and other cases' petitions; cancel / cancel twice (409) / retry reopens / retry with another open scan (409); feature off; progress throttling; who is notified; bell only for end states; every notification failure swallowed. **All Petition AI Review tests (Phases 0-4): 102 / 102 pass, run twice.**
 
-REGRESSION4_PLACEHOLDER
+**Full regression (2026-11-04, `runSafeTests`, 380 database-free test files, run after Phases 3-5):** 3,009 tests, **2,990 pass**. The suite was run without `form-pipeline/tests/sim/errorScenarios.sim.localdb.test.js`, which hangs indefinitely on this machine (it waits for a local test database; it stopped the first full run for about 2 hours). Of the 19 failures: **none is caused by Petition AI Review**; 1 was the old case-manager upload rule (test updated to the owner-approved "case managers work every case" rule - now passes); 1 is the timing of the Phase 1 "reader hangs" backup test under full-suite load (passes on its own, 102/102 twice); 1 ("a renderer that CUTS a long text") is the owner-requested `PDFRenderer.js` rollback (the removed lines are saved to re-apply later); the other 16 are on code not changed by this work (form pipeline / edition policy / questionnaires / compliance / form import / family-workflow text checks / 2 information-request tests proven to fail without these changes too), matching the known failures recorded after the form-pipeline Phase 6.
 
 **Not done in this phase:** nothing planned for Phase 4 is left. The screen that uses this API is Phase 5.
 
@@ -230,7 +230,7 @@ REGRESSION4_PLACEHOLDER
 
 **Tested** - `PetitionAiReview.test.jsx` (10 tests): every status wording; the panel's counts / summary / page groups / disclaimer; Open page N; filters re-ask the server; Re-scan confirmation (Cancel does nothing, confirm starts a new scan and the panel follows it); stopping a running scan; Retry now on a waiting scan; the fallback line; an API error shown, never a crash; a never-scanned petition; the row chip + button opening the panel; nothing shown when the feature is off with no results or the API fails; a live event refreshing the chip. The 14 existing `PetitionUploadPanel.test.jsx` tests pass unchanged. **Admin: all 37 test files pass; production build OK** (the panel is its own chunk).
 
-REGRESSION5_PLACEHOLDER
+**Full regression (2026-11-04, `runSafeTests`, 380 database-free test files, run after Phases 3-5):** 3,009 tests, **2,990 pass**. The suite was run without `form-pipeline/tests/sim/errorScenarios.sim.localdb.test.js`, which hangs indefinitely on this machine (it waits for a local test database; it stopped the first full run for about 2 hours). Of the 19 failures: **none is caused by Petition AI Review**; 1 was the old case-manager upload rule (test updated to the owner-approved "case managers work every case" rule - now passes); 1 is the timing of the Phase 1 "reader hangs" backup test under full-suite load (passes on its own, 102/102 twice); 1 ("a renderer that CUTS a long text") is the owner-requested `PDFRenderer.js` rollback (the removed lines are saved to re-apply later); the other 16 are on code not changed by this work (form pipeline / edition policy / questionnaires / compliance / form import / family-workflow text checks / 2 information-request tests proven to fail without these changes too), matching the known failures recorded after the form-pipeline Phase 6.
 
 **Not done in this phase:** nothing planned for Phase 5 is left.
 
@@ -243,4 +243,34 @@ REGRESSION5_PLACEHOLDER
 
 **Next step:** Phase 6. Waiting for your approval.
 
-*(Phase 6 is added below when it is completed.)*
+---
+
+## Phase 6 - Usage and cost, the scan command, first live scan (DONE)
+
+**Done (code):**
+- `petitionGemini.js` - every reply's token use split the way Google bills it (input / output / thinking) and the exact `modelVersion` behind the alias; tokens of refused, failed and retried attempts are counted too.
+- `batchReviewer.js`, `scanRunner.js`, `scanService.js`, `models/PetitionAiScan.js` - the split is added up per scan (`usage.input / output / thinking`, `modelVersion`), including the closing summary call (it was not counted before). Bad numbers count as 0 and never corrupt the totals.
+- `pricing.js` - cost in US dollars from `PETITION_AI_PRICE_INPUT_PER_M` / `PETITION_AI_PRICE_OUTPUT_PER_M` (defaults $0.75 / $3.75 per 1M tokens, Google's published gemini-3.8-flash rates; thinking billed as output). The scan detail API returns `usage.costUsd` (null for older scans without the split).
+- `costEstimate.js` - a rough up-front estimate (calibrated on the live scan, deliberately on the high side).
+- `scanService.claimNext({ scanId })` - claims only the named scan.
+- `scripts/runPetitionAiScan.js` - `--document <id>`: dry run (page count + estimate, nothing sent or written); `--confirm`: the real scan with the server's own code, then findings, tokens and dollars; `--out file.json`. Works while the server switch is off; Ctrl+C hands the scan back.
+- Admin AI Review panel - one line "AI use: N calls - tokens - about $X - model version".
+- **Fix found by the live scan:** the AI did not know today's date and called a petition dated 2026-10-26 "far in the future". The instruction now carries today's date (`prompt.js`).
+
+**First live scan (2026-11-04):** Rev3_Pratap_Consello_Petition.pdf, case B420 (EB-3), 96 pages, 15.5 MB. Completed in 205 s (about 100 s of that is downloading the PDF from storage; the AI part about 90 s). 25 AI calls (24 x 4 pages + the summary), model `gemini-flash-latest` answered by `gemini-3.8-flash`. Tokens: input 67,905, output 2,699, thinking 0 (total 70,604). **Cost: $0.061** (about $0.0006 per page; a 500-page petition about $0.32 and 10-15 minutes). Findings: 21 to fix, 4 to check, 2 minor; scan id `6aea7ea43206cbc6475c17b8` (kept: it is the real review of a real petition, visible in Admin).
+
+**What the review was based on:** the case reference facts (case number B420, visa type EB-3, petitioner Consello Technologies Inc), the fixed company rules (not a law firm, Immiglance-only branding, no promised outcome, names / case facts must match, addresses must match), the 9 prohibited terms from the compliance settings, and general proof-reading (typos, repeated words, dates, receipt numbers and facts that contradict each other). Each 4-page slice was sent as the real PDF (layout and scanned images included), answers were forced into a fixed JSON schema and validated in code (page numbers checked, duplicates merged).
+
+**Known limits seen in this scan:** (1) the date findings on pages 1, 45, 47 and 73 are false alarms caused by the missing date (fixed above; a re-scan will not repeat them); (2) the beneficiary's name is not in the case facts for B420 (only the employer is linked), so beneficiary-name spelling is checked only for consistency, not against the case; (3) no expected FedEx / filing addresses are stored yet, so addresses are not checked.
+
+**Tested:** `phase6.usage.test.js` (12 tests) + the updated Phase 3 expectation (the summary call is now counted: 4 calls, not 3). **Petition AI Review + documents: 140 / 140 pass.** Admin: `PetitionAiReview.test.jsx` 11 / 11; production build OK.
+
+**Follow-up the same day (owner decisions 2026-11-04):**
+- The organisation-name check is **off**: the Bay Area Immigration Services team prepares the petitions in the portal and rightly writes its own name. The rule is kept (`PETITION_AI_BRAND_CHECK=on` brings it back); while off, the AI is told the name is correct and any finding about BAIS / Bay Area is dropped in code (other name findings, e.g. "Corp." vs "Inc", are kept; a typo in the name is still reported).
+- The summary is now a **page-by-page bullet list built in code** from the findings (no AI call, so it is exact, complete and costs nothing): one bullet per page in page order; one issue sits on the page's line, two or more become sub-points; each names the **section** of the page (the AI now returns `section`, stored on every finding). Capped at 300 items ("... and N more in the list below"). Admin shows it as a bulleted list with "Page N" links; older scans still show their paragraph.
+- Bug found and fixed while doing this: the findings read back for the summary did not include the new `section` field; the test store now honours field selection like MongoDB, and an end-to-end test covers it.
+- `.env.example`: `PETITION_AI_REVIEW=on`, `PETITION_AI_PRICE_INPUT_PER_M`, `PETITION_AI_PRICE_OUTPUT_PER_M`, `PETITION_AI_BRAND_CHECK=off`.
+- **Re-scan of B420** (scan `6aea82f1e37ec8ac94df1993`): 183 s, 24 calls, 70,128 input + 3,103 output tokens, **$0.064**; 27 issues on 24 pages (19 to fix, 2 to check, 6 minor); no Bay Area findings, no "future date" false alarms on the letters. Tests: **146 / 146** (Petition AI Review + documents), Admin 27 / 27, Admin build OK.
+
+**What you need to do:** deploy; optionally set `PETITION_AI_PRICE_INPUT_PER_M=1.5` and `PETITION_AI_PRICE_OUTPUT_PER_M=7.5` on 2027-01-01 (Google's announced price change); add the FedEx / filing addresses when ready.
+

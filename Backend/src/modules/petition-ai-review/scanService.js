@@ -32,6 +32,7 @@ class ScanLeaseLostError extends Error {
 
 const backoffMs = (attempts) => Math.min(TIMING.backoffMaxMs, TIMING.backoffBaseMs * 2 ** Math.max(0, attempts - 1));
 const message = (value) => String(value || "").slice(0, 500);
+const safeCount = (value) => (Number.isFinite(Number(value)) && Number(value) > 0 ? Math.round(Number(value)) : 0); // a bad number never corrupts the totals
 const isDuplicateKey = (error) => error?.code === 11000;
 const cleared = { "lease.lockedUntil": null, "lease.token": null };
 const NO_ERROR = Object.freeze({ code: null, message: "", at: null });
@@ -71,12 +72,16 @@ function createScanService({ Scan = PetitionAiScan, Finding = PetitionAiFinding,
     }
   }
 
-  /** Atomically claims the next due scan (queued, or scanning with an expired lease). Returns { scan, lease } or null. */
-  async function claimNext({ workerId = "worker" } = {}) {
+  /**
+   * Atomically claims the next due scan (queued, or scanning with an expired lease). Returns { scan, lease } or null.
+   * `scanId` (optional) claims only that scan - used by scripts/runPetitionAiScan.js so a one-off run never picks up someone else's scan.
+   */
+  async function claimNext({ workerId = "worker", scanId = null } = {}) {
     const at = now();
     const token = crypto.randomUUID();
     const scan = await Scan.findOneAndUpdate(
       {
+        ...(scanId ? { _id: scanId } : {}),
         open: true,
         status: { $in: OPEN_STATUSES },
         $and: [
@@ -123,7 +128,7 @@ function createScanService({ Scan = PetitionAiScan, Finding = PetitionAiFinding,
    * Stores one reviewed page range and moves the cursor. Idempotent: the range's earlier findings (from a worker that died before moving
    * the cursor) are replaced, never duplicated.
    */
-  async function recordProgress(scan, lease, { from, to, findings = [], gaps = [], retryRanges = [], diagnostics = [], calls = 0, tokens = 0, nextPage, pagesDone, usedFallback = false, modelUsed } = {}) {
+  async function recordProgress(scan, lease, { from, to, findings = [], gaps = [], retryRanges = [], diagnostics = [], calls = 0, tokens = 0, usage = {}, nextPage, pagesDone, usedFallback = false, modelUsed, modelVersion } = {}) {
     const scanId = scan._id;
     await assertLease(scanId, lease);
     await Finding.deleteMany({ scanId, page: { $gte: from, $lte: to } });
@@ -133,11 +138,12 @@ function createScanService({ Scan = PetitionAiScan, Finding = PetitionAiFinding,
     if (pagesDone !== undefined) set.pagesDone = pagesDone;
     if (usedFallback) set.usedFallback = true;
     if (modelUsed) set.modelUsed = modelUsed;
+    if (modelVersion) set.modelVersion = String(modelVersion).slice(0, 120);
     const push = {};
     if (gaps.length) push.gaps = { $each: gaps.map(({ from: f, to: t, reason }) => ({ from: f, to: t, reason })) };
     if (retryRanges.length) push.retryRanges = { $each: retryRanges };
     if (diagnostics.length) push.diagnostics = { $each: diagnostics, $slice: -LIMITS.maxDiagnostics };
-    await fenced(scanId, lease, { $set: set, ...(Object.keys(push).length ? { $push: push } : {}), $inc: { "usage.calls": calls, "usage.tokens": tokens } });
+    await fenced(scanId, lease, { $set: set, ...(Object.keys(push).length ? { $push: push } : {}), $inc: { "usage.calls": calls, "usage.tokens": tokens, "usage.input": safeCount(usage.input), "usage.output": safeCount(usage.output), "usage.thinking": safeCount(usage.thinking) } });
   }
 
   async function setRetryRanges(scanId, lease, ranges) {
@@ -146,7 +152,7 @@ function createScanService({ Scan = PetitionAiScan, Finding = PetitionAiFinding,
 
   /** Every finding of a scan (for the summary). */
   async function loadFindings(scanId) {
-    return Finding.find({ scanId }).select("_id page severity category excerpt found suggestion confidence").sort({ page: 1 }).lean();
+    return Finding.find({ scanId }).select("_id page severity category excerpt found suggestion section confidence").sort({ page: 1 }).lean();
   }
 
   async function deleteFindings(ids = []) {
@@ -184,9 +190,12 @@ function createScanService({ Scan = PetitionAiScan, Finding = PetitionAiFinding,
     return { state: "yielded" };
   }
 
-  async function complete(scanId, lease, { status, counts, summary, gaps } = {}) {
+  async function complete(scanId, lease, { status, counts, summary, gaps, usage = null } = {}) {
     const at = now();
+    // `usage` (optional): tokens of the closing summary call, added to the scan's totals (Phase 6)
+    const inc = usage ? { $inc: { "usage.calls": safeCount(usage.calls), "usage.tokens": safeCount(usage.tokens), "usage.input": safeCount(usage.input), "usage.output": safeCount(usage.output), "usage.thinking": safeCount(usage.thinking) } } : {};
     await fenced(scanId, lease, {
+      ...inc,
       $set: {
         status, open: false, counts, summary: { ...summary, builtAt: at }, gaps, retryRanges: [], finishedAt: at, nextAttemptAt: null, ...cleared,
         paused: { code: null, message: "", since: null }, error: NO_ERROR,

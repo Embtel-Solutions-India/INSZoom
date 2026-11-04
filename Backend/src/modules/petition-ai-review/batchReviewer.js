@@ -2,7 +2,7 @@
 //
 //   const reviewer = createBatchReviewer({ reader, caller, fallbackCaller, systemInstruction });
 //   const result = await reviewer.review({ from: 5, to: 8 });
-//   // result: { findings, gaps, diagnostics, calls, tokens, models, requeue, usedFallback }
+//   // result: { findings, gaps, diagnostics, calls, tokens, usage: { input, output, thinking }, models, modelVersions, requeue, usedFallback }
 //
 // Backups, applied in code - no failure needs a person:
 //   answer cut off (TRUNCATED)              -> batch halved and re-sent, down to one page; a single page then goes as text
@@ -16,18 +16,19 @@
 // review() only ever resolves with a result or rejects with a stopsRun PetitionAiError - nothing else escapes.
 const { AI_ERROR, RUN_STOPPING_ERRORS } = require("./constants");
 const { splitBatch } = require("./batchPlanner");
-const { PetitionAiError } = require("./petitionGemini");
+const { PetitionAiError, addUsage } = require("./petitionGemini");
 const { RESPONSE_SCHEMA, buildBatchPrompt, buildRepairPrompt } = require("./prompt");
 const { parseAnswer, validateAnswer, dedupeFindings, unreadableFinding } = require("./findingValidator");
 
 const MAX_INLINE_BYTES = 15 * 1024 * 1024; // Gemini's inline request limit is 20 MB including base64 growth (x 1.34)
 const FALLBACK_ON = new Set([...RUN_STOPPING_ERRORS]);
 
-function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInstruction = "", maxInlineBytes = MAX_INLINE_BYTES }) {
+// `keepFinding(finding)` (optional) drops findings a rule says are not issues (e.g. the preparer's organisation name while that check is off).
+function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInstruction = "", maxInlineBytes = MAX_INLINE_BYTES, keepFinding = null }) {
   let useFallback = false; // once Gemini stopped for billing / quota, the rest of this scan goes to the backup straight away
 
   async function review(batch) {
-    const out = { findings: [], gaps: [], diagnostics: [], calls: 0, tokens: 0, models: new Set(), requeue: false, usedFallback: false };
+    const out = { findings: [], gaps: [], diagnostics: [], calls: 0, tokens: 0, usage: { input: 0, output: 0, thinking: 0 }, models: new Set(), modelVersions: new Set(), requeue: false, usedFallback: false };
     try {
       await reviewPart(batch, reader?.mode === "text" ? "text" : "pdf", out);
     } catch (error) {
@@ -39,6 +40,7 @@ function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInst
     }
     out.findings = dedupeFindings(out.findings);
     out.models = [...out.models];
+    out.modelVersions = [...out.modelVersions];
     return out;
   }
 
@@ -95,7 +97,7 @@ function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInst
     }
     if (!answer) return recover(new PetitionAiError(AI_ERROR.BAD_OUTPUT, "answer was not valid JSON after a repair attempt"), batch, mode, out, active);
     const { findings, unreadablePages, dropped } = validateAnswer(answer, batch);
-    out.findings.push(...findings);
+    out.findings.push(...(keepFinding ? findings.filter((finding) => { try { return keepFinding(finding) !== false; } catch (_error) { return true; } }) : findings));
     for (const page of unreadablePages) markUnreadable({ from: page, to: page }, "the AI reported the page as unreadable", out);
     if (dropped.outOfRange || dropped.invalid) out.diagnostics.push(diag(batch, "DROPPED", { note: `${dropped.outOfRange} outside the pages sent, ${dropped.invalid} incomplete` }));
   }
@@ -105,7 +107,9 @@ function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInst
       const reply = await active.call(request);
       out.calls += reply.attempts || 1;
       out.tokens += reply.tokens || 0;
+      out.usage = addUsage(out.usage, reply.usage);
       out.models.add(reply.model);
+      if (reply.modelVersion) out.modelVersions.add(reply.modelVersion);
       if (active === fallbackCaller) out.usedFallback = true;
       out.diagnostics.push(diag(batch, "OK", { finishReason: reply.finishReason, model: reply.model, tokens: reply.tokens, latencyMs: reply.latencyMs, note: [label, active === fallbackCaller ? "backup AI" : ""].filter(Boolean).join(", ") }));
       return reply;
@@ -113,6 +117,7 @@ function createBatchReviewer({ reader, caller, fallbackCaller = null, systemInst
       if (!(error instanceof PetitionAiError)) throw new PetitionAiError(AI_ERROR.UPSTREAM, String(error?.message || error));
       out.calls += error.attempts || 1;
       out.tokens += error.tokens || 0;
+      out.usage = addUsage(out.usage, error.usage); // a refused or cut-off answer can still be billed
       out.diagnostics.push(diag(batch, error.code, { finishReason: error.finishReason, model: error.model, tokens: error.tokens, latencyMs: error.latencyMs, note: String(error.note || "").slice(0, 300) }));
       throw error;
     }

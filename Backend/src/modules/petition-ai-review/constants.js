@@ -59,6 +59,8 @@ const LIMITS = Object.freeze({
   findingsMaxPageSize: 200,
   maxExcerptChars: 400,
   maxTextChars: 600,
+  maxSectionChars: 120,
+  maxSummaryItems: 300, // bullet items written into the summary; the rest stay in the findings list
   maxFindingsPerBatch: 60,
 });
 

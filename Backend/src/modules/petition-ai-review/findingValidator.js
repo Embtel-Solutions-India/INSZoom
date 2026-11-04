@@ -73,6 +73,7 @@ function validateAnswer(answer, batch) {
       excerpt: text(raw?.excerpt, LIMITS.maxExcerptChars),
       found: text(raw?.found, LIMITS.maxTextChars),
       suggestion: text(raw?.suggestion, LIMITS.maxTextChars),
+      section: text(raw?.section, LIMITS.maxSectionChars), // where on the page (e.g. "Part 1, Item 2.a"); may be empty
       confidence: confidence(raw?.confidence),
     };
     if (!item.category || (!item.excerpt && !item.found)) { dropped.invalid += 1; continue; }

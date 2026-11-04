@@ -14,6 +14,7 @@ const petitionAiFindingSchema = new mongoose.Schema(
     excerpt: { type: String, default: "", maxlength: LIMITS.maxExcerptChars }, // the text on the page that has the problem
     found: { type: String, default: "", maxlength: LIMITS.maxTextChars }, // what the page says / what is wrong
     suggestion: { type: String, default: "", maxlength: LIMITS.maxTextChars }, // what it should say / what to do
+    section: { type: String, default: "", maxlength: LIMITS.maxSectionChars }, // where on the page, as the page labels it (e.g. "Part 1, Item 2.a")
     confidence: { type: Number, default: 0.5, min: 0, max: 1 },
   },
   { timestamps: true }

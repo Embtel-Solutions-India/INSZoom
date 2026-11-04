@@ -4,12 +4,25 @@
 // access, is "not found" (404) / "not allowed" (403), never a hint of its content.
 // Reads are small: the case list returns counts only; findings are paged (50 by default, at most 200); diagnostics are cut to the newest 50.
 const { SCAN_STATUS, SEVERITIES, CATEGORIES, LIMITS } = require("./constants");
+const { readPricing, costOf } = require("./pricing");
 
 const STAFF_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const PETITION_DOCUMENT_TYPE = "petition_manual_upload";
 const idOf = (value) => String(value?._id || value || "");
 const roleOf = (user) => String(user?.role || "").toLowerCase().replace(/[\s-]+/g, "_");
 const refuse = (status, message) => Object.assign(new Error(message), { status });
+// Token use and estimated cost of a scan (Phase 6). Older scans stored only calls / tokens: their split is 0 and the cost reads as unknown.
+function usageView(usage = {}, pricing = readPricing()) {
+  const split = { input: usage?.input || 0, output: usage?.output || 0, thinking: usage?.thinking || 0 };
+  const known = split.input + split.output + split.thinking > 0;
+  return {
+    calls: usage?.calls || 0,
+    tokens: usage?.tokens || 0,
+    ...split,
+    costUsd: known ? costOf(split, pricing) : null,
+    pricing: { inputPerMillion: pricing.inputPerMillion, outputPerMillion: pricing.outputPerMillion },
+  };
+}
 const isId = (value) => /^[a-f0-9]{24}$/i.test(String(value || ""));
 
 /** Plain scan fields the screens use (never the lease / worker internals). */
@@ -39,11 +52,12 @@ function scanView(scan, { detail = false } = {}) {
   const byCategory = scan.summary?.byCategory instanceof Map ? Object.fromEntries(scan.summary.byCategory) : scan.summary?.byCategory || {};
   return {
     ...view,
-    summary: { text: scan.summary?.text || "", byPage: scan.summary?.byPage || [], byCategory, builtAt: scan.summary?.builtAt || null },
+    summary: { text: scan.summary?.text || "", byPage: scan.summary?.byPage || [], byCategory, points: scan.summary?.points || [], more: scan.summary?.more || 0, builtAt: scan.summary?.builtAt || null },
     gaps: (scan.gaps || []).map(({ from, to, reason }) => ({ from, to, reason })),
     diagnostics: (scan.diagnostics || []).slice(-50).map(({ from, to, outcome, finishReason, model, tokens, latencyMs, note, at }) => ({ from, to, outcome, finishReason, model, tokens, latencyMs, note, at })),
-    usage: { calls: scan.usage?.calls || 0, tokens: scan.usage?.tokens || 0 },
+    usage: usageView(scan.usage),
     modelUsed: scan.modelUsed || "",
+    modelVersion: scan.modelVersion || "",
   };
 }
 
@@ -56,6 +70,7 @@ function findingView(finding) {
     excerpt: finding.excerpt || "",
     found: finding.found || "",
     suggestion: finding.suggestion || "",
+    section: finding.section || "",
     confidence: finding.confidence ?? null,
   };
 }
@@ -166,4 +181,4 @@ function createReviewApi(deps = {}) {
   return { listForCase, getScan, listFindings, rescan, retry, cancel };
 }
 
-module.exports = { createReviewApi, scanView, findingView, STAFF_ROLES, SCAN_STATUS };
+module.exports = { usageView, createReviewApi, scanView, findingView, STAFF_ROLES, SCAN_STATUS };
