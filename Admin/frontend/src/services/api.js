@@ -830,6 +830,8 @@ export const leadsApi = {
   markSeen: (id) => api.post(`/eligibility-quiz/leads/${id}/seen`, {}),
   updateStatus: (id, status) => api.patch(`/eligibility-quiz/leads/${id}/status`, { status }),
   addNote: (id, text) => api.post(`/eligibility-quiz/leads/${id}/notes`, { text }),
+  // Deletes the lead and its card in the GoHighLevel Immiglance Pipeline (the server deletes the card first).
+  remove: (id) => api.delete(`/eligibility-quiz/leads/${id}`),
   // State-machine-enforced lifecycle transitions (Phase 6) — each permits
   // exactly one transition server-side, unlike the freeform updateStatus above.
   confirmConsultation: (id) => api.patch(`/eligibility-quiz/leads/${id}/confirm-consultation`, {}),

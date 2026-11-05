@@ -191,6 +191,13 @@ async function handleOpportunityEvent(event, config) {
   let opportunity = opportunityFromPayload(event.payload);
   if (!opportunity.id) return { outcome: "ignored", note: "no opportunity id" };
 
+  // The separate "Immiglance Pipeline" holds leads only: its events never create or touch a case; a card deleted there deletes its lead.
+  const leadPipelineOutcome = await require("./ghlLeadPipeline").handleOpportunityEvent(event, opportunity);
+  if (leadPipelineOutcome) {
+    if (leadPipelineOutcome.outcome === "failed") throw new Error(leadPipelineOutcome.note);
+    return leadPipelineOutcome;
+  }
+
   // The card was deleted in GHL: its case follows, but only after the deletion is confirmed again a little later (ghlDeletedInGhl.js), driven by
   // the reconcile pass - so this only records the sighting, and a delete event for an opportunity WE are deleting is simply ignored.
   if (event.eventType === "OpportunityDelete") {

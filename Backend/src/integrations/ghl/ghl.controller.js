@@ -42,7 +42,10 @@ exports.webhook = async (req, res) => {
 // decide whether to show the Pipeline page); it never 503s.
 exports.status = async (req, res, next) => {
   try {
-    res.json({ success: true, ...(await boardService.getStatus(req.user)) });
+    const status = await boardService.getStatus(req.user);
+    // the separate Immiglance (leads) pipeline's own health, as an extra key: the two case pipelines' status is untouched
+    const leadPipeline = await require("./ghlLeadPipeline").summary().catch(() => null);
+    res.json({ success: true, ...status, ...(leadPipeline ? { leadPipeline } : {}) });
   } catch (error) {
     next(error);
   }

@@ -58,6 +58,22 @@ const leadSchema = new mongoose.Schema(
     consultationId: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment", default: null },
     strategyQueueId: { type: mongoose.Schema.Types.ObjectId, ref: "StrategyCallQueueItem", default: null },
 
+    // The card in the GoHighLevel "Immiglance Pipeline" (integrations/ghl/ghlLeadPipeline.js). Absent on leads from before the feature: those are never sent.
+    ghl: {
+      status: { type: String, enum: ["pending", "syncing", "synced", "failed", "skipped"] },
+      contactId: String,
+      opportunityId: String,
+      pipelineId: String,
+      stageId: String,
+      noteSent: Boolean,
+      attempts: { type: Number, default: 0 },
+      claimedAt: Date,
+      syncedAt: Date,
+      error: String,
+      checkedAt: Date, // last time the reconcile pass confirmed the card still exists in GoHighLevel
+      missingSince: Date, // first time the card was found gone in GoHighLevel (deleted there; confirmed a little later, like cases)
+    },
+
     crmSyncStatus: { type: String, enum: ["pending", "synced", "failed", "skipped"], default: "pending", index: true },
     crmSyncedAt: Date,
     crmSyncAttempts: { type: Number, default: 0 },
@@ -186,5 +202,6 @@ const leadSchema = new mongoose.Schema(
 leadSchema.index({ "scoreResult.tier": 1, createdAt: -1 });
 leadSchema.index({ "utm.source": 1, "utm.campaign": 1 });
 leadSchema.index({ email: 1, createdAt: -1 });
+leadSchema.index({ "ghl.opportunityId": 1 }, { sparse: true });
 
 module.exports = mongoose.model("Lead", leadSchema);

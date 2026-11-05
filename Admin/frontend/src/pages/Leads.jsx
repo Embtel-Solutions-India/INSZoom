@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { leadsApi } from '../services/api'
 import CreateCaseModal from '../components/CreateCaseModal'
 import CaseCreatedSuccessModal from '../components/CaseCreatedSuccessModal'
+import ConfirmModal from '../components/ConfirmModal'
 import {
   Inbox,
   Search,
@@ -11,6 +12,7 @@ import {
   Calendar,
   Video,
   PhoneCall,
+  Trash2,
 } from 'lucide-react'
 
 // Quiet status marker (same as Form Governance): a small dot carries the state, the text stays neutral.
@@ -84,6 +86,9 @@ const Leads = () => {
   const [actioning, setActioning] = useState(false)
   const [showCreateCase, setShowCreateCase] = useState(false)
   const [createdCaseSuccess, setCreatedCaseSuccess] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const hasLoadedOnce = useRef(false)
 
@@ -178,6 +183,23 @@ const Leads = () => {
     runLeadAction(() => leadsApi.reject(id, reason))
   }
 
+  // Delete the lead; the server deletes its GoHighLevel card first and keeps the lead if GoHighLevel cannot be reached.
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await leadsApi.remove(deleteTarget._id)
+      setLeads((prev) => prev.filter((l) => l._id !== deleteTarget._id))
+      if (selectedId === deleteTarget._id) setSelectedId(null)
+      setDeleteTarget(null)
+    } catch (error) {
+      setDeleteError(error.response?.data?.message || 'Could not delete the lead. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleCaseCreated = (data) => {
     setShowCreateCase(false)
     setCreatedCaseSuccess({ caseNumber: data?.case?.caseNumber || '' })
@@ -256,6 +278,7 @@ const Leads = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Consultation</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted</th>
+                  <th className="px-3 py-3 w-12"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -302,6 +325,17 @@ const Leads = () => {
                         <StatusDot dot={STATUS_DOTS[lead.status]}>{STATUS_LABELS[lead.status] || lead.status}</StatusDot>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">{timeAgo(lead.createdAt)}</td>
+                      <td className="px-3 py-4 whitespace-nowrap text-right">
+                        <button
+                          type="button"
+                          title="Delete lead"
+                          aria-label={`Delete lead ${lead.fullName || lead.email || ''}`.trim()}
+                          onClick={(event) => { event.stopPropagation(); setDeleteError(''); setDeleteTarget(lead) }}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -327,6 +361,7 @@ const Leads = () => {
           onApprove={handleApprove}
           onReject={handleReject}
           onCreateCase={() => setShowCreateCase(true)}
+          onDelete={() => { setDeleteError(''); setDeleteTarget(selectedLead) }}
         />
       )}
 
@@ -351,14 +386,35 @@ const Leads = () => {
           onClose={() => setCreatedCaseSuccess(null)}
         />
       )}
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete this lead?"
+          message={`${deleteTarget.fullName || deleteTarget.email || 'This lead'} will be deleted permanently, and its card in the GoHighLevel Immiglance Pipeline will be deleted too.`}
+          confirmLabel="Delete lead"
+          icon={Trash2}
+          busy={deleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => { if (!deleting) setDeleteTarget(null) }}
+        />
+      )}
     </div>
   )
 }
 
 function LeadDrawer({
   lead, noteDraft, setNoteDraft, onClose, onUpdateStatus, onSubmitNote,
-  actionError, actioning, onConfirmConsultation, onCompleteConsultation, onApprove, onReject, onCreateCase,
+  actionError, actioning, onConfirmConsultation, onCompleteConsultation, onApprove, onReject, onCreateCase, onDelete,
 }) {
+  // where this lead is in the GoHighLevel Immiglance Pipeline (nothing is shown for leads from before the connection)
+  const ghlLine = {
+    synced: 'In the GoHighLevel Immiglance Pipeline',
+    pending: 'Sending to GoHighLevel…',
+    syncing: 'Sending to GoHighLevel…',
+    failed: 'Could not reach GoHighLevel yet - it will retry automatically',
+    skipped: 'Not sent to GoHighLevel',
+  }[lead.ghl?.status]
   const consultation = lead.consultationId && typeof lead.consultationId === 'object' ? lead.consultationId : null
   const evidence = lead.scoreResult?.evidenceStrength?.length
     ? lead.scoreResult.evidenceStrength
@@ -375,12 +431,22 @@ function LeadDrawer({
             </p>
             <h3 className="text-lg font-bold text-foreground">{lead.fullName || 'Unknown'}</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-muted-foreground">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={onDelete} title="Delete lead" aria-label="Delete lead" className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground">
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-muted-foreground">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
+          {ghlLine && (
+            <p className="text-xs text-muted-foreground" title={lead.ghl?.error || ''}>
+              GoHighLevel: <span className="font-semibold text-foreground">{ghlLine}</span>{lead.ghl?.status === 'skipped' && lead.ghl?.error ? ` (${lead.ghl.error})` : ''}
+            </p>
+          )}
           {/* Contact */}
           <div className="flex flex-wrap gap-3">
             <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary">
