@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { authApi, casesApi, employeeProfileApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
 import { useEmployeeView } from "../../context/ActiveCaseContext";
+import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import PasswordHint from "../../components/auth/PasswordHint";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
@@ -48,6 +49,7 @@ export default function Profile() {
   const employeeView = useEmployeeView(user); // follows the open case (one login, many cases)
   const [data, setData] = useState(INITIAL);
   const [activeCaseId, setActiveCaseId] = useState("");
+  const [shownVisa, setShownVisa] = useState(""); // the proper visa name of the open case (N-400 - Naturalization, H-1B Extension ...), display only
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -85,6 +87,7 @@ export default function Profile() {
           visaCategory: activeCase.visaCategory || "",
           visaType: activeCase.visaType || "",
         });
+        setShownVisa(resolveDisplayVisa(activeCase));
         setLoading(false);
       }).catch(() => setLoading(false));
       return () => { mounted = false; };
@@ -116,6 +119,7 @@ export default function Profile() {
         visaCategory: activeCase.visaCategory || client.visaCategory || "",
         visaType: activeCase.visaType || client.visaType || "",
       });
+      setShownVisa(resolveDisplayVisa(activeCase));
       setLoading(false);
     }).catch(() => setLoading(false));
     return () => { mounted = false; };
@@ -235,7 +239,7 @@ export default function Profile() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Visa Type</p>
-              <p className="text-sm font-semibold text-foreground">{data.visaType || "Not selected"}</p>
+              <p className="text-sm font-semibold text-foreground">{shownVisa || data.visaType || "Not selected"}</p>
             </div>
           </div>
         </div>

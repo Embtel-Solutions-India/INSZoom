@@ -254,10 +254,17 @@ function applyCaseRoleFilter(filter, user) {
   return filter;
 }
 
+// A visa name typed or chosen as "I-765 EAD" must also match the stored compact code "I765EAD" (and "H-4 EAD" -> H4EAD): every
+// character of the text may be followed by separators. Only letters/digits are matched, so no regex special character can break it.
+function tolerantVisaRegex(text) {
+  const chars = String(text || "").replace(/[^a-z0-9]/gi, "").split("");
+  return chars.length ? chars.join("[^a-zA-Z0-9]*") : String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function buildCaseFilterFields(query) {
   const filter = {};
   if (query.status) filter.status = query.status;
-  if (query.visaType) filter.visaType = { $regex: query.visaType, $options: "i" };
+  if (query.visaType) filter.visaType = { $regex: tolerantVisaRegex(query.visaType), $options: "i" };
   if (query.visaCategory) filter.visaCategory = query.visaCategory;
   if (query.stage) filter.stage = query.stage;
   if (query.priority) filter.priority = query.priority;
@@ -322,6 +329,7 @@ function buildCaseSearchOr(search) {
     { caseNumber: { $regex: search, $options: "i" } },
     { uscisReceiptNumber: { $regex: search, $options: "i" } },
     { petitionType: { $regex: search, $options: "i" } },
+    { visaType: { $regex: tolerantVisaRegex(search), $options: "i" } },
     // an employee case that is not invited yet is identified by these, not by clientName/clientEmail
     { "pendingEmployee.name": { $regex: search, $options: "i" } },
     { "pendingEmployee.email": { $regex: search, $options: "i" } },
@@ -376,13 +384,19 @@ async function resolveStaffListFilter(query, user) {
   // other filters still apply to the listed rows (base), and child cases stay inside their matter.
   const visaType = typeof query.visaType === "string" ? query.visaType.trim() : "";
   const visaCategory = typeof query.visaCategory === "string" ? query.visaCategory.trim() : "";
-  if (exclude && !query.caseRole && (visaType || visaCategory)) {
-    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaCategory: undefined }, user);
-    const visaMatch = {};
-    if (visaType) visaMatch.visaType = { $regex: visaType, $options: "i" };
-    if (visaCategory) visaMatch.visaCategory = visaCategory;
-    const parentIds = (await Case.distinct("parentCase", { ...visaMatch, parentCase: { $ne: null }, caseRole: { $in: ["employee", "beneficiary"] }, status: { $nin: ["removed", "archived"] } })).filter(Boolean);
-    return { $and: [base, { $or: [visaMatch, ...(parentIds.length ? [{ _id: { $in: parentIds } }] : [])] }] };
+  // The Status and Stage filters roll up the same way (2026-11-06): a matter is listed when it OR any of its employee / beneficiary cases matches.
+  const statusFilter = typeof query.status === "string" ? query.status.trim() : "";
+  const stageFilter = typeof query.stage === "string" ? query.stage.trim() : "";
+  if (exclude && !query.caseRole && (visaType || visaCategory || statusFilter || stageFilter)) {
+    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaCategory: undefined, status: undefined, stage: undefined }, user);
+    const attrMatch = {};
+    if (visaType) attrMatch.visaType = { $regex: tolerantVisaRegex(visaType), $options: "i" };
+    if (visaCategory) attrMatch.visaCategory = visaCategory;
+    if (statusFilter) attrMatch.status = statusFilter;
+    if (stageFilter) attrMatch.stage = stageFilter;
+    const childStatus = statusFilter ? {} : { status: { $nin: ["removed", "archived"] } };
+    const parentIds = (await Case.distinct("parentCase", { ...attrMatch, ...childStatus, parentCase: { $ne: null }, caseRole: { $in: ["employee", "beneficiary"] } })).filter(Boolean);
+    return { $and: [base, { $or: [attrMatch, ...(parentIds.length ? [{ _id: { $in: parentIds } }] : [])] }] };
   }
   // case managers see every case since 2026-11-04 (seesEveryCase), so the roll-up is only needed for a search
   const needsRollUp = exclude && !query.caseRole && query.search;

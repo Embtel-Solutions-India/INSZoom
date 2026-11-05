@@ -20,6 +20,10 @@ const FILING_TYPE_NAMES = {
   COSB1: 'Change of Status to B-1',
   COSB2: 'Change of Status to B-2',
   COSH4: 'Change of Status to H-4',
+  // citizenship filings are shown with their form number
+  'Naturalization': 'N-400 - Naturalization',
+  'Certificate of Citizenship': 'N-600 - Certificate of Citizenship',
+  'Replacement Citizenship Certificate': 'N-565 - Replacement Citizenship/Naturalization Document',
 }
 
 export function resolveDisplayVisa(caseItem) {

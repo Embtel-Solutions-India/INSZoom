@@ -501,16 +501,17 @@ class CaseLifecycleOrchestrator {
         userId: caseData.assignedTeamLead,
         type: "team_case_created",
         category: "case",
-        title: "New Case Awaiting Assignment",
+        // "awaiting assignment" only while no case manager is set; a case created with one already assigned is just announced
+        title: caseData.assignedCaseManager ? "New Case Created" : "New Case Awaiting Assignment",
         message: `${caseNumber} · ${caseData.clientName || "Client"} · ${caseData.visaType}`,
         caseId: caseData._id,
-        link: `/crm-cases/${caseData._id}?assign=case_manager`,
+        link: caseData.assignedCaseManager ? `/crm-cases/${caseData._id}` : `/crm-cases/${caseData._id}?assign=case_manager`,
         priority: caseData.priority === "urgent" ? "urgent" : "high",
         source: "shared",
         metadata: { visaType: caseData.visaType, companyId: caseData.companyId, package: caseData.package, progress: result.progress.percent },
         emailTemplate: "case-created-team-lead",
         emailTo: teamLead?.email,
-        emailData: { teamLeadName: teamLead?.name || teamLead?.displayName, caseNumber, clientName: caseData.clientName },
+        emailData: { teamLeadName: teamLead?.name || teamLead?.displayName, caseNumber, clientName: caseData.clientName, assigned: Boolean(caseData.assignedCaseManager) },
       }, user, req).catch(() => null);
 
       const caseSummary = {

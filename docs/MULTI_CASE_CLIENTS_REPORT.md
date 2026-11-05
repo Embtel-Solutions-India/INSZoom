@@ -163,6 +163,12 @@ No new env vars, no migration. Restart the backend; rebuild Admin. (Copied docum
   Scenarios: new person -> case A with set-password invitation; activation + answers + a document; case B (I-765 EAD) added to the same login with no set-password link, password / activation / landing case untouched, answers (date normalised) and the document copied as the case's OWN file, the earlier case never written; the person's own edit never overwritten; case C through staff New case (no refusal); switcher list, `?caseId=` opening each case, a foreign or stale id falling back to the landing case; staff lookup and "other cases" list; "Add to this person's login" (and refusal for a case already on a login); employee login with its own case acting as a client there and as an employee on the invited case (stored role never changed); deleting cases (login survives while any case remains, including as petitioner; landing case moves); an employer with TWO matters; a family (K-1) case for a returning person as petitioner (details copied, nothing on the beneficiary's side).
 - Hardening tests `multiCase.hardening.test.js` (9) pin every fix below; the linker / prefill / role tests (28) still pass.
 
+### Final results (2026-11-05)
+- Full database-free backend suite (388 files, without the one file that hangs on this machine): **3,083 tests, 3,065 pass, 18 fail - the same 18 known failures as every earlier phase; no new failure, none changed.**
+- End-to-end test on the local test database: **13 / 13**, run twice, zero leftovers. Phase 4 hardening tests 9 / 9; linker / prefill / role tests 28 / 28.
+- Admin 40 files / 353 tests pass; Client 21 files / 124 tests pass; Admin, Client, Landing and Attorney all build.
+- The new / changed routes answer 401 (login required) in a throwaway load of the real app; unknown routes 404.
+
 ### Problems found and fixed in Phase 4
 1. **A login could be deleted wrongly** (case-deletion.service.js): after a case was deleted, a client login was removed if it counted no other case, but only cases where the person is user / e-mail contact / employer / employee were counted. A person who was only the petitioner, beneficiary or delegate employer on another case lost the whole login. Now every way of being on a case counts.
 2. **Wrong case opened after a deletion**: the landing case was just cleared, and the "newest case" fallback then picked an employee case of another matter for an employer. Now the landing case moves to the person's newest remaining top-level case, and the fallback itself prefers a top-level case.

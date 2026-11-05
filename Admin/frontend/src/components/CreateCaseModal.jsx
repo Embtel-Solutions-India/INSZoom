@@ -584,7 +584,6 @@ const CreateCaseModal = ({
             <label className="block text-sm font-medium text-muted-foreground mb-1">Assign Staff</label>
             <WrappingSelect
               ariaLabel="Assign Staff"
-              openUp
               compact
               value={form.assignedCaseManager}
               onChange={(value) => handleChange('assignedCaseManager')({ target: { value } })}
