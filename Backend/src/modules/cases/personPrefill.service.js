@@ -133,7 +133,7 @@ async function loadChecklist(caseId, role, actor) {
  * Pre-fills the person's checklist on `caseId` from their earlier cases. Never throws.
  * @returns {Promise<{status: string, copied?: number, fromCases?: string[]}>}
  */
-async function prefillPersonFromEarlierCases(caseId, personId, { targetRole, actor = SYSTEM_ACTOR, now = () => new Date() } = {}) {
+async function prefillAnswersFromEarlierCases(caseId, personId, { targetRole, actor = SYSTEM_ACTOR, now = () => new Date() } = {}) {
   try {
     if (!caseId || !personId || !PERSON_ROLES.has(targetRole)) return { status: "not_a_person_checklist" };
     const target = await Case.findById(caseId).select("caseNumber createdAt").lean();
@@ -204,4 +204,136 @@ async function prefillPersonFromEarlierCases(caseId, personId, { targetRole, act
   }
 }
 
-module.exports = { prefillPersonFromEarlierCases, selfNamespace, factOf, normalizeDate, valueFor, PREFILL_ACTION, FACT_ALIASES };
+// ============================================================================ Phase 3B: documents
+// The person's own reusable documents (passport, resume, birth certificate, driver's licence / state ID, SSN card, degrees / transcripts) from an
+// earlier case are added to the matching still-empty document question of the new case.
+//   - matched by document KIND: the question's canonical path (<self>.documents.passport ...) or, for a document question without one, a strict
+//     reading of its key + label; a question that names someone else (sponsor, spouse, child, H-1B holder, "of the petitioner / beneficiary" ...),
+//     photos, combined documents (passport + I-94, licence + SSN), relationship evidence and evaluations are never matched
+//   - the new case gets its OWN COPY of each file (read from storage, stored again through the normal upload path: type / size / security checks,
+//     canonical sync and form autofill exactly like an upload), so deleting it in one case can never remove the other case's file
+//   - never into a question that already has a file; one document at a time, each one independent; never throws
+// Save progress, Submit and Upload are not touched: this only calls the existing upload function once per copied document, in the background,
+// for a brand-new case.
+const DOCUMENT_PATH_KIND = {
+  "documents.passport": "passport",
+  "documents.resume": "resume",
+  "documents.birthCertificate": "birthCertificate",
+  "documents.stateId": "stateId",
+  "documents.usDriversLicenseOrStateId": "stateId",
+  "documents.ssnCard": "ssnCard",
+  "documents.signedSSN": "ssnCard",
+  "documents.signedSsnCopy": "ssnCard",
+};
+const SOMEONE_ELSE = /spouse|husband|wife|child|children|\bson\b|daughter|father|mother|parent|sponsor|principal|holder|petitioner|beneficiary|employer|company|dependent|household|joint|relative|fianc/i;
+const NOT_REUSABLE = /photo|photograph|picture|i-?94|paystub|pay stub|approval|notice|evaluation|training|relationship|marriage|naturali[sz]ation|citizenship cert|visa stamp|\bead\b|employment authori/i;
+const DOCUMENT_KINDS = [
+  ["passport", /passport/i],
+  ["resume", /resume|résumé|\bcv\b|curriculum vitae/i],
+  ["birthCertificate", /birth certificate/i],
+  ["stateId", /driver|driving licen|state id|state identification/i],
+  ["ssnCard", /\bssn\b|social security/i],
+  ["education", /academic cert|degree|diploma|transcript|mark ?sheet/i],
+];
+
+/** Pure: the reusable document kind a FILE question asks for (or null). */
+function documentKindOf(question, self) {
+  if (!question || String(question.type || "").toLowerCase() !== "file") return null;
+  const path = pathOf(question);
+  if (path) {
+    const [ns, ...rest] = path.split(".");
+    const tail = rest.join(".");
+    if (PARTY_NAMESPACES.has(ns) && ns !== self) return null; // a document of the other party
+    if (PARTY_NAMESPACES.has(ns) && DOCUMENT_PATH_KIND[tail]) return DOCUMENT_PATH_KIND[tail];
+  }
+  const text = `${question.label || ""} ${String(question.key || "").replace(/[_-]+/g, " ")}`;
+  if (SOMEONE_ELSE.test(text) || NOT_REUSABLE.test(text)) return null;
+  const kinds = DOCUMENT_KINDS.filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind);
+  return kinds.length === 1 ? kinds[0] : null; // a question asking for two kinds at once (licence + SSN) is never matched
+}
+
+const MAX_FILES_COPIED = 10;
+
+async function prefillDocumentsFromEarlierCases(caseId, personId, { targetRole, actor = SYSTEM_ACTOR, now = () => new Date(), readBuffer = null } = {}) {
+  try {
+    if (!caseId || !personId || !PERSON_ROLES.has(targetRole)) return { status: "not_a_person_checklist" };
+    const fresh = await loadChecklist(caseId, targetRole, actor);
+    if (!fresh?.questionnaire) return { status: "no_checklist" };
+    const freshQuestions = allQuestions(fresh);
+    const freshSelf = selfNamespace(freshQuestions);
+    const withFiles = new Set((fresh.answers || []).filter((answer) => (answer.files || []).length).map((answer) => answer.questionKey));
+    const targetsByKind = new Map();
+    for (const question of freshQuestions) {
+      const kind = documentKindOf(question, freshSelf);
+      if (!kind || withFiles.has(question.key) || targetsByKind.has(kind)) continue; // one question per kind
+      targetsByKind.set(kind, question);
+    }
+    if (!targetsByKind.size) return { status: "nothing_to_fill" };
+
+    const sources = (await require("./caseLinks.service").listPersonCases(personId))
+      .filter((row) => row._id !== String(caseId) && CAPACITY_ROLE[row.capacity])
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    if (!sources.length) return { status: "no_earlier_case" };
+
+    const picked = new Map(); // kind -> { files, sourceCase }
+    for (const source of sources) {
+      if (picked.size >= targetsByKind.size) break;
+      const old = await loadChecklist(source._id, CAPACITY_ROLE[source.capacity], actor);
+      if (!old?.answers?.length) continue;
+      const oldQuestions = new Map(allQuestions(old).map((question) => [question.key, question]));
+      const oldSelf = selfNamespace([...oldQuestions.values()]);
+      for (const answer of old.answers) {
+        const files = (answer.files || []).filter((file) => file && file.storageKey);
+        if (!files.length) continue;
+        const kind = documentKindOf(oldQuestions.get(answer.questionKey), oldSelf);
+        if (!kind || !targetsByKind.has(kind) || picked.has(kind)) continue;
+        picked.set(kind, { files: files.slice(0, MAX_FILES_COPIED), sourceCase: source });
+      }
+    }
+    if (!picked.size) return { status: "nothing_to_copy" };
+
+    const qs = require("../questionnaires/questionnaire.service");
+    const read = readBuffer || ((key) => require("../petition-review/petitionBufferCache").withRetries(() => require("../uploads/storage.service").readBuffer(key)));
+    const Answer = require("../../models/Answer");
+    let copiedFiles = 0;
+    const copiedKinds = [];
+    for (const [kind, item] of picked) {
+      const question = targetsByKind.get(kind);
+      try {
+        const files = [];
+        for (const file of item.files) {
+          const buffer = await read(file.storageKey);
+          files.push({ originalname: file.originalName || `${kind}.pdf`, buffer, size: buffer.length, mimetype: file.mimeType || "application/octet-stream" });
+        }
+        await qs.saveFileAnswer({ caseId, questionnaireId: fresh.questionnaire._id, targetRole, responseId: fresh.responseId, questionKey: question.key }, files, actor, null);
+        await Answer.updateOne(
+          { responseId: fresh.responseId, questionKey: question.key },
+          { $push: { auditHistory: { action: PREFILL_ACTION, changes: { sourceCaseId: item.sourceCase._id, sourceCaseNumber: item.sourceCase.caseNumber || "", sourceVisaType: item.sourceCase.visaType || "", document: kind, files: files.length }, performedAt: now() } } }
+        ).catch(() => null);
+        copiedFiles += files.length;
+        copiedKinds.push(kind);
+      } catch (error) {
+        logger.error("person_prefill_document_failed", { caseId: String(caseId), kind, error: error.message }); // this one document is left for the person
+      }
+    }
+    if (!copiedKinds.length) return { status: "nothing_copied" };
+    const caseDoc = await Case.findById(caseId);
+    if (caseDoc) {
+      require("./case.service").addTimelineEvent(caseDoc, "document", "Documents added from an earlier case", `${copiedKinds.length} document(s) (${copiedKinds.join(", ")}) were copied from this person's earlier case(s). The copies belong to this case; the earlier case is not changed.`, actor, { kinds: copiedKinds, files: copiedFiles });
+      await caseDoc.save();
+    }
+    return { status: "prefilled", documents: copiedKinds.length, files: copiedFiles, kinds: copiedKinds };
+  } catch (error) {
+    logger.error("person_prefill_documents_failed", { caseId: String(caseId), error: error.message });
+    return { status: "error", error: error.message };
+  }
+}
+
+/** Phase 3A + 3B: the person's own answers, then their reusable documents. Each step is independent and never throws. */
+async function prefillPersonFromEarlierCases(caseId, personId, options = {}) {
+  const answers = await prefillAnswersFromEarlierCases(caseId, personId, options);
+  const documents = await prefillDocumentsFromEarlierCases(caseId, personId, options);
+  return { ...answers, answers, documents };
+}
+
+module.exports = { prefillPersonFromEarlierCases, prefillAnswersFromEarlierCases, prefillDocumentsFromEarlierCases, documentKindOf, selfNamespace, factOf, normalizeDate, valueFor, PREFILL_ACTION, FACT_ALIASES };

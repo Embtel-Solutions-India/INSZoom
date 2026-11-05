@@ -21,4 +21,13 @@ describe('QuestionnaireAnswersPanel - pre-filled from an earlier case', () => {
     render(<QuestionnaireAnswersPanel questionnaire={questionnaire} fieldQuestions={fieldQuestions} documentQuestions={[]} answerMap={{ first_name: 'Ana' }} filesByKey={{}} />)
     expect(screen.queryByTestId('prefilled-from')).toBeNull()
   })
+
+  it('marks a document copied from the earlier case (3B)', () => {
+    const answerMap = {}
+    Object.defineProperty(answerMap, '__prefilledFromEarlierCase', { value: { passport: { sourceVisaType: 'H-1B', sourceCaseNumber: 'B471', document: 'passport' } }, enumerable: false })
+    const documentQuestions = [{ key: 'passport', label: 'Copy of passport', type: 'file', sectionKey: 's' }]
+    render(<QuestionnaireAnswersPanel questionnaire={questionnaire} fieldQuestions={[]} documentQuestions={documentQuestions} answerMap={answerMap} filesByKey={{ passport: [{ originalName: 'passport.pdf', storageKey: 'k' }] }} />)
+    expect(screen.getByTestId('prefilled-from').textContent).toBe('Copied from earlier case (H-1B · B471)')
+  })
 })
+

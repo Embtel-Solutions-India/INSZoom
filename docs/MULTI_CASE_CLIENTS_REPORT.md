@@ -7,8 +7,8 @@ Plan: `docs/MULTI_CASE_CLIENTS_PLAN.md`. One report for all phases; each phase a
 | 1 — Link many cases to one login (backend) + staff see it (Admin) | Done (2026-11-05) |
 | 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) |
 | 2B — A login that is an employee / beneficiary on one case and a client on another | Done (2026-11-05) |
-| 3A — Carry the person's own answers into each new case | Done (2026-11-05) — awaiting owner approval for 3B |
-| 3B — Reuse the person's documents (passport, resume …) in a new case | Not started |
+| 3A — Carry the person's own answers into each new case | Done (2026-11-05) |
+| 3B — Reuse the person's documents (passport, resume …) in a new case | Done (2026-11-05) — awaiting owner approval for Phase 4 |
 | 4 — Hardening, full verification, rollout | Not started |
 
 ## Phase 1 — Link many cases to one login + staff see it
@@ -131,3 +131,27 @@ Admin: `hooks/useCaseQuestionnaire.js`, `components/QuestionnaireAnswersPanel.js
 
 ### Production
 No new env vars, no migration (applies to cases created from now on). Restart the backend; rebuild Client and Admin.
+
+## Phase 3B — The person's documents are reused in each new case
+
+### Done
+- `personPrefill.service.js` now runs two independent steps for a returning person: answers (3A) and documents (3B). Same entry points as 3A (New case single-person, single-party filings, family petitioner, "Add to this person's login"); never throws; a failure on one document leaves only that document for the person.
+- **Which documents** (the person's own only): passport (incl. "all pages", "biographic page"), resume / CV, birth certificate (incl. foreign), driver's licence / state ID, SSN card, degrees / academic certificates / transcripts / mark sheets. Matched by the question's canonical document path (`<self>.documents.passport` …) or, for document questions without one, a strict reading of key + label (one kind only).
+- **Never**: a document named as someone else's (sponsor, spouse, child, H-1B holder, principal, "of the petitioner / beneficiary", employer, household …); the other party's canonical path; photos (passport-size / digital photos); combined documents (passport + I-94, licence + SSN); relationship evidence, marriage / naturalisation / citizenship certificates; approval notices, EAD cards, degree evaluations, training certificates. Conservative: "Copy of your passport (the page with your photo)" is left for the person (the word "photo").
+- **The new case gets its OWN COPY**: each file is read from storage (with retries) and stored again through the normal upload function (`saveFileAnswer`: file-name / size / security checks, then the same canonical sync and form autofill as any upload). Deleting it in one case can never remove the other case's file (removing an answer file deletes its stored object, so sharing one object would have been unsafe). Up to 10 files per document, into a question that has no file yet.
+- **Owner rule — same as typed answers**: copied answers and documents are saved through the normal `saveAnswers` / `saveFileAnswer` paths, which rebuild the canonical profile, mark the case's forms stale and re-run the case sync (form autofill) — exactly like answers the person enters (verified in code).
+- **Owner rule — Save progress, Submit and Upload are not affected**: none of the questionnaire save / submit / upload code (questionnaire service / controller / routes, documents, uploads, the client's answer hook and inputs) was changed in Phase 3A or 3B (git diff empty).
+- **Visible**: Client — the same note under the document question ("Pre-filled from your earlier case (…)") until the person changes it; Admin — "Copied from earlier case (H-1B · B471)" under the document; case timeline — "Documents added from an earlier case" with the kinds.
+
+### Not done in 3B
+- History lists and employer-matter company details (as in 3A).
+
+### Tests and builds
+- Backend `personPrefill.service.test.js` 10 / 10 (4 new: real labels recognised, someone else / photos / combined / status documents refused, canonical path decides first, own copy through the normal upload path). Admin `QuestionnaireAnswersPanel.prefill.test.jsx` 3 / 3; Admin components 215 / 215; Admin build green. Full database-free backend suite: see the 3B report in the conversation.
+- Phase 3A full suite: 3,070 tests, 3,050 pass; the 18 known failures + 2 Petition AI Review backup-reader timing tests that pass on their own (20 / 20 twice) — no failure caused by Phase 3A.
+
+### Files
+Backend: `modules/cases/personPrefill.service.js`, `modules/cases/tests/personPrefill.service.test.js`. Admin: `components/QuestionnaireAnswersPanel.jsx`, `components/QuestionnaireAnswersPanel.prefill.test.jsx`.
+
+### Production
+No new env vars, no migration. Restart the backend; rebuild Admin. (Copied documents count toward storage like any upload.)

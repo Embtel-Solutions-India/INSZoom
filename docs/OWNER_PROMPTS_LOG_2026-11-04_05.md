@@ -61,5 +61,14 @@ Every request / instruction the owner gave in this session, in order, as written
 | 55 | "start impleemnting phase 2b." | Phase 2B done. |
 | 56 | "start the next phase." | Phase 3A done (answers); 3B (documents) next. |
 | 57 | (mid-turn) "before autocompacting this is you duty claude to write evry command or prompt that i gave to you." | This file. |
+| 58 | "check now" | Phase 3A suite was still running; reported. |
+| 59 | "give me report till then" | Phase 3A report given. |
+| 60 | "start implemetning the phase 3b" | Phase 3B done (documents). |
+| 61 | (mid-turn) "the copied or shared fieilds both test and docuents should be autofilled and have a conancial path values." / "same as the normal text" | Verified: copies go through the normal save paths (canonical profile + form autofill). |
+| 62 | (mid-turn) "the save progresss and sub,it and upload document should not get hampered." | Verified: that code is unchanged (git diff empty). |
+| 63 | (mid-turn) "change the name of the Madaan as" / "Bhavya" / "only name change nothing else" | Renamed (name + display name only). |
+| 64 | (mid-turn) "current assigned should also show bhavya not madaan" | Yes: assignments read the name live (2 cases). |
+| 65 | (mid-turn) "Email should remain same only name changes" | E-mail unchanged. |
+| 66 | (mid-turn) "alsothe assign dropddowns should also show bhavya instead of madaan." | Verified: every staff list shows Bhavya. |
 
 Related documents: `docs/MULTI_CASE_CLIENTS_PLAN.md` (plan), `docs/MULTI_CASE_CLIENTS_REPORT.md` (single completion report for all phases), `docs/PETITION_REVIEW.md` (Supporting Documents section).
