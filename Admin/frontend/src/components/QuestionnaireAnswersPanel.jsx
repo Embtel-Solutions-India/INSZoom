@@ -94,7 +94,7 @@ function RequiredMark({ question }) {
   return isQuestionRequired(question) ? <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span> : null
 }
 
-function AnswerRow({ label, value, extra = null, required = false }) {
+function AnswerRow({ label, value, extra = null, required = false, prefilledFrom = null }) {
   const answered = value !== undefined && value !== null && value !== ''
   return (
     <div className="min-w-0">
@@ -108,6 +108,12 @@ function AnswerRow({ label, value, extra = null, required = false }) {
       >
         {answered ? value : 'Needed'}
       </div>
+      {/* one login, many cases (Phase 3A): copied from the person's earlier case and not changed since */}
+      {answered && prefilledFrom && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="prefilled-from">
+          Pre-filled from earlier case{[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).length ? ` (${[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).join(' · ')})` : ''}
+        </p>
+      )}
     </div>
   )
 }
@@ -208,7 +214,7 @@ function formatFileSize(bytes = 0) {
 // served). Staff can add entries (up to 10, 50 MB each) and remove one.
 // Review: per-file approve/reject lives on each file's Documents record (the
 // Uploaded Documents table); the row-level answer status is unchanged.
-function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requestControl = null }) {
+function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requestControl = null, prefilledFrom = null }) {
   const [uploading, setUploading] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
@@ -314,6 +320,12 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requ
         </label>
       )}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {/* one login, many cases (Phase 3B): this document was copied from the person's earlier case (the case's own copy) */}
+      {current.length > 0 && prefilledFrom && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="prefilled-from">
+          Copied from earlier case{[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).length ? ` (${[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).join(' · ')})` : ''}
+        </p>
+      )}
     </div>
   )
 }
@@ -468,7 +480,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                         />
                       </div>
                     ) : (
-                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                     )
                 )
                 return (
@@ -489,7 +501,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
               {fileQuestions.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                   {fileQuestions.map((question) => (
-                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                   ))}
                 </div>
               )}

@@ -8,10 +8,24 @@
 // carries it — no extra fetch needed.
 export const H1B_SUBTYPES = ['New H-1B', 'H-1B Extension', 'H-1B Transfer', 'H-1B Amendment', 'H-1B Concurrent']
 
+// Single-party filing types are STORED under compact codes (H4EAD, I765EAD, COSF1 ...) that routing and the registry depend on; every screen SHOWS their proper name.
+const FILING_TYPE_NAMES = {
+  H4EXTENSION: 'H-4 Extension',
+  H4EAD: 'H-4 EAD',
+  H4EXTENSIONEAD: 'H-4 Extension + EAD',
+  I765EAD: 'I-765 EAD',
+  COSF1: 'Change of Status to F-1',
+  F1REINSTATEMENT: 'F-1 Reinstatement',
+  COSF2: 'Change of Status to F-2',
+  COSB1: 'Change of Status to B-1',
+  COSB2: 'Change of Status to B-2',
+  COSH4: 'Change of Status to H-4',
+}
+
 export function resolveDisplayVisa(caseItem) {
   const variant = caseItem?.questionnaireData?.masterData?.visaVariant
   if (variant) return variant
   // H-1B's staff-chosen filing type (Case.petitionSubType) IS the visa it displays as; visaType stays "H-1B" for routing.
   if (caseItem?.visaType === 'H-1B' && H1B_SUBTYPES.includes(caseItem?.petitionSubType)) return caseItem.petitionSubType
-  return caseItem?.visaType || ''
+  return FILING_TYPE_NAMES[caseItem?.visaType] || caseItem?.visaType || ''
 }

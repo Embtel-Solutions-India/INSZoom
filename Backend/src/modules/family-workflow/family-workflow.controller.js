@@ -388,6 +388,8 @@ exports.createFamilyCase = async (req, res, next) => {
     }
     await ensureFamilyChecklistReferences(caseData, req.user, req);
     await require("./petitioner-prefill.service").prefillPetitionerFromEarlierCase(caseData._id, req.user); // repeat petitioner: pre-fill from their earlier case; never throws
+    // Phase 3A: also from the petitioner's NON-family cases (single-person / employee cases) - only still-empty answers; never throws
+    if (caseData.petitionerUser) await require("../cases/personPrefill.service").prefillPersonFromEarlierCases(caseData._id, caseData.petitionerUser, { targetRole: "petitioner" });
     // BUG (fixed): this only ever assigned checklists (above) - it never
     // provisioned the actual USCIS forms (CaseForm records for I-130/I-485/
     // I-864/I-693/etc.), unlike case.controller.js's own createCase, which
@@ -449,7 +451,7 @@ exports.createFamilyCase = async (req, res, next) => {
           channels: ["in_app", "socket", "push", "email"],
           emailTemplate: "case-created-client",
           emailTo: petitionerEmail,
-          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard` },
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard`, loginLink: `${require("../../config/env").clientUrl}/login?case=${caseData._id}` }, // a returning petitioner: sign-in opens THIS case
         }, req.user, req).catch(() => null);
       });
     }

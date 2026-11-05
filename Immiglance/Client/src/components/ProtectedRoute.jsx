@@ -1,6 +1,6 @@
 import { Outlet, Link, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isEmployeeAccount } from "../utils/auth";
+import { useEmployeeView } from "../context/ActiveCaseContext";
 
 // Blocks the invited-employee role from routes it should never reach directly
 // by URL — an employee's whole world is their own case's Documents/checklist
@@ -8,7 +8,8 @@ import { isEmployeeAccount } from "../utils/auth";
 // wrapping /dashboard itself in this guard would otherwise infinite-loop).
 export function BlockEmployeeRoute() {
   const { user } = useAuth();
-  if (isEmployeeAccount(user)) return <Navigate to="/dashboard/documents" replace />;
+  const employeeView = useEmployeeView(user); // follows the open case
+  if (employeeView) return <Navigate to="/dashboard/documents" replace />;
   return <Outlet />;
 }
 

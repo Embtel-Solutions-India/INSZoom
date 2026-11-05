@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import { ghlApi } from '../../services/api'
+import { resolveDisplayVisa } from '../../utils/visaDisplay'
 import { useDraggable } from '@dnd-kit/core'
 import { AlertTriangle, GripVertical, Trash2 } from 'lucide-react'
 
@@ -61,7 +62,7 @@ export function CardView({ card, stages, onMoveTo, onDelete, isOverlay = false }
             {card.visaSelectionRequired ? (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800">Visa required</span>
             ) : card.visaType ? (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary">{card.visaType}</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary">{resolveDisplayVisa({ visaType: card.visaType })}</span>
             ) : null}
             {card.assigneeName ? <span className="truncate text-[0.7rem] text-muted-foreground">{card.assigneeName}</span> : null}
             {card.syncStatus === 'FAILED' ? (

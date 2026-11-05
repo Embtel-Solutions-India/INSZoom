@@ -21,9 +21,16 @@ async function getPaymentOr404(id, user) {
   return payment;
 }
 
+// one login, many cases: the case selected in the client portal (`caseId`), only one of this person's own; otherwise the usual newest case
+async function clientPaymentCase(req, requested) {
+  const id = require("../cases/caseLinks.service").requestedCaseId(requested);
+  const selected = id ? await Case.findOne({ _id: id, user: req.user._id }) : null;
+  return selected || Case.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+}
+
 exports.getPaymentSummary = async (req, res, next) => {
   try {
-    const caseData = await Case.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+    const caseData = await clientPaymentCase(req, req.query.caseId);
     if (!caseData) {
       return res.json({
         success: true,
@@ -148,7 +155,7 @@ exports.addPayment = async (req, res, next) => {
 
 exports.createPartialCheckoutSession = async (req, res, next) => {
   try {
-    const caseData = await Case.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+    const caseData = await clientPaymentCase(req, req.body?.caseId || req.query.caseId);
     if (!caseData) return res.status(404).json({ success: false, message: "No case found" });
     const payment = await paymentService.getOrCreateClientPayment(req.user, caseData, req);
     if (payment.remainingAmount <= 0) return res.status(400).json({ success: false, message: "Payment is already completed" });

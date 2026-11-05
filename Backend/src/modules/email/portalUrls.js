@@ -57,6 +57,7 @@ function confineToPortal(text, portal, fallback) {
 // replaced in the plain-text version. Returns { html, text }.
 const BUTTON_TAG = /<a\b[^>]*display:inline-block[^>]*>/gi;
 const FUNCTIONAL_LINK = /token=|reset|accept-invite|set-password|invite/i;
+const LOGIN_WITH_CASE = /^https?:\/\/[^/?#]+\/login\?case=[a-f0-9]{24}$/i;
 function buttonsToLogin(html, text, portal) {
   if (typeof html !== "string" || !ENV_KEY[portal]) return { html, text };
   const origin = portalUrl(portal);
@@ -64,7 +65,8 @@ function buttonsToLogin(html, text, portal) {
   const changes = new Set();
   html.replace(BUTTON_TAG, (tag) => {
     const href = (/href="([^"]*)"/i.exec(tag) || [])[1];
-    if (href === undefined || href === login || FUNCTIONAL_LINK.test(href)) return tag;
+    // the login page itself, optionally carrying the case to open after sign-in (a returning person's "case created" e-mail): kept as it is
+    if (href === undefined || href === login || LOGIN_WITH_CASE.test(href) || FUNCTIONAL_LINK.test(href)) return tag;
     if (href === "#" || href === origin || href.startsWith(`${origin}/`) || href.startsWith(`${origin}?`)) changes.add(href);
     return tag;
   });

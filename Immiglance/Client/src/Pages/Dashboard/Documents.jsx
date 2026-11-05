@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
-import { isEmployeeAccount } from "../../utils/auth";
+import { useEmployeeView, useActiveCase } from "../../context/ActiveCaseContext";
 import { profileApi, casesApi, employmentWorkflowApi, familyWorkflowApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import useDocumentChecklist from "../../hooks/useDocumentChecklist";
@@ -132,7 +132,9 @@ export default function Documents() {
   const navigate = useNavigate();
   const { caseId: routeCaseId } = useParams();
 
-  const isEmployerAccount = !isEmployeeAccount(user) && (user?.applicantType === "employer" || user?.role === "employer");
+  const employeeView = useEmployeeView(user); // follows the open case
+  const { activeCaseId: openCaseId } = useActiveCase(); // the case selected in the header (only set for a login with several cases)
+  const isEmployerAccount = !employeeView && (user?.applicantType === "employer" || user?.role === "employer");
   const useEmployerCaseResolution = isEmployerAccount;
 
   const { data: myCaseData, refetch: refetchMyCase } = useMyCase({ enabled: !useEmployerCaseResolution });
@@ -738,6 +740,11 @@ export default function Documents() {
     if (employerCases.length === 1) {
       return <Navigate to={`/dashboard/documents/${employerCases[0]._id}`} replace />;
     }
+    // Several matters (one login, many cases): the one open in the header, else the newest matter - never a dead end on the dashboard
+    const open = openCaseId ? employerCases.find((item) => item._id === openCaseId) : null;
+    const newestMatter = [...employerCases].filter((item) => !item.parentCase).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+    const target = open || newestMatter;
+    if (target) return <Navigate to={`/dashboard/documents/${target._id}`} replace />;
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
 import { chunkApi, messagesApi, usersApi } from "../../services/api";
+import { useActiveCase } from "../../context/ActiveCaseContext";
+import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import { useMyCase } from "../../hooks/useMyCaseProfile";
 import { IconX } from "../../utils/iconComponents";
 import { attachmentProblem, formatFileSize, isChunkedFile, MAX_ATTACHMENTS_PER_MESSAGE, uploadFileInChunks } from "../../utils/chunkedUpload";
@@ -336,7 +338,7 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
     ? (thread.clientId?.displayName || thread.clientId?.email || "Client")
     : "Immiglance Case Team";
   const caseLabel = thread.caseId?.caseId
-    ? `${thread.caseId.caseId} — ${thread.caseId.visaType}`
+    ? `${thread.caseId.caseId} — ${resolveDisplayVisa(thread.caseId)}`
     : thread.subject;
 
   return (
@@ -686,6 +688,23 @@ export default function Messages() {
       }).catch(() => {});
     }
   }, [isAdmin, loading, threads.length, myCase]);
+
+  // One login, many cases: open the conversation of the case selected in the header (create it if this case has none yet). Only for a person
+  // with several cases - a one-case client keeps the behaviour above unchanged.
+  const { multiCase, activeCaseId } = useActiveCase();
+  const openedForCaseRef = useRef("");
+  useEffect(() => {
+    if (isAdmin || loading || !multiCase || !activeCaseId || openedForCaseRef.current === activeCaseId) return;
+    openedForCaseRef.current = activeCaseId;
+    const caseIdOf = (thread) => String(thread?.caseId?._id || thread?.caseId || "");
+    const existing = threads.find((thread) => caseIdOf(thread) === activeCaseId);
+    if (existing) { setActiveThread(existing); return; }
+    messagesApi.getOrCreateThread(activeCaseId).then((res) => {
+      if (!res?.thread) return;
+      setThreads((current) => (current.some((thread) => thread._id === res.thread._id) ? current : [res.thread, ...current]));
+      setActiveThread(res.thread);
+    }).catch(() => {}); // the list still works without it
+  }, [isAdmin, loading, multiCase, activeCaseId, threads]);
 
   // `silent` distinguishes a deliberate thread open (full replace + loading
   // spinner + jump to bottom is expected) from a background re-sync of the

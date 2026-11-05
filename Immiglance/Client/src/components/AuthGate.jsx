@@ -25,7 +25,7 @@
 import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isEmployeeAccount } from "../utils/auth";
+import { useEmployeeView } from "../context/ActiveCaseContext";
 import { tokenStore } from "../services/api";
 import { STAFF_ROLES, redirectToOwnPortal } from "../utils/portalRedirect";
 
@@ -38,6 +38,8 @@ function isAllowedRestrictedPortalPath(pathname) {
 
 export default function AuthGate() {
   const { authStatus, authLoading, sessionContext: context } = useAuth();
+  // the employee / beneficiary confinement follows the open case (one login, many cases); one case: the login's role, as before
+  const employeeView = useEmployeeView(context);
   const location = useLocation();
 
   // Cross-origin navigation is a side effect and must not run during render
@@ -158,7 +160,7 @@ export default function AuthGate() {
   // would incorrectly read false). isEmployeeAccount(context) mirrors the
   // same special-casing useHasCase.js already applies elsewhere in this
   // app, so an employee is never routed into onboarding/legacy-holding.
-  if (isEmployeeAccount(context)) {
+  if (employeeView) {
     if (!isAllowedRestrictedPortalPath(location.pathname)) {
       return <Navigate to="/dashboard" replace />;
     }

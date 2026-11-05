@@ -15,12 +15,27 @@
 // visa it displays as. Case.visaType itself stays "H-1B" for routing.
 const { getSubTypes } = require("../config/visaCategories");
 
+// Single-party filing types are STORED under compact codes (H4EAD, I765EAD, COSF1 ...); every screen and e-mail SHOWS their proper name (config/filingTypes.js labels).
+const FILING_TYPE_NAMES = {
+  H4EXTENSION: "H-4 Extension",
+  H4EAD: "H-4 EAD",
+  H4EXTENSIONEAD: "H-4 Extension + EAD",
+  I765EAD: "I-765 EAD",
+  COSF1: "Change of Status to F-1",
+  F1REINSTATEMENT: "F-1 Reinstatement",
+  COSF2: "Change of Status to F-2",
+  COSB1: "Change of Status to B-1",
+  COSB2: "Change of Status to B-2",
+  COSH4: "Change of Status to H-4",
+};
+
 function resolveDisplayVisa(caseData) {
   const variant = caseData?.questionnaireData?.masterData?.visaVariant;
   if (variant) return variant;
   const visaType = caseData?.visaType || "";
   const subType = caseData?.petitionSubType;
-  return subType && getSubTypes(visaType).includes(subType) ? subType : visaType;
+  if (subType && getSubTypes(visaType).includes(subType)) return subType;
+  return FILING_TYPE_NAMES[visaType] || visaType;
 }
 
 module.exports = { resolveDisplayVisa };

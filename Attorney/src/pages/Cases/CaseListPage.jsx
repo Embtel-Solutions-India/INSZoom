@@ -1,3 +1,4 @@
+import { visaName } from '../../utils/visaDisplay'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -184,7 +185,7 @@ export default function CaseListPage() {
                       <p className="font-semibold text-foreground">{caseIdentity(item).name}</p>
                       <CaseMeta email={caseIdentity(item).email} caseId={item.caseNumber || item.caseId} className="text-xs" extra={item.employeeCount > 0 ? `${item.employeeCount} ${item.employeeCount === 1 ? 'employee' : 'employees'}` : ''} />
                     </td>
-                    <td className="px-4 py-3 text-foreground">{item.visaType}</td>
+                    <td className="px-4 py-3 text-foreground">{visaName(item.visaType)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <WorkStateBadge state={item.workState} />
@@ -236,7 +237,7 @@ export default function CaseListPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-1.5">
-                    {item.visaType && <span className="rounded-md bg-secondary px-2 py-1 text-xs font-semibold text-foreground">{item.visaType}</span>}
+                    {item.visaType && <span className="rounded-md bg-secondary px-2 py-1 text-xs font-semibold text-foreground">{visaName(item.visaType)}</span>}
                     {item.stage && <span className="rounded-md border border-border px-2 py-1 text-xs capitalize text-muted-foreground">{titleCase(item.stage)}</span>}
                     <WorkStateBadge state={item.workState} />
                     {isNotableCaseStatus(item.status) && (

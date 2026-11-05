@@ -4,7 +4,7 @@ import useCaseDataChanged from "../../hooks/useCaseDataChanged";
 import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { isEmployeeAccount } from "../../utils/auth";
+import { useEmployeeView } from "../../context/ActiveCaseContext";
 import { api, API_BASE_URL, casesApi, documentsApi, employeeProfileApi, messagesApi, profileApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import { LANDING_URL } from "../../components/CrossAppRedirect";
@@ -659,7 +659,7 @@ export default function Dashboard() {
     document.title = "Dashboard | Immiglance";
   }, []);
 
-  const isEmployee = isEmployeeAccount(user);
+  const isEmployee = useEmployeeView(user); // follows the open case
 
   // Perf fix: previously three sequential/parallel raw fetches
   // (profileApi.get(), casesApi.my(), then casesApi.workflow() awaited

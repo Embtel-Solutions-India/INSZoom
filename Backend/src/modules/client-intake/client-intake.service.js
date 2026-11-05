@@ -483,9 +483,12 @@ async function buildIntakePayload(client, caseData, user) {
   };
 }
 
-async function getMyIntake(user) {
+async function getMyIntake(user, requestedCaseId = null) {
   const client = await getMyClient(user);
-  const caseData = await getActiveCaseForClient(client, user);
+  // the case selected in the client portal (one login, many cases); a case the person cannot open falls back to the usual active case, never an error
+  let caseData = null;
+  if (requestedCaseId) caseData = await assertCaseAccess(requestedCaseId, user).catch(() => null);
+  if (!caseData) caseData = await getActiveCaseForClient(client, user);
   return buildIntakePayload(client, caseData, user);
 }
 

@@ -2,7 +2,7 @@ const intakeService = require("./client-intake.service");
 
 async function getMyIntake(req, res, next) {
   try {
-    const intake = await intakeService.getMyIntake(req.user);
+    const intake = await intakeService.getMyIntake(req.user, require("../cases/caseLinks.service").requestedCaseId(req.query.caseId));
     res.json({ success: true, intake });
   } catch (error) {
     next(error);

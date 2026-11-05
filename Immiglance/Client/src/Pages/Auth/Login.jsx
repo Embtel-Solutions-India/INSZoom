@@ -33,6 +33,9 @@ export default function Login() {
   // instead and threaded through to /signup below if the visitor lands
   // here first and then creates an account.
   const sessionIdParam = searchParams.get("sessionId") || "";
+  // a returning person's "case created" e-mail opens THIS case after sign-in: /login?case=<id> -> /dashboard?case=<id> (only a well-formed id is used)
+  const caseParam = /^[a-f0-9]{24}$/i.test(searchParams.get("case") || "") ? searchParams.get("case") : "";
+  const afterLogin = caseParam ? `/dashboard?case=${caseParam}` : "/dashboard";
 
   // loginMethod: "email" drives the email-first two-step flow below;
   // "caseId" keeps the original single-step caseId+password form (a
@@ -69,8 +72,8 @@ export default function Login() {
   useEffect(() => {
     if (!googleRedirectUser) return;
     clearGoogleRedirectUser();
-    navigate("/dashboard", { replace: true });
-  }, [googleRedirectUser, navigate, clearGoogleRedirectUser]);
+    navigate(afterLogin, { replace: true });
+  }, [googleRedirectUser, navigate, clearGoogleRedirectUser, afterLogin]);
 
   useEffect(() => {
     if (!googleAuthError) return;
@@ -100,7 +103,7 @@ export default function Login() {
     return <div className="min-h-screen bg-background" />;
   }
   if (user && !isLocalDevStaffOrAttorneySession) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={afterLogin} replace />;
   }
 
   const resetEmailStepState = () => {
