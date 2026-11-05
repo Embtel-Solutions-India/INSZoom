@@ -371,6 +371,12 @@ const employeeVisaLabel = (child) => {
   return visaKey(sub).includes(visaKey(visa)) ? sub : `${visa} · ${sub}`
 }
 
+// When a document was uploaded (by the client or by staff): the upload date, else the record's creation date.
+const documentUploadTime = (doc) => {
+  const time = new Date(doc?.uploadedAt || doc?.uploadDate || doc?.createdAt || 0).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
 // Documents tab: the "Uploaded By" column is hidden for these two cases only (an explicit exception requested by the business); every other case keeps it.
 const CASES_WITHOUT_UPLOADED_BY = new Set(['B413', 'B413-A'])
 
@@ -3443,12 +3449,12 @@ const CRMCaseDetail = () => {
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filename</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Checklist question</th>
                     {!hideUploadedBy && <th className="text-left py-3 px-4 font-medium text-muted-foreground">Uploaded By</th>}
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Review Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Date Uploaded</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {documents.map((doc) => (
+                  {[...documents].sort((a, b) => documentUploadTime(b) - documentUploadTime(a)).map((doc) => ( // newest upload first, whoever uploaded it
                     <tr key={doc._id} className="border-b border-border">
                       <td className="py-2 px-4">
                         <button type="button" onClick={() => setViewingDocument(doc)} className="block max-w-full truncate text-left font-medium text-blue-700 hover:text-blue-900 hover:underline">
@@ -3462,11 +3468,7 @@ const CRMCaseDetail = () => {
                         )}
                       </td>
                       {!hideUploadedBy && <td className="py-2 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>}
-                      <td className="py-2 px-4">
-                        <span className={`badge ${getDocumentReviewColor(doc.reviewStatus)}`}>
-                          {doc.reviewStatus}
-                        </span>
-                      </td>
+                      <td className="py-2 px-4 text-sm text-muted-foreground whitespace-nowrap">{documentUploadTime(doc) ? new Date(documentUploadTime(doc)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</td>
                       <td className="py-2 px-4">
                         <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                           <button

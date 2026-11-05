@@ -18,13 +18,13 @@ All additive and fail-safe. Existing endpoints keep their shape; every new job /
 
 ### 3. Completed / closed / on hold / active come from the GoHighLevel stage
 One rule, read live from each case's `integrations.ghl.unifiedStageKey` (constants in `caseManagerAccess.js`):
-- **Completed / Closed** = stage **Submitted (FedEx)**, **Approved** or **Disapproved** (`COMPLETED_STAGE_KEYS`).
+- **Completed / Closed** = stage **Submitted (FedEx)**, **Receipt Tracking**, **Approved**, **Disapproved** or **Feedback** (`COMPLETED_STAGE_KEYS`); **RFE stays active**.
 - **On Hold** = the On Hold stage (any stage key containing "hold").
 - **Active** = a case manager is assigned and it is neither closed nor on hold.
 - Used by: the Case Managers list ("Completed", completion rate, active), the details stats, the case manager analytics tab and the weekly "cases completed" figure, **and the Admin dashboard cards** (Active Cases, On Hold, Closed Cases come from `/analytics/dashboard`: new `onHoldCases`).
 - "Avg Processing" on the details page is computed (average days from creation to last update of the person's completed cases) instead of a fixed 0.
 - Not changed: Cases Tracked, Pending Payments, Total Revenue (already from the database), the analytics panel's own approved/denied outcome figures, and the status-based figures of other pages.
-- A case in **Receipt tracking, RFE or Feedback** is therefore neither closed nor on hold: it still counts as active. To count them as closed, add their keys to `COMPLETED_STAGE_KEYS` (one line).
+- Owner decision 2026-11-06: RFE cases are active; Feedback and Receipt Tracking cases are closed.
 
 ### 4. Reviews
 - Everyone who may open the page (the case manager, admins, super admins, the team lead of the case manager's team) sees every review **separately**: "Admin · name 3/5", "Team Lead · name 4/5 + paragraph".

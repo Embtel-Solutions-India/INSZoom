@@ -30,9 +30,9 @@ function teamLeadMatch(userId) {
   return { $or: [{ assignedTeamLead: userId }, { assignedCaseManager: userId }, { additionalCaseManagers: userId }] };
 }
 
-// "Completed" / "closed" (Case Managers page AND the dashboard cards) = the case's GoHighLevel pipeline stage is Submitted (FedEx), Approved or Disapproved.
+// "Completed" / "closed" (Case Managers page AND the dashboard cards) = the case's GoHighLevel pipeline stage is Submitted (FedEx), Receipt Tracking, Approved, Disapproved or Feedback (RFE is still active).
 // "On hold" = the On Hold stage (after Feedback in both pipelines). Both are read live from each case's stage; nothing is stored or hard-coded per person.
-const COMPLETED_STAGE_KEYS = ["submitted_fedex", "status_approved", "status_disapproved"];
+const COMPLETED_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "status_approved", "status_disapproved", "feedback"]; // RFE stays active
 const ON_HOLD_STAGE_PATTERN = "hold"; // matches the stage key / name "on_hold"
 const completedCaseMatch = () => ({ "integrations.ghl.unifiedStageKey": { $in: COMPLETED_STAGE_KEYS } });
 const onHoldCaseMatch = () => ({ "integrations.ghl.unifiedStageKey": { $regex: ON_HOLD_STAGE_PATTERN, $options: "i" } });

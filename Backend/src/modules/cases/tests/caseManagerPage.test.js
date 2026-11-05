@@ -8,7 +8,9 @@ test("a case is completed / closed when its GoHighLevel stage is Submitted (FedE
   assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "submitted_fedex" } } }), true);
   assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "status_approved" } } }), true);
   assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "status_disapproved" } } }), true);
-  assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "receipt_tracking" } } }), false);
+  assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "receipt_tracking" } } }), true);
+  assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "feedback" } } }), true);
+  assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "rfe" } } }), false); // RFE is still active work
   assert.equal(isCompletedCase({ integrations: { ghl: { unifiedStageKey: "documents_review" } } }), false);
   assert.equal(isCompletedCase({ status: "completed" }), false);
   assert.deepEqual(completedCaseMatch(), { "integrations.ghl.unifiedStageKey": { $in: COMPLETED_STAGE_KEYS } });
