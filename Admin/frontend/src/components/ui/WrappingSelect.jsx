@@ -82,10 +82,10 @@ export default function WrappingSelect({ value, onChange, options, placeholder =
                   role="option"
                   aria-selected={option.value === value}
                   onClick={() => pick(option)}
-                  className={`flex w-full items-center justify-between gap-3 whitespace-normal break-words px-3 py-2 text-left text-sm transition-colors hover:bg-secondary ${option.value === value ? 'bg-primary/10 font-medium text-primary' : 'text-foreground'}`}
+                  className={`flex w-full items-center justify-between gap-3 whitespace-normal break-words px-3 py-2 text-left ${compact ? 'text-[15px]' : 'text-sm'} transition-colors hover:bg-secondary ${option.value === value ? 'bg-primary/10 font-medium text-primary' : 'text-foreground'}`}
                 >
                   <span>{option.label}</span>
-                  {option.tag && <span className="shrink-0 text-xs font-normal text-muted-foreground">{option.tag}</span>}
+                  {option.tag && <span className={`shrink-0 ${compact ? 'text-[13px]' : 'text-xs'} font-normal text-muted-foreground`}>{option.tag}</span>}
                 </button>
               </li>
             ))}

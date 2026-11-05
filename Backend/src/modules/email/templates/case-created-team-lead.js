@@ -8,7 +8,7 @@ function subject() {
 function bodyLines(data = {}) {
   return [
     `Hi ${data.teamLeadName || "there"},`,
-    `A new case ${data.caseNumber || ""} for ${data.clientName || "a client"} has been created and is awaiting assignment.`,
+    `A new case ${data.caseNumber || ""} for ${data.clientName || "a client"} has been created${data.assigned ? " and assigned to a case manager" : " and is awaiting assignment"}.`,
   ];
 }
 

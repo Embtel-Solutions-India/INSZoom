@@ -29,7 +29,7 @@ test("TN matter with an H-1B employee: listed under H-1B (with the direct H-1B m
     const h1b = await caseService.resolveStaffListFilter(listQuery({ visaType: "H-1B" }), staff(role));
     const text = JSON.stringify(h1b);
     assert.ok(text.includes(String(tnMatter)), `${role}: the TN matter is included under H-1B`);
-    assert.ok(text.includes('"visaType":{"$regex":"H-1B"'), `${role}: cases that are H-1B themselves still match`);
+    assert.ok(text.includes('"visaType":{"$regex":"H[^a-zA-Z0-9]*1[^a-zA-Z0-9]*B"'), `${role}: cases that are H-1B themselves still match`);
     assert.ok(text.includes('"caseRole":{"$nin":["employee","beneficiary"]}'), `${role}: employee cases stay inside their matter`);
     const h2b = JSON.stringify(await caseService.resolveStaffListFilter(listQuery({ visaType: "H-2B" }), staff(role)));
     assert.ok(!h2b.includes(String(tnMatter)), `${role}: not under H-2B`);
@@ -41,7 +41,7 @@ test("the other filters still apply to the listed rows (status), and a visa cate
   const matter = oid();
   stubChildren(t, [{ parentCase: matter, visaType: "O-1", visaCategory: "employment" }]);
   const filter = await caseService.resolveStaffListFilter(listQuery({ visaType: "O-1", status: "active" }), staff("team_lead"));
-  assert.equal(filter.$and[0].status, "active", "status narrows the rows");
+  assert.equal(filter.$and[1].$or[0].status, "active", "status applies together with the visa, on the case itself or on one of its employees");
   const byCategory = JSON.stringify(await caseService.resolveStaffListFilter(listQuery({ visaCategory: "employment" }), staff("admin")));
   assert.ok(byCategory.includes(String(matter)));
 });
@@ -49,7 +49,7 @@ test("the other filters still apply to the listed rows (status), and a visa cate
 test("no employee has the visa: exactly the plain visa filter (direct matches only); no visa chosen: the list is unchanged", async (t) => {
   const { calls } = stubChildren(t, []);
   const filter = await caseService.resolveStaffListFilter(listQuery({ visaType: "E-2" }), staff("admin"));
-  assert.deepEqual(filter.$and[1], { $or: [{ visaType: { $regex: "E-2", $options: "i" } }] });
+  assert.deepEqual(filter.$and[1], { $or: [{ visaType: { $regex: "E[^a-zA-Z0-9]*2", $options: "i" } }] });
   calls.length = 0;
   const plain = await caseService.resolveStaffListFilter(listQuery(), staff("case_manager"));
   assert.equal(calls.length, 0, "no visa and no search: no roll-up query at all (case managers see every case)");
@@ -62,4 +62,14 @@ test("a search for an employee still lists their employer's matter, and never wr
   const filter = await caseService.resolveStaffListFilter(listQuery({ search: "Santosh" }), staff("case_manager"));
   assert.ok(JSON.stringify(filter).includes(String(matter)));
   assert.equal(writes.mock.callCount(), 0);
+});
+
+test("the visa filter finds compact stored codes: I-765 EAD matches I765EAD, and a status filter lists the matter whose employee has that status", async (t) => {
+  const matter = oid();
+  stubChildren(t, [{ parentCase: matter, visaType: "H-1B" }]);
+  const filter = await caseService.resolveStaffListFilter(listQuery({ visaType: "I-765 EAD" }), staff("admin"));
+  const re = new RegExp(filter.$and[1].$or[0].visaType.$regex, "i");
+  assert.ok(re.test("I765EAD") && re.test("I-765 EAD") && !re.test("H4EAD"));
+  const byStatus = JSON.stringify(await caseService.resolveStaffListFilter(listQuery({ status: "active" }), staff("admin")));
+  assert.ok(byStatus.includes(String(matter)));
 });
