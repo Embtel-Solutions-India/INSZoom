@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
+import EarlierCaseNote from "./EarlierCaseNote";
 import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired, orderShortThenWide } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
@@ -120,6 +121,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             onReject={() => saveAnswer(question, "")}
           />
         )}
+        <EarlierCaseNote answer={answerByKey.get(key)} />
       </ChecklistItemRow>
     );
   };

@@ -94,7 +94,7 @@ function RequiredMark({ question }) {
   return isQuestionRequired(question) ? <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span> : null
 }
 
-function AnswerRow({ label, value, extra = null, required = false }) {
+function AnswerRow({ label, value, extra = null, required = false, prefilledFrom = null }) {
   const answered = value !== undefined && value !== null && value !== ''
   return (
     <div className="min-w-0">
@@ -108,6 +108,12 @@ function AnswerRow({ label, value, extra = null, required = false }) {
       >
         {answered ? value : 'Needed'}
       </div>
+      {/* one login, many cases (Phase 3A): copied from the person's earlier case and not changed since */}
+      {answered && prefilledFrom && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="prefilled-from">
+          Pre-filled from earlier case{[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).length ? ` (${[prefilledFrom.sourceVisaType, prefilledFrom.sourceCaseNumber].filter(Boolean).join(' · ')})` : ''}
+        </p>
+      )}
     </div>
   )
 }
@@ -468,7 +474,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                         />
                       </div>
                     ) : (
-                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                     )
                 )
                 return (

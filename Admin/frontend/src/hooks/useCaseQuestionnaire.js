@@ -67,8 +67,15 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
 
   const answerMap = {}
   const filesByKey = {}
+  // One login, many cases (Phase 3A): answers copied from the person's earlier case, still unchanged since -> { sourceCaseNumber, sourceVisaType }.
+  // Attached to answerMap as a NON-enumerable property so every existing reader of the map (iteration, JSON, value lookups) is unaffected.
+  const prefilledFromEarlierCase = {}
+  Object.defineProperty(answerMap, '__prefilledFromEarlierCase', { value: prefilledFromEarlierCase, enumerable: false })
   state.answers.forEach((answer) => {
     answerMap[answer.questionKey] = answer.value ?? answer.normalizedValue
+    const history = Array.isArray(answer.auditHistory) ? answer.auditHistory : []
+    const last = history[history.length - 1]
+    if (last?.action === 'prefilled_from_earlier_case') prefilledFromEarlierCase[answer.questionKey] = last.changes || {}
     // Each entry carries the answer coordinates the viewer/remover need.
     if (answer.files?.length) {
       filesByKey[answer.questionKey] = answer.files.map((file) => ({ ...file, responseId: answer.responseId, questionKey: answer.questionKey }))

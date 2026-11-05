@@ -4,6 +4,7 @@ import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
+import EarlierCaseNote from "./EarlierCaseNote";
 import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
 import { questionKey, sectionKey, matchingAutofillSources } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
@@ -175,6 +176,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
                       onReject={() => saveAnswer(question, "")}
                     />
                   )}
+                  <EarlierCaseNote answer={answerByKey.get(key)} />
                 </ChecklistItemRow>
               );
             })}

@@ -1624,6 +1624,11 @@ exports.createCase = async (req, res, next) => {
     setImmediate(async () => {
       try {
         await lifecycleOrchestrator.initializeCase(principalCase, req.user, req);
+        // one login, many cases (Phase 3A): a returning person's own facts are pre-filled from their earlier cases (single-person cases; never
+        // over an answer; never throws). Runs after initializeCase so the checklist exists.
+        if (multiCase && existingHadCase && caseStructure === "single") {
+          await require("./personPrefill.service").prefillPersonFromEarlierCases(principalCase._id, clientUser._id, { targetRole: "client" });
+        }
       } catch (err) {
         require("../../utils/logger").error("create_case_background_orchestration_failed", { caseId: principalCase._id, error: err.message });
       }
@@ -4196,6 +4201,8 @@ exports.attachCaseToLogin = async (req, res, next) => {
       throw saveError;
     }
     setImmediate(() => require("./clientAccount.service").notifyClientOfNewCase({ caseDoc: caseData, user: client.user, setupToken: client.setupToken, actor: req.user, req }));
+    // Phase 3A: the person's own facts from their other cases fill the still-empty answers of this case (never over an answer; never throws)
+    if (!client.createdUser) setImmediate(() => require("./personPrefill.service").prefillPersonFromEarlierCases(caseData._id, client.user._id, { targetRole: "client" }));
     return res.json({ success: true, data: { userId: String(client.user._id), email: client.user.email, invited: Boolean(client.setupToken) } });
   } catch (error) {
     return next(error);

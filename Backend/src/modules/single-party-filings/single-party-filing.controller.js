@@ -116,6 +116,8 @@ exports.createFiling = async (req, res, next) => {
 
     // the client is told after the response (in-app + browser + e-mail); a failure here never fails the request
     setImmediate(() => clientAccount.notifyClientOfNewCase({ caseDoc: caseData, user: client.user, setupToken: client.setupToken, actor: req.user, req }));
+    // Phase 3A: a returning person's own facts are pre-filled from their earlier cases (never over an answer; never throws)
+    if (!client.createdUser) setImmediate(() => require("../cases/personPrefill.service").prefillPersonFromEarlierCases(caseData._id, client.user._id, { targetRole: "client" }));
 
     res.status(201).json({
       success: true,

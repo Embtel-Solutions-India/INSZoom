@@ -6,8 +6,9 @@ Plan: `docs/MULTI_CASE_CLIENTS_PLAN.md`. One report for all phases; each phase a
 |---|---|
 | 1 — Link many cases to one login (backend) + staff see it (Admin) | Done (2026-11-05) |
 | 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) |
-| 2B — A login that is an employee / beneficiary on one case and a client on another | Done (2026-11-05) — awaiting owner approval for Phase 3 |
-| 3 — Carry personal data into each new case | Not started |
+| 2B — A login that is an employee / beneficiary on one case and a client on another | Done (2026-11-05) |
+| 3A — Carry the person's own answers into each new case | Done (2026-11-05) — awaiting owner approval for 3B |
+| 3B — Reuse the person's documents (passport, resume …) in a new case | Not started |
 | 4 — Hardening, full verification, rollout | Not started |
 
 ## Phase 1 — Link many cases to one login + staff see it
@@ -99,3 +100,34 @@ Admin: `components/PersonCases.jsx`.
 
 ### Production
 No new env vars, no migration. Restart the backend (the CORS header list changed); rebuild Client and Admin.
+
+## Phase 3A — A returning person's own answers are pre-filled in each new case
+
+### Done
+- **Rule (owner)**: auto-copy, never overwrite. When a person who already has a case gets another one, the new case's checklist about THEM is pre-filled from their earlier cases. `Backend/src/modules/cases/personPrefill.service.js`.
+- **Matched by meaning, not wording**: the same fact is named differently in different checklists (`petitioner.dateOfBirth`, `beneficiary.dateOfBirth`, `person.dob`; `aNumber` / `alienRegistrationNumber` / `alienNumber`; `nationality` / `countryOfCitizenship`; `zip` / `postalCode` …) — one alias table maps them all to one fact.
+- **Only the person's own facts**: each checklist's "self" namespace is the party most of its questions use (real data: `petitioner.*` on single-person and petitioner checklists, `beneficiary.*` on employee / beneficiary / NVC checklists). The other namespace is someone else (the NVC sponsor, the employer on an employee checklist, the relative on a petitioner checklist, the H-1B spouse) and is never matched. Never copied: father / spouse / children / household members, employment, immigration status, I-94, signatures and declarations, files, history lists. Employer (company) checklists are never a source or a target.
+- **Copied facts**: names, date of birth, gender, marital status, city / province / country of birth, citizenship, A-number, SSN, USCIS online account number, e-mail, phones, passport number / country / dates, current US address and foreign address.
+- **Never over an answer** the new case already has; newest earlier case first; a drop-down only gets one of its own options; dates are stored as yyyy-mm-dd and an ambiguous day / month (03/04/1990) is left blank, never guessed.
+- **Where it runs** (after the new case's checklist exists; only for a person who already had a case; never throws): staff New case (single-person cases), single-party filings, family cases (petitioner — in addition to the existing family-only copier), "Add to this person's login".
+- **Visible**: each copied answer is marked on its audit history; the case timeline says how many answers were pre-filled and from which case. Client portal: a grey note under the answer "Pre-filled from your earlier case (H-1B · B471). You can change it here; your earlier case stays as it is." — gone as soon as the person changes the answer. Admin: "Pre-filled from earlier case (H-1B · B471)" under the answer.
+- Copies are the new case's own answers: the earlier case is never written; the new case's forms are filled through the normal pipeline.
+
+### Not done in 3A
+- **3B — documents** (passport, resume, IDs …): needs per-case document records pointing to the same stored file and a reference check before any file is purged. Next step.
+- Repeating history lists (address / education / employment history) are not copied (structured lists; a later step if wanted).
+- Employer matters: company details are not copied between employer matters (plan item; can follow 3B).
+
+### Tests and builds
+- Backend: new `modules/cases/tests/personPrefill.service.test.js` (6): self namespace; one fact under every name; never someone else (other party, relatives, employment, status, files, history, signatures, no path); dates (incl. ambiguous never guessed); drop-down options; wiring of all four entry points.
+- Read-only dry run on real data: a real employee's H-1B answers yield 17 person facts and would fill 7 – 15 questions in the H-4 extension, Green Card renewal, COS B-2, I-130 petitioner and GC-NVC checklists (only the petitioner's own facts on the I-130 petitioner checklist); every value fitted its question.
+- Client: `EarlierCaseNote.test.jsx` (2); whole Client suite 124 / 124; build green. Admin: `QuestionnaireAnswersPanel.prefill.test.jsx` (2); Admin suite 313 / 313; build green.
+- Full database-free backend suite: see the 3A report in the conversation.
+
+### Files
+Backend: `modules/cases/personPrefill.service.js` (new), `modules/cases/tests/personPrefill.service.test.js` (new), `modules/cases/case.controller.js`, `modules/single-party-filings/single-party-filing.controller.js`, `modules/family-workflow/family-workflow.controller.js`.
+Client: `components/questionnaire/EarlierCaseNote.jsx` (new) + test, `components/questionnaire/CaseRoleChecklist.jsx`, `components/questionnaire/EmployeePacketStepper.jsx`.
+Admin: `hooks/useCaseQuestionnaire.js`, `components/QuestionnaireAnswersPanel.jsx`, `components/QuestionnaireAnswersPanel.prefill.test.jsx` (new).
+
+### Production
+No new env vars, no migration (applies to cases created from now on). Restart the backend; rebuild Client and Admin.
