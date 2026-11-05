@@ -858,6 +858,7 @@ export const ghlApi = {
   moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
   setupPreview: () => api.get('/integrations/ghl/setup'),
   confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
+  addNewStages: () => api.post('/integrations/ghl/setup/add-stages'),
   // A full pass reads every opportunity of both pipelines from GoHighLevel, so it can legitimately run longer than the default 2 minutes.
   syncNow: () => api.post('/integrations/ghl/sync', {}, { timeout: 600_000 }),
   reconcileNow: () => api.post('/integrations/ghl/reconcile', {}, { timeout: 600_000 }),

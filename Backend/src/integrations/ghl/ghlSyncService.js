@@ -64,6 +64,36 @@ async function previewSetup(options) {
   };
 }
 
+// A stage added in GoHighLevel (for example "On Hold") joins the confirmed mapping as a new board column. Only additions: every existing stage, its
+// column key and the confirmation stay exactly as they are. Refuses (and changes nothing) when anything was renamed or removed.
+async function adoptAddedStages({ client, user } = {}) {
+  const locationId = env.ghl.locationId;
+  const config = await GHLIntegration.findOne({ locationId });
+  if (!config?.mappingsConfirmedAt) throw Object.assign(new Error("The stage mapping has not been confirmed yet: run setup first."), { status: 409 });
+  const pipelines = await pipelineService.listPipelines(locationId, client);
+  const plan = pipelineService.planAddedStages(config, pipelines);
+  if (!plan.ok) throw Object.assign(new Error(plan.reason), { status: 409 });
+  for (const { ghlPipelineId, stage, mapping } of plan.additions) {
+    const stored = config.pipelines.find((p) => p.ghlPipelineId === ghlPipelineId);
+    stored.stages.push({ ...stage, order: 0 });
+    config.stageMappings.push(mapping);
+  }
+  // refresh the column order from GoHighLevel's own order
+  const stageIdOf = (pipelineId, key) => config.stageMappings.find((m) => m.ghlPipelineId === pipelineId && m.unifiedStageKey === key)?.ghlStageId;
+  for (const stored of config.pipelines) {
+    for (const stage of stored.stages) {
+      const order = plan.orders.get(`${stored.ghlPipelineId}:${stageIdOf(stored.ghlPipelineId, stage.key)}`);
+      if (order !== undefined) stage.order = order;
+    }
+    stored.stages.sort((a, b) => a.order - b.order);
+  }
+  config.status = "healthy";
+  config.statusDetail = undefined;
+  await config.save();
+  logger.info("ghl_stages_added", { added: plan.additions.map((a) => `${a.ghlPipelineId}:${a.stage.key}`), by: user?._id ? String(user._id) : undefined });
+  return { added: plan.additions.map((a) => ({ pipelineId: a.ghlPipelineId, key: a.stage.key, name: a.stage.name })) };
+}
+
 async function confirmMappings(user) {
   const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId });
   if (!config || !config.stageMappings.length) throw Object.assign(new Error("No mappings to confirm. Run setup first."), { status: 409 });
@@ -157,4 +187,4 @@ async function initialSync({ client, user } = {}) {
   return summary;
 }
 
-module.exports = { isEnabled, loadOrBuildConfig, previewSetup, confirmMappings, initialSync };
+module.exports = { isEnabled, loadOrBuildConfig, previewSetup, adoptAddedStages, confirmMappings, initialSync };

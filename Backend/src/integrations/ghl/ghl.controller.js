@@ -142,6 +142,15 @@ exports.setupPreview = guard(async (req, res) => {
   res.json({ success: true, ...(await sync.previewSetup()) });
 });
 
+// A stage added in GoHighLevel (e.g. "On Hold") becomes a board column; nothing already mapped changes (refused if anything was renamed or removed).
+exports.addStages = guard(async (req, res) => {
+  try {
+    res.json({ success: true, ...(await sync.adoptAddedStages({ user: req.user })) });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.message });
+  }
+});
+
 exports.confirmMappings = guard(async (req, res) => {
   const config = await sync.confirmMappings(req.user);
   res.json({ success: true, status: config.status, confirmedAt: config.mappingsConfirmedAt });

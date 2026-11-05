@@ -6,6 +6,16 @@ import Card from './Card'
 import { PAGE_SIZE } from './pageSize'
 
 // Soft candy accents, one per stage in board order (cycled). Applied as translucent tints so they read on light and dark themes.
+// Fixed colours for the stages that mean something, whatever their place in the board: On Hold and Disapproved are light red, Approved is green.
+// (Disapproved is tested first: its name contains "approved".)
+export const ON_HOLD_ACCENT = '#F28B8B'
+export const APPROVED_ACCENT = '#6FC38A'
+export function outcomeAccent(column) {
+  const text = String(column?.key || column?.name || '').toLowerCase()
+  if (/hold|disapprov|reject/.test(text)) return ON_HOLD_ACCENT
+  if (/approv/.test(text)) return APPROVED_ACCENT
+  return null
+}
 export const STAGE_ACCENTS = ['#8FB8E8', '#B8A1E3', '#7FC8C0', '#F2B38F', '#F4A6C0', '#B5D99C', '#E3A0D3', '#F0A5A0', '#9ED0E6', '#C9B6E8']
 
 function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, onDelete, page = 0, pageLoading = false, onPageChange, filtering }) {
@@ -13,7 +23,7 @@ function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, onDelete, 
   const pageCount = Math.max(1, Math.ceil(column.total / PAGE_SIZE))
   const from = column.total ? page * PAGE_SIZE + 1 : 0
   const to = Math.min(column.total, page * PAGE_SIZE + cards.length)
-  const accent = STAGE_ACCENTS[index % STAGE_ACCENTS.length]
+  const accent = outcomeAccent(column) || STAGE_ACCENTS[index % STAGE_ACCENTS.length]
   return (
     <section
       aria-label={`${column.name} (${column.total})`}

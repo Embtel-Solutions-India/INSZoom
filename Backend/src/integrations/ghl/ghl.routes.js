@@ -16,6 +16,7 @@ router.get("/setup", adminOnly, ctrl.setupPreview);
 router.get("/visa-mapping", adminOnly, ctrl.visaMapping);
 router.put("/visa-mapping", adminOnly, ctrl.saveVisaMapping);
 router.post("/setup/confirm", adminOnly, ctrl.confirmMappings);
+router.post("/setup/add-stages", adminOnly, ctrl.addStages);
 router.post("/sync", adminOnly, ctrl.syncNow);
 router.post("/reconcile", adminOnly, ctrl.reconcileNow);
 
