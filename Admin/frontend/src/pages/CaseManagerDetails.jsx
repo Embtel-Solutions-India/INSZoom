@@ -52,7 +52,7 @@ import {
 const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: String(currency || 'USD').toUpperCase()
-}).format((Number(amount) || 0) / 100)
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const CHART_COLORS = ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#eab308', '#db2777']
 

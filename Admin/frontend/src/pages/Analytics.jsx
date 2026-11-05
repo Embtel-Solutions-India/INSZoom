@@ -31,10 +31,10 @@ import {
 } from 'recharts'
 
 const COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6']
-const formatCents = (amount) => new Intl.NumberFormat('en-US', {
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD'
-}).format((Number(amount) || 0) / 100)
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const Analytics = () => {
   const [activeTab, setActiveTab] = useState('overview')
@@ -86,7 +86,7 @@ const Analytics = () => {
       setDashboardStats(dashboardRes.data)
       setRevenueData((revenueRes.data.monthlyRevenue || []).map(item => ({
         ...item,
-        amount: Number(item.value || item.amount || 0) / 100
+        amount: Number(item.value || item.amount || 0)
       })))
       setPaymentsData(paymentsRes.data)
       setProcessingTimeData(processingRes.data.processingTimes || [])
@@ -158,7 +158,7 @@ const Analytics = () => {
     const statCards = [
       { title: 'Total Cases', value: dashboardStats?.totalCases || 0, icon: Briefcase, color: 'from-blue-500 to-blue-600' },
       { title: 'Active Cases', value: dashboardStats?.activeCases || 0, icon: FileText, color: 'from-blue-500 to-cyan-600' },
-      { title: 'Total Revenue', value: formatCents(dashboardStats?.totalRevenue), icon: DollarSign, color: 'from-purple-500 to-pink-600' },
+      { title: 'Total Revenue', value: formatUsd(dashboardStats?.totalRevenue), icon: DollarSign, color: 'from-purple-500 to-pink-600' },
       { title: 'RFE Rate', value: rfeRate + '%', icon: AlertTriangle, color: 'from-amber-500 to-orange-600' }
     ]
 
@@ -281,14 +281,14 @@ const Analytics = () => {
     // also read as-is elsewhere (PaymentsOverview.jsx).
     const revenueByVisaTypeData = analyticsData?.revenue?.byVisaType?.map(item => ({
       name: item._id ?? 'Unspecified',
-      totalRevenue: Number(item.revenue || 0) / 100,
-      pendingRevenue: Number(item.outstanding || 0) / 100
+      totalRevenue: Number(item.revenue || 0),
+      pendingRevenue: Number(item.outstanding || 0)
     })) || []
 
     const revenueByPackageData = analyticsData?.revenue?.byPackage?.map(item => ({
       name: item._id || 'No Package Selected',
-      totalRevenue: Number(item.revenue || 0) / 100,
-      pendingRevenue: Number(item.outstanding || 0) / 100
+      totalRevenue: Number(item.revenue || 0),
+      pendingRevenue: Number(item.outstanding || 0)
     })) || []
 
     return (
@@ -313,15 +313,15 @@ const Analytics = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="card">
             <p className="text-sm font-medium text-muted-foreground mb-1">Total Revenue</p>
-            <p className="text-2xl font-bold text-foreground">{formatCents(paymentsData?.totalRevenue)}</p>
+            <p className="text-2xl font-bold text-foreground">{formatUsd(paymentsData?.totalRevenue)}</p>
           </div>
           <div className="card">
             <p className="text-sm font-medium text-muted-foreground mb-1">Pending Amount</p>
-            <p className="text-2xl font-bold text-amber-600">{formatCents(paymentsData?.pendingAmount)}</p>
+            <p className="text-2xl font-bold text-amber-600">{formatUsd(paymentsData?.pendingAmount)}</p>
           </div>
           <div className="card">
             <p className="text-sm font-medium text-muted-foreground mb-1">Overdue Amount</p>
-            <p className="text-2xl font-bold text-red-600">{formatCents(paymentsData?.overdueAmount)}</p>
+            <p className="text-2xl font-bold text-red-600">{formatUsd(paymentsData?.overdueAmount)}</p>
           </div>
           <div className="card">
             <p className="text-sm font-medium text-muted-foreground mb-1">Payment Rate</p>

@@ -85,10 +85,10 @@ const stageKey = (name) => String(name || '').toLowerCase().trim().replace(/[\s-
 const stageColor = (name) => STAGE_COLORS[stageKey(name)] || '#2563eb'
 const stageLabel = (name) => String(name || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
-const formatCents = (amount) => new Intl.NumberFormat('en-US', {
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD'
-}).format((Number(amount) || 0) / 100)
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const timeAgo = (date) => {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -1011,9 +1011,9 @@ const Dashboard = () => {
     { title: 'Cases Tracked', value: stats?.totalCases || 0, sub: `across ${casesByVisaTypeData.length || 0} categories`, dot: '#2563eb' },
     { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'assigned and in progress', dot: '#0ea5e9' },
     { title: 'On Hold', value: stats?.onHoldCases ?? onHoldCount, sub: 'in the On Hold stage', dot: '#ef4444' },
-    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatCents(stats?.pendingAmount), dot: '#f59e0b' },
+    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: `${formatUsd(stats?.pendingAmount)} outstanding`, dot: '#f59e0b' },
     { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'submitted, approved or disapproved', dot: '#10b981' },
-    { title: 'Total Revenue', value: formatCents(stats?.totalRevenue), sub: 'this period', dot: '#8b5cf6' }
+    { title: 'Total Revenue', value: formatUsd(stats?.totalRevenue), sub: `of ${formatUsd(stats?.totalFees)} total fees`, dot: '#8b5cf6' }
   ]
 
   const teamStatCards = [
@@ -1022,7 +1022,7 @@ const Dashboard = () => {
     { title: 'Assigned', value: roleStats?.assignedCases || 0, sub: 'in the pipeline now', dot: '#0ea5e9' },
     { title: 'Aging Cases', value: roleStats?.agingCases || 0, sub: 'unassigned 7+ days', dot: '#ef4444' },
     { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'across the org pipeline', dot: '#10b981' },
-    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatCents(stats?.pendingAmount), dot: '#8b5cf6' }
+    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatUsd(stats?.pendingAmount), dot: '#8b5cf6' }
   ]
 
   if (loading) {

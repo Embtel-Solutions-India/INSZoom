@@ -171,24 +171,24 @@ async function getCaseReport(query = {}) {
   return { volume, byStatus, byStage, byType, byPriority, aging: aging[0] || {}, approvalRates: approvalRates[0] || {} };
 }
 
+// Financial report (2026-11-06): from each case's GoHighLevel figures - Value (total fees), USCIS Fee, QB Amount Paid - in US dollars. The Payment collection
+// (the client portal's) is not used. Same shape as before: totals, byStatus, trends, refunds, outstandingInvoices.
 async function getFinancialReport(query = {}) {
-  const match = dateMatch(query);
-  const paidStatuses = ["paid", "succeeded", "partially_paid", "partial"];
-  const [totals, byStatus, trends, refunds, outstanding] = await Promise.all([
-    Payment.aggregate([
-      { $match: match },
-      { $group: { _id: null, revenue: { $sum: moneyExpression() }, invoices: { $sum: 1 }, outstanding: { $sum: { $ifNull: ["$remainingAmount", 0] } }, refunded: { $sum: { $ifNull: ["$refundedAmount", 0] } } } },
-    ]),
-    Payment.aggregate([{ $match: match }, { $group: { _id: "$status", count: { $sum: 1 }, amount: { $sum: moneyExpression() } } }, { $sort: { count: -1 } }]),
-    Payment.aggregate([
-      { $match: { ...match, status: { $in: paidStatuses } } },
-      { $group: { _id: { year: { $year: "$updatedAt" }, month: { $month: "$updatedAt" } }, revenue: { $sum: moneyExpression() }, count: { $sum: 1 } } },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-    ]),
-    Payment.aggregate([{ $match: match }, { $unwind: { path: "$refunds", preserveNullAndEmptyArrays: false } }, { $group: { _id: "$refunds.status", amount: { $sum: "$refunds.amount" }, count: { $sum: 1 } } }]),
-    Payment.countDocuments({ ...match, $or: [{ remainingAmount: { $gt: 0 } }, { status: { $in: ["pending", "overdue", "failed"] } }] }),
+  const finance = require("../finance/caseFinance.service");
+  const match = finance.financeMatch(dateMatch(query));
+  const [sums, statuses, monthly, owing] = await Promise.all([
+    finance.totals(match),
+    finance.byStatus(match),
+    finance.monthlyRevenue(match),
+    Case.countDocuments({ $and: [match, { $expr: { $gt: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] } }] }),
   ]);
-  return { totals: totals[0] || { revenue: 0, invoices: 0, outstanding: 0, refunded: 0 }, byStatus, trends, refunds, outstandingInvoices: outstanding };
+  return {
+    totals: { revenue: sums.revenue, invoices: sums.count, outstanding: sums.outstanding, refunded: 0, total: sums.total, uscisFees: sums.uscisFees },
+    byStatus: statuses.map((row) => ({ _id: row.key, count: row.count, amount: row.value })),
+    trends: monthly.map((row) => ({ _id: { year: Number(row.month.slice(0, 4)), month: Number(row.month.slice(5)) }, revenue: row.value, count: row.count })),
+    refunds: [],
+    outstandingInvoices: owing,
+  };
 }
 
 async function getUserReport(query = {}) {

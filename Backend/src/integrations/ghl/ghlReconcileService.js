@@ -76,6 +76,7 @@ async function reconcilePipeline(pipeline, config, client, summary) {
       if (existing.integrations?.ghl?.flags?.deletedInGhl) await deletedInGhl.clearDeletedInGhl(existing._id);
       await fillMissingClientEmail(existing, opportunity);
       await syncCardName(existing, opportunity);
+      await require("./ghlFinance").syncCaseFinance(existing, opportunity, { client }); // keeps the money current even when a webhook was missed (never throws)
       const decision = await applyStageChange({ deferrals: 0, eventTimestamp: null }, existing, opportunity, pipeline, mapping);
       if (decision.outcome === "processed") result.stageUpdated += 1; else result.unchanged += 1;
     } catch (error) {

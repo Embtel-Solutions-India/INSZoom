@@ -1190,6 +1190,19 @@ const caseSchema = new mongoose.Schema(
      * deliberately separate from `stage` (the immigration workflow stage):
      * moving a pipeline card must never touch `stage`.
      */
+    // Payment figures read from the case's GoHighLevel card (integrations/ghl/ghlFinance.js), ALL IN US DOLLARS (never cents):
+    //   totalAmount = the card's Value (the company's own fees, USCIS fees not included), uscisFee = USCIS Fee, amountPaid = QB Amount Paid.
+    // The Admin payment analytics read only these. Internal: never sent to client-side roles (case.service serializeCaseForUser).
+    finance: {
+      totalAmount: { type: Number, default: 0 },
+      uscisFee: { type: Number, default: 0 },
+      amountPaid: { type: Number, default: 0 },
+      invoiceNo: { type: String, default: "" },
+      lastPaymentAt: Date,
+      updatedAt: Date,
+      source: { type: String },
+    },
+
     integrations: {
       ghl: {
         locationId: { type: String },

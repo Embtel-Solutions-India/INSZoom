@@ -48,13 +48,13 @@ function openRfeDeadlineFilter({ dueSoonOnly = false } = {}) {
   return filter;
 }
 
+// Cases with something left to pay: the card's Value minus QB Amount Paid is above zero (GoHighLevel figures, US dollars).
 async function caseIdsWithBalanceDue(caseIds) {
-  const rows = await Payment.aggregate([
-    { $match: { $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] } },
-    { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
-    { $match: { remainingAmount: { $gt: 0 } } },
-    { $group: { _id: "$resolvedCase" } },
-  ]);
+  const rows = await Case.find({
+    _id: { $in: caseIds },
+    "finance.source": "ghl",
+    $expr: { $gt: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] },
+  }).select("_id").lean();
   return new Set(rows.map((row) => String(row._id)));
 }
 
@@ -139,43 +139,21 @@ async function byStageBreakdown(caseManagerFilter) {
 // which no job in this codebase ever advances past "unreconciled". Confirmed
 // product decision; see plan for the reasoning.
 async function paymentsSection(caseIds) {
-  const ledgerMatch = { "payment.resolvedCase": { $in: caseIds } };
-
-  const [ledgerRows, balanceRows] = await Promise.all([
-    PaymentLedgerEntry.aggregate([
-      { $lookup: { from: "payments", localField: "paymentId", foreignField: "_id", as: "payment" } },
-      { $unwind: "$payment" },
-      { $addFields: { "payment.resolvedCase": { $ifNull: ["$payment.caseId", "$payment.case"] } } },
-      { $match: ledgerMatch },
-      {
-        $group: {
-          _id: null,
-          collected: {
-            $sum: {
-              $cond: [
-                { $in: ["$entryType", ["charge", "reconciliation"]] },
-                "$amount",
-                { $cond: [{ $in: ["$entryType", ["refund", "write_off"]] }, { $multiply: ["$amount", -1] }, 0] },
-              ],
-            },
-          },
-        },
-      },
-    ]),
-    Payment.aggregate([
-      { $match: { $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] } },
-      { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
-      { $match: { remainingAmount: { $gt: 0 } } },
-      { $group: { _id: "$resolvedCase", remaining: { $sum: "$remainingAmount" } } },
-    ]),
+  // collected = QB Amount Paid, outstanding = Value - QB Amount Paid (never below 0), per case, from each case's GoHighLevel figures. US dollars.
+  const [row] = await Case.aggregate([
+    { $match: { _id: { $in: caseIds }, "finance.source": "ghl" } },
+    { $project: { paid: { $ifNull: ["$finance.amountPaid", 0] }, total: { $ifNull: ["$finance.totalAmount", 0] }, uscis: { $ifNull: ["$finance.uscisFee", 0] } } },
+    { $addFields: { owed: { $max: [{ $subtract: ["$total", "$paid"] }, 0] } } },
+    { $group: { _id: null, collected: { $sum: "$paid" }, outstanding: { $sum: "$owed" }, total: { $sum: "$total" }, uscisFees: { $sum: "$uscis" }, casesWithBalance: { $sum: { $cond: [{ $gt: ["$owed", 0] }, 1, 0] } } } },
   ]);
-
+  const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
   return {
-    collected: ledgerRows[0]?.collected || 0,
-    outstanding: balanceRows.reduce((sum, row) => sum + row.remaining, 0),
-    casesWithBalance: balanceRows.length,
+    collected: round2(row?.collected),
+    outstanding: round2(row?.outstanding),
+    total: round2(row?.total),
+    uscisFees: round2(row?.uscisFees),
+    casesWithBalance: row?.casesWithBalance || 0,
     currency: "USD",
-    _note: "collected is summed from the immutable PaymentLedgerEntry ledger (charge/reconciliation minus refund/write_off), not Payment.reconciliation.status - no reconciliation job in this codebase ever advances that field, so gating on it would always read 0. outstanding/casesWithBalance are point-in-time balances, not period-filtered.",
   };
 }
 

@@ -661,6 +661,8 @@ function serializeCaseForUser(caseData, user) {
   const contact = employeeContact(data); // who an employee case is (name + email), whichever field holds it - additive, nothing existing changes
   if (contact) data.employeeContact = contact;
   const role = normalizeRole(user?.role);
+  // payment figures (GoHighLevel Value / USCIS Fee / QB Amount Paid) are internal: Admin-portal staff only - never a client, employer, employee, beneficiary or attorney
+  if (!["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr"].includes(role)) delete data.finance;
   if (["client", "user", ...RESTRICTED_PORTAL_ROLES].includes(role)) {
     // Clients only ever see the primary case manager (assignedCaseManager); the rest of the team stays internal.
     delete data.additionalCaseManagers;

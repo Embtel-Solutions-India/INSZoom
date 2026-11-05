@@ -144,6 +144,9 @@ const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat(
   currency: String(currency || 'USD').toUpperCase()
 }).format((Number(amount) || 0) / 100)
 
+// US dollars (the payment figures from GoHighLevel are dollars, never cents)
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount) || 0)
+
 const formatOptionalDate = (...values) => {
   for (const value of values) {
     if (!value) continue
@@ -2687,6 +2690,30 @@ const CRMCaseDetail = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Payment summary: read live from the case's GoHighLevel card - Value (total fees, USCIS fees not included), USCIS Fee, QB Amount Paid. US dollars. */}
+              {caseData.finance && (
+                <div className="card">
+                  <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">Payment Summary</h3>
+                    <span className="text-xs text-muted-foreground">From GoHighLevel{caseData.finance.updatedAt ? ` · updated ${new Date(caseData.finance.updatedAt).toLocaleString()}` : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                    {[
+                      ['Total Fees', formatUsd(caseData.finance.totalAmount), 'text-foreground'],
+                      ['USCIS Fee', formatUsd(caseData.finance.uscisFee), 'text-foreground'],
+                      ['Amount Paid', formatUsd(caseData.finance.amountPaid), 'text-green-600'],
+                      ['Outstanding', formatUsd(Math.max((Number(caseData.finance.totalAmount) || 0) - (Number(caseData.finance.amountPaid) || 0), 0)), 'text-amber-600'],
+                    ].map(([label, value, tone]) => (
+                      <div key={label}>
+                        <p className="text-sm text-muted-foreground">{label}</p>
+                        <p className={`text-lg font-semibold ${tone}`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {caseData.finance.invoiceNo ? <p className="mt-3 text-xs text-muted-foreground">QuickBooks invoice {caseData.finance.invoiceNo}</p> : null}
+                </div>
+              )}
 
               {/* Notes for the life of the case: every internal note (who and when) plus the notes typed at creation; any internal staff member adds one at any time */}
               <CaseNotesPanel caseData={caseData} user={user} onChanged={() => fetchCaseDetail(true)} />

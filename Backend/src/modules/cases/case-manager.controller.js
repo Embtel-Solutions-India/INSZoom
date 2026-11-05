@@ -97,13 +97,12 @@ async function buildManagerMetrics() {
       { $match: { status: { $nin: ["completed", "cancelled"] }, assignedTo: { $ne: null } } },
       { $group: { _id: "$assignedTo", open: { $sum: 1 }, overdue: { $sum: { $cond: [{ $lt: ["$dueDate", new Date()] }, 1, 0] } } } },
     ]),
-    Payment.aggregate([
-      { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
-      { $unwind: "$caseData" },
-      { $match: { $or: [{ "caseData.assignedCaseManager": { $ne: null } }, { "caseData.assignedTeamLead": { $ne: null } }] } },
-      { $project: { amountPaid: 1, managers: { $filter: { input: { $setUnion: [["$caseData.assignedCaseManager"], { $ifNull: ["$caseData.additionalCaseManagers", []] }, ["$caseData.assignedTeamLead"]] }, as: "m", cond: { $ne: ["$$m", null] } } } } },
+    // revenue = QB Amount Paid on the person's cases (GoHighLevel), US dollars; a case counts for every case manager on it and for its team lead
+    Case.aggregate([
+      { $match: withCountable({ "finance.source": "ghl", $or: [{ assignedCaseManager: { $ne: null } }, { assignedTeamLead: { $ne: null } }] }) },
+      { $project: { paid: { $ifNull: ["$finance.amountPaid", 0] }, managers: { $filter: { input: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }, ["$assignedTeamLead"]] }, as: "m", cond: { $ne: ["$$m", null] } } } } },
       { $unwind: "$managers" },
-      { $group: { _id: "$managers", total: { $sum: { $ifNull: ["$amountPaid", 0] } } } },
+      { $group: { _id: "$managers", total: { $sum: "$paid" } } },
     ]),
   ]);
   const metrics = new Map();
@@ -121,7 +120,7 @@ async function buildManagerMetrics() {
     if (PENDING_CASE_STATUSES.includes(_id.status)) m.pending += count;
   });
   taskRows.forEach((row) => { const m = entry(row._id); m.openTasks = row.open; m.overdueTasks = row.overdue; });
-  paymentRows.forEach((row) => { entry(row._id).revenue = money(row.total) / 100; });
+  paymentRows.forEach((row) => { entry(row._id).revenue = money(row.total); }); // dollars
   return metrics;
 }
 
@@ -229,23 +228,25 @@ async function getCaseManagerDetails(req, res, next) {
     const cases = await caseService.populateCaseQuery(Case.find(ownCases).sort({ updatedAt: -1 }).limit(100));
     const tasks = await Task.find({ assignedTo: manager._id }).sort({ dueDate: 1 }).limit(100);
     const caseIds = cases.map((caseData) => caseData._id);
-    const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).select("totalFee totalAmount amountPaid paidAmount remainingAmount").lean();
-    const doneCases = cases.filter((caseData) => isCompletedCase(caseData));
+    // the person's payment figures: all of their cases, from the GoHighLevel figures (US dollars)
+    const money$ = await require("../finance/caseFinance.service").totals(require("../finance/caseFinance.service").financeMatch({}, ownCases));
     const activeCases = cases.filter((caseData) => !isCompletedCase(caseData) && !CLOSED_CASE_STATUSES.includes(caseData.status)).length;
     const completedCases = doneCases.length;
     // average days from creation to the last update of the filed (completed) cases, from the database
     const avgProcessingTime = doneCases.length
       ? doneCases.reduce((sum, caseData) => sum + Math.max(0, (new Date(caseData.updatedAt) - new Date(caseData.createdAt)) / 86400000), 0) / doneCases.length
       : 0;
-    const totalRevenue = payments.reduce((sum, payment) => sum + money(payment.totalAmount || payment.totalFee), 0);
-    const collectedRevenue = payments.reduce((sum, payment) => sum + money(payment.amountPaid || payment.paidAmount), 0);
+    const totalRevenue = money$.total;
+    const collectedRevenue = money$.revenue;
     const stats = {
       totalAssignedCases: cases.length,
       activeCases,
       completedCases,
       pendingCases: cases.filter((caseData) => ["pending_assignment", "assigned", "pending_approval"].includes(caseData.status)).length,
-      totalRevenue: totalRevenue / 100,
-      collectedRevenue: collectedRevenue / 100,
+      totalRevenue,
+      collectedRevenue,
+      uscisFees: money$.uscisFees,
+      outstandingRevenue: money$.outstanding,
       collectionPercentage: totalRevenue ? Math.round((collectedRevenue / totalRevenue) * 100) : 0,
       avgProcessingTime: Math.round(avgProcessingTime * 10) / 10,
     };
@@ -285,10 +286,25 @@ async function getCaseManagerActivities(req, res, next) {
 
 async function getCaseManagerPayments(req, res, next) {
   try {
-    const cases = await Case.find(await casesMatchFor(req.params.id)).select("_id");
-    const caseIds = cases.map((caseData) => caseData._id);
-    const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).sort({ updatedAt: -1 });
-    res.json({ success: true, count: payments.length, data: payments, payments });
+    const finance = require("../finance/caseFinance.service");
+    const match = await casesMatchFor(req.params.id);
+    const rows = await Case.find(finance.financeMatch({}, match))
+      .select("caseNumber clientName clientEmail visaType finance createdAt updatedAt").sort({ "finance.updatedAt": -1 }).limit(500).lean();
+    // payment-shaped rows (what the tab reads), every amount in US dollars from the case's GoHighLevel figures
+    const payments = rows.map((row) => {
+      const total = Number(row.finance?.totalAmount) || 0;
+      const paid = Number(row.finance?.amountPaid) || 0;
+      const status = total > 0 && paid >= total ? "paid" : paid > 0 ? "partially_paid" : total > 0 ? "pending" : "no_fee";
+      return {
+        _id: row._id,
+        caseId: { _id: row._id, caseNumber: row.caseNumber, clientName: row.clientName },
+        totalFee: total, totalAmount: total, amountPaid: paid, paidAmount: paid, remainingAmount: Math.max(total - paid, 0), uscisFee: Number(row.finance?.uscisFee) || 0,
+        invoiceNo: row.finance?.invoiceNo || "", status, paymentStatus: status, updatedAt: row.finance?.updatedAt || row.updatedAt, createdAt: row.createdAt,
+      };
+    });
+    const sums = await finance.totals(finance.financeMatch({}, match));
+    const summary = { totalRevenueAssigned: sums.total, totalRevenueCollected: sums.revenue, outstandingRevenue: sums.outstanding, uscisFees: sums.uscisFees, collectionRate: sums.total ? Math.round((sums.revenue / sums.total) * 100) : 0 };
+    res.json({ success: true, count: payments.length, data: payments, payments, summary });
   } catch (error) {
     next(error);
   }
@@ -301,12 +317,16 @@ async function getCaseManagerAnalytics(req, res, next) {
     const [caseRows, tasks, payments] = await Promise.all([
       Case.find(caseFilter).select("caseNumber clientName status stage priority visaType visaCategory category createdAt updatedAt dueDate keyDates integrations.ghl.unifiedStageKey").lean(),
       Task.find({ assignedTo: req.params.id }).select("status priority category dueDate createdAt updatedAt completedAt").lean(),
-      Payment.aggregate([
-        { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
-        { $lookup: { from: "cases", localField: "case", foreignField: "_id", as: "legacyCaseData" } },
-        { $addFields: { resolvedCase: { $ifNull: [{ $arrayElemAt: ["$caseData", 0] }, { $arrayElemAt: ["$legacyCaseData", 0] }] } } },
-        { $match: { $or: [{ "resolvedCase.assignedCaseManager": objectId(req.params.id) }, { "resolvedCase.additionalCaseManagers": objectId(req.params.id) }, ...(isTeamLeadTarget ? [{ "resolvedCase.assignedTeamLead": objectId(req.params.id) }] : [])] } },
-        { $project: { totalFee: 1, totalAmount: 1, amountPaid: 1, paidAmount: 1, remainingAmount: 1, paymentStatus: 1, status: 1, paymentDate: 1, updatedAt: 1, createdAt: 1 } },
+      // one payment-like row per case with GoHighLevel figures (US dollars): paid = QB Amount Paid, total = Value
+      Case.aggregate([
+        { $match: withCountable({ $and: [caseFilter, { "finance.source": "ghl" }] }) },
+        { $project: {
+          totalAmount: { $ifNull: ["$finance.totalAmount", 0] },
+          amountPaid: { $ifNull: ["$finance.amountPaid", 0] },
+          remainingAmount: { $max: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] },
+          paymentStatus: { $switch: { branches: [{ case: { $and: [{ $gt: [{ $ifNull: ["$finance.totalAmount", 0] }, 0] }, { $gte: [{ $ifNull: ["$finance.amountPaid", 0] }, "$finance.totalAmount"] }] }, then: "paid" }, { case: { $gt: [{ $ifNull: ["$finance.amountPaid", 0] }, 0] }, then: "partially_paid" }], default: "pending" } },
+          paymentDate: "$finance.lastPaymentAt", updatedAt: 1, createdAt: 1,
+        } },
       ]),
     ]);
 
@@ -368,7 +388,7 @@ async function getCaseManagerAnalytics(req, res, next) {
       outstanding += remaining;
       increment(paymentStatusMap, payment.paymentStatus || payment.status || "not_started");
       const index = monthIndex.get(monthKey(payment.paymentDate || payment.updatedAt || payment.createdAt));
-      if (index !== undefined) monthly[index].payments += paid / 100;
+      if (index !== undefined) monthly[index].payments += paid; // dollars
       if (["overdue", "failed"].includes(payment.paymentStatus || payment.status)) increment(attentionMap, "Payment attention");
     });
 

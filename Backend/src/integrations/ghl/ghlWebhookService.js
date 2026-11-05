@@ -180,6 +180,7 @@ function opportunityFromPayload(p) {
     pipelineId: pick(p, "pipelineId", "pipeline_id"),
     pipelineStageId: pick(p, "pipelineStageId", "pipeline_stage_id"),
     status: p.status,
+    monetaryValue: p.monetaryValue ?? p.monetary_value,
     lastStageChangeAt: pick(p, "lastStageChangeAt", "dateUpdated", "updatedAt"),
     contact: p.contact,
     source: p.source,
@@ -252,6 +253,7 @@ async function handleOpportunityEvent(event, config) {
 
   await recheckPendingVisa(existing, opportunity, config, pipeline);
   await syncCardName(existing, opportunity);
+  await require("./ghlFinance").syncCaseFinance(existing, opportunity); // the card's Value / USCIS Fee / QB Amount Paid -> the case's finance (never throws)
   return applyStageChange(event, existing, opportunity, pipeline, mapping);
 }
 
