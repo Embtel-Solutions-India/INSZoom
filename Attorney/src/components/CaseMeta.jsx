@@ -1,6 +1,8 @@
+import { visaName } from '../utils/visaDisplay'
 // One line under a case's name: email | Case ID B430 | H-1B, with even spacing and a thin divider between the parts. It wraps onto a second line on a narrow screen rather than
 // squeezing; empty parts (no email, no visa) are simply left out together with their divider.
 export default function CaseMeta({ email, caseId, visa, className = 'text-sm', extra }) {
+  visa = visaName(visa) // the proper name of a filing type (I765EAD -> I-765 EAD)
   const parts = [
     email && <span key="email" className="font-medium text-foreground/80 break-all">{email}</span>,
     caseId && <span key="id" className="text-muted-foreground whitespace-nowrap">Case ID <span className="font-semibold text-foreground">{caseId}</span></span>,

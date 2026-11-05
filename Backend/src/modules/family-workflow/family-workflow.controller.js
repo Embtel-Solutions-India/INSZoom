@@ -451,7 +451,7 @@ exports.createFamilyCase = async (req, res, next) => {
           channels: ["in_app", "socket", "push", "email"],
           emailTemplate: "case-created-client",
           emailTo: petitionerEmail,
-          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard` },
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard`, loginLink: `${require("../../config/env").clientUrl}/login?case=${caseData._id}` }, // a returning petitioner: sign-in opens THIS case
         }, req.user, req).catch(() => null);
       });
     }

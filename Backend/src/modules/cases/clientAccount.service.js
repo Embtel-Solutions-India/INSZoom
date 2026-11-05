@@ -72,7 +72,11 @@ async function attachClientToCase({ caseDoc, email, name, phone }) {
   existing.name = existing.name || name;
   existing.displayName = existing.displayName || name;
   if (phone && !existing.phone) existing.phone = phone;
+  // a person who already has cases: the new case is appended with one atomic update (a whole-list write from two requests at once could drop a link)
+  const appendOnly = multiCase && hadCase;
+  if (appendOnly) existing.unmarkModified("caseIds");
   await existing.save();
+  if (appendOnly) await caseLinks.appendCaseIdsAtomic(existing._id, [caseDoc._id]);
   caseDoc.user = existing._id;
   const undo = () => User.updateOne({ _id: existing._id }, { $set: snapshot }).catch(() => null);
   return { user: existing, setupToken, createdUser: false, undo };
@@ -82,21 +86,23 @@ async function attachClientToCase({ caseDoc, email, name, phone }) {
 async function notifyClientOfNewCase({ caseDoc, user, setupToken, actor, req }) {
   try {
     const notificationService = require("../notifications/notification.service");
-    const loginLink = `${require("../../config/env").clientUrl}/login`;
+    const shownVisa = require("../../utils/visaDisplay").resolveDisplayVisa(caseDoc) || caseDoc.visaType; // the proper name (I-765 EAD), not the stored code
+    // a person with other cases: the link opens THIS case after sign-in (the sign-in page passes ?case= on to the portal)
+    const loginLink = `${require("../../config/env").clientUrl}/login${(user.caseIds || []).length > 1 ? `?case=${caseDoc._id}` : ""}`;
     await notificationService.createNotification({
       userId: user._id,
       type: "case_created",
       category: "case",
       title: setupToken ? "Your Immigration Case Is Ready" : "Your Immigration Case Has Been Created",
-      message: `${caseDoc.caseNumber} - ${caseDoc.visaType}`,
+      message: `${caseDoc.caseNumber} - ${shownVisa}`,
       caseId: caseDoc._id,
       link: setupToken ? "/accept-invite" : "/dashboard",
       priority: "medium",
       source: "shared",
       emailTo: user.email,
       ...(setupToken
-        ? { emailTemplate: "client-portal-invitation", emailData: { clientName: caseDoc.clientName, caseNumber: caseDoc.caseNumber, visaType: caseDoc.visaType, token: setupToken } }
-        : { emailTemplate: "case-created-client", emailData: { clientName: caseDoc.clientName, caseNumber: caseDoc.caseNumber, visaType: caseDoc.visaType, loginLink } }),
+        ? { emailTemplate: "client-portal-invitation", emailData: { clientName: caseDoc.clientName, caseNumber: caseDoc.caseNumber, visaType: shownVisa, token: setupToken } }
+        : { emailTemplate: "case-created-client", emailData: { clientName: caseDoc.clientName, caseNumber: caseDoc.caseNumber, visaType: shownVisa, loginLink } }),
     }, actor, req);
   } catch (error) {
     require("../../utils/logger").error("client_new_case_notify_failed", { caseId: String(caseDoc._id), error: error.message });

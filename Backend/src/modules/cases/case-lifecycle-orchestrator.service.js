@@ -490,7 +490,7 @@ class CaseLifecycleOrchestrator {
         ...(invitePending ? {} : {
           emailTemplate: "case-created-client",
           emailTo: clientEmail,
-          emailData: { clientName: caseData.clientName, caseNumber, visaType: caseData.visaType, loginLink: `${require("../../config/env").clientUrl}/login` },
+          emailData: { clientName: caseData.clientName, caseNumber, visaType: require("../../utils/visaDisplay").resolveDisplayVisa(caseData) || caseData.visaType, loginLink: `${require("../../config/env").clientUrl}/login${hasOtherCase ? `?case=${caseData._id}` : ""}` }, // a returning person's link opens THIS case after sign-in
         }),
       }, user, req).catch(() => null);
     }

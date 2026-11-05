@@ -65,12 +65,19 @@ async function orphanedClientUsers(cases, caseIds) {
   const candidateIds = [...new Set(cases.map((item) => item.user).filter(Boolean).map(String))];
   if (!candidateIds.length) return [];
   const users = await User.find({ _id: { $in: ids(candidateIds) }, role: { $in: CLIENT_SIDE_ROLES } }).select("_id email").lean();
-  const remaining = await Promise.all(users.map((user) => Case.countDocuments({ _id: { $nin: caseIds }, $or: [{ user: user._id }, { clientEmail: user.email }, { employerUser: user._id }, { employeeUser: user._id }] })));
+  // EVERY way a person can be on a case counts (one login, many cases): as client, e-mail contact, employer, employee, petitioner, beneficiary or delegate employer.
+  // A removed case in the recycle bin does not count (its status is "removed" only while soft-removed).
+  const remaining = await Promise.all(users.map((user) => Case.countDocuments({
+    _id: { $nin: caseIds },
+    $or: [{ user: user._id }, { clientEmail: user.email }, { employerUser: user._id }, { employeeUser: user._id }, { petitionerUser: user._id }, { beneficiaryUser: user._id }, { delegateEmployerUser: user._id }],
+  })));
   return users.filter((_, index) => !remaining[index]);
 }
 
 // Phase 1 body: remove the cases and orphaned accounts and detach anything still pointing at them. Idempotent.
 async function removeCasesAndAccounts(caseIds, userIds) {
+  // people whose landing case is being deleted: they get their newest remaining case as the new landing case (below), not a blank
+  const lostLanding = await User.find({ primaryCaseId: { $in: caseIds } }).select("_id").lean().catch(() => []);
   await Promise.all([
     Case.updateMany({ childCases: { $in: caseIds } }, { $pull: { childCases: { $in: caseIds } } }),
     User.updateMany({ caseIds: { $in: caseIds } }, { $pull: { caseIds: { $in: caseIds } } }),
@@ -78,6 +85,10 @@ async function removeCasesAndAccounts(caseIds, userIds) {
   ]);
   await Case.deleteMany({ _id: { $in: caseIds } });
   if (userIds.length) await User.deleteMany({ _id: { $in: userIds }, role: { $in: CLIENT_SIDE_ROLES } });
+  // best effort, never fails the deletion: a person who still has other cases lands on the newest one
+  const deleted = new Set(ids(userIds).map(String));
+  const keep = lostLanding.map((row) => row._id).filter((id) => !deleted.has(String(id)));
+  if (keep.length) await require("./caseLinks.service").repointLandingCases(keep).catch((error) => logger.error("repoint_landing_case_failed", { error: error.message }));
 }
 
 /**

@@ -72,7 +72,7 @@ function planExistingPersonLinks(user, newCaseIds, firstCaseFields = {}, { enabl
 
 const PERSON_FIELDS = ["user", "employerUser", "petitionerUser", "beneficiaryUser", "employeeUser", "delegateEmployerUser"];
 const CAPACITY = { employerUser: "employer", petitionerUser: "petitioner", beneficiaryUser: "beneficiary", employeeUser: "employee", delegateEmployerUser: "employer (delegate)", user: "client" };
-const CASE_FIELDS = "caseNumber clientName clientEmail visaType visaCategory status stage caseStructure caseRole parentCase createdAt updatedAt " + PERSON_FIELDS.join(" ");
+const CASE_FIELDS = "caseNumber clientName clientEmail visaType visaCategory petitionSubType status stage caseStructure caseRole parentCase createdAt updatedAt " + PERSON_FIELDS.join(" ");
 
 /** Pure: how this person is on this case (first match, most specific first). */
 function capacityOf(caseRow, userId) {
@@ -97,7 +97,7 @@ async function listPersonCases(userId, { CaseModel = Case } = {}) {
     .map((row) => ({
       _id: String(row._id),
       caseNumber: row.caseNumber || "",
-      visaType: row.visaType || row.visaCategory || "",
+      visaType: require("../../utils/visaDisplay").resolveDisplayVisa(row) || row.visaCategory || "", // the proper name (I-765 EAD), not the stored code
       status: row.status || "",
       stage: row.stage || "",
       caseStructure: row.caseStructure || "",
@@ -108,4 +108,25 @@ async function listPersonCases(userId, { CaseModel = Case } = {}) {
     }));
 }
 
-module.exports = { requestedCaseId, multiCaseClientsEnabled, mergeCaseIds, hasWorkingLogin, needsSetPasswordInvite, hasLinkedCase, planExistingPersonLinks, capacityOf, listPersonCases, PERSON_FIELDS };
+/**
+ * A person whose landing case is gone gets their newest remaining top-level case (an employer's matter, a single case ... never one of its employee cases) as the
+ * landing case. A person with no case left keeps none. Never replaces a landing case that still exists. Idempotent.
+ */
+async function repointLandingCases(userIds, { UserModel = require("../../models/User"), list = listPersonCases } = {}) {
+  let repointed = 0;
+  for (const userId of userIds || []) {
+    const rows = await list(userId);
+    const newest = rows[rows.length - 1];
+    if (!newest) continue;
+    const result = await UserModel.updateOne({ _id: userId, $or: [{ primaryCaseId: null }, { primaryCaseId: { $exists: false } }] }, { $set: { primaryCaseId: newest._id } });
+    repointed += result.modifiedCount || 0;
+  }
+  return repointed;
+}
+
+/** Atomic append of case ids to a person: two cases created at the same moment can never drop each other's link (a whole-array save could). */
+function appendCaseIdsAtomic(userId, ids, { UserModel = require("../../models/User") } = {}) {
+  return UserModel.updateOne({ _id: userId }, { $addToSet: { caseIds: { $each: (ids || []).filter(Boolean) } } });
+}
+
+module.exports = { repointLandingCases, appendCaseIdsAtomic, requestedCaseId, multiCaseClientsEnabled, mergeCaseIds, hasWorkingLogin, needsSetPasswordInvite, hasLinkedCase, planExistingPersonLinks, capacityOf, listPersonCases, PERSON_FIELDS };

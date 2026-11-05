@@ -72,3 +72,11 @@ Every request / instruction the owner gave in this session, in order, as written
 | 66 | (mid-turn) "alsothe assign dropddowns should also show bhavya instead of madaan." | Verified: every staff list shows Bhavya. |
 
 Related documents: `docs/MULTI_CASE_CLIENTS_PLAN.md` (plan), `docs/MULTI_CASE_CLIENTS_REPORT.md` (single completion report for all phases), `docs/PETITION_REVIEW.md` (Supporting Documents section).
+| 67 | "start implemetning phase 4 but ensure that after phase 4 this feature shouldbe implemented 100 percent, there should be no errors, no defaults, i should not complaint this is not working this is not working, everyworkflow current and integrate should be workig correctly, every feature is working without any error. and this feature should be guranteed working." | Phase 4: real end-to-end verification on a local test database, 9 fixes, kill switch, production checklist, walkthrough. |
+| 68 | (mid-turn) "how much time" | Estimate given. |
+| 69 | (mid-turn) [screenshot] "it is showng like this in the cases list. is should have proper hyphens and space" (I765EAD / Not Selected) | Proper names for filing types everywhere ("I-765 EAD"); "Not Selected" is the package label. |
+| 70 | (mid-turn) [screenshot] "why its case id different from others?" (Immiglance-2026-30658) | New filings now use the same B### sequence; existing cases keep their number. |
+| 71 | (mid-turn) "finish phase 4 first" | Done in order. |
+| 72 | (mid-turn) "give the report to me first." | Interim Phase 4 report given. |
+| 73 | "do not comapct" / "continue the phase 4" | Not compacted; Phase 4 continued. |
+

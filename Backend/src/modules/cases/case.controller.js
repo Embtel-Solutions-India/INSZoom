@@ -531,6 +531,7 @@ exports.getMyPipeline = async (req, res, next) => {
     const requested = caseLinks.requestedCaseId(req.query.caseId);
     let own = requested ? await Case.findOne({ $and: [filter, { _id: requested }] }).select("integrations.ghl").lean() : null;
     if (!own && req.user.primaryCaseId) own = await Case.findOne({ ...filter, _id: req.user.primaryCaseId }).select("integrations.ghl").lean();
+    if (!own) own = await Case.findOne({ $and: [filter, { parentCase: null }] }).sort({ createdAt: -1 }).select("integrations.ghl").lean();
     if (!own) own = await Case.findOne(filter).sort({ createdAt: -1 }).select("integrations.ghl").lean();
     const pipeline = own ? await require("../../integrations/ghl/ghlCaseOutbound").clientPipelineForCase(own) : null;
     res.json({ success: true, pipeline });
@@ -581,6 +582,8 @@ exports.getMyCase = async (req, res, next) => {
       ? await caseService.populateCaseQueryForClient(Case.findOne({ $and: [filter, { _id: requestedId }] }).lean())
       : null;
     if (!caseData && req.user.primaryCaseId) caseData = await caseService.populateCaseQueryForClient(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean());
+    // no (or a deleted) landing case: the newest TOP-LEVEL case first - an employer with several matters must not land on an employee case of one of them
+    if (!caseData) caseData = await caseService.populateCaseQueryForClient(Case.findOne({ $and: [filter, { parentCase: null }] }).sort({ createdAt: -1 }).lean());
     if (!caseData) {
       caseData = await caseService.populateCaseQueryForClient(Case.findOne(filter).sort({ createdAt: -1 }).lean());
     }
@@ -1472,7 +1475,12 @@ exports.createCase = async (req, res, next) => {
           { enabled: multiCase }
         ));
         if (sourceLead?._id) clientUser.leadId = sourceLead._id;
+        // a person who already has cases: the new case is appended with ONE atomic update below, never by writing the whole list back (two cases
+        // created for the same person at the same moment could otherwise drop each other's link)
+        const appendOnly = multiCase && existingHadCase;
+        if (appendOnly) clientUser.unmarkModified("caseIds");
         await clientUser.save();
+        if (appendOnly) await caseLinks.appendCaseIdsAtomic(clientUser._id, [principalCase._id]);
       }
 
       principalCase.user = clientUser._id;
@@ -1577,7 +1585,9 @@ exports.createCase = async (req, res, next) => {
         multiCase && existingHadCase ? created.updatedUsers.find((row) => String(row._id) === String(clientUser._id))?.set?.caseIds || [] : [],
         [principalCase._id, ...childCases.map((childCase) => childCase._id)]
       );
+      if (multiCase && existingHadCase) clientUser.unmarkModified("caseIds"); // appended atomically below
       await clientUser.save();
+      if (multiCase && existingHadCase) await caseLinks.appendCaseIdsAtomic(clientUser._id, [principalCase._id, ...childCases.map((childCase) => childCase._id)]);
       await principalCase.save();
       if (delegateInput) {
         const attached = await delegateEmployerService.attachDelegateEmployer(principalCase, childCases, delegateInput, req.user);

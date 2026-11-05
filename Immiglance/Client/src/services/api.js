@@ -335,7 +335,7 @@ export const profileApi = {
 export const documentsApi = {
   // the selected case's documents only (an employer matter keeps listing its employees' documents, so it is never narrowed)
   list: () => api.get(activeCase.capacity && !activeCase.capacity.startsWith("employer") ? withCase("/documents/me") : "/documents/me"),
-  count: () => api.get("/documents/me/count"),
+  count: () => api.get(activeCase.capacity && !activeCase.capacity.startsWith("employer") ? withCase("/documents/me/count") : "/documents/me/count"),
   upload: (file, category, documentType, context = {}) => {
     const fd = new FormData();
     fd.append("file", file);

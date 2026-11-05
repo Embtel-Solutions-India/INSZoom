@@ -8,8 +8,8 @@ Plan: `docs/MULTI_CASE_CLIENTS_PLAN.md`. One report for all phases; each phase a
 | 2A — Client Portal: case switcher for client / employer / petitioner logins | Done (2026-11-05) |
 | 2B — A login that is an employee / beneficiary on one case and a client on another | Done (2026-11-05) |
 | 3A — Carry the person's own answers into each new case | Done (2026-11-05) |
-| 3B — Reuse the person's documents (passport, resume …) in a new case | Done (2026-11-05) — awaiting owner approval for Phase 4 |
-| 4 — Hardening, full verification, rollout | Not started |
+| 3B — Reuse the person's documents (passport, resume …) in a new case | Done (2026-11-05) |
+| 4 — Hardening, full verification, rollout | Done (2026-11-05) — see below |
 
 ## Phase 1 — Link many cases to one login + staff see it
 
@@ -155,3 +155,39 @@ Backend: `modules/cases/personPrefill.service.js`, `modules/cases/tests/personPr
 
 ### Production
 No new env vars, no migration. Restart the backend; rebuild Admin. (Copied documents count toward storage like any upload.)
+
+## Phase 4 — Hardening, real end-to-end verification, rollout
+
+### How it was verified
+- **Real end-to-end test** `Backend/src/modules/cases/tests/multiCase.integration.test.js` (13 scenarios): the real controllers and services for ONE person with several cases, against the dedicated LOCAL test database (`immigrationcrm_test`). It refuses to run on any other database, blocks every outbound request, uses local file storage, suppresses e-mail, switches GoHighLevel off, and deletes everything it created (verified: zero leftovers in every collection after a run). Run it with `node src/scripts/runSafeTests.js --include-local-db multiCase.integration`.
+  Scenarios: new person -> case A with set-password invitation; activation + answers + a document; case B (I-765 EAD) added to the same login with no set-password link, password / activation / landing case untouched, answers (date normalised) and the document copied as the case's OWN file, the earlier case never written; the person's own edit never overwritten; case C through staff New case (no refusal); switcher list, `?caseId=` opening each case, a foreign or stale id falling back to the landing case; staff lookup and "other cases" list; "Add to this person's login" (and refusal for a case already on a login); employee login with its own case acting as a client there and as an employee on the invited case (stored role never changed); deleting cases (login survives while any case remains, including as petitioner; landing case moves); an employer with TWO matters; a family (K-1) case for a returning person as petitioner (details copied, nothing on the beneficiary's side).
+- Hardening tests `multiCase.hardening.test.js` (9) pin every fix below; the linker / prefill / role tests (28) still pass.
+
+### Problems found and fixed in Phase 4
+1. **A login could be deleted wrongly** (case-deletion.service.js): after a case was deleted, a client login was removed if it counted no other case, but only cases where the person is user / e-mail contact / employer / employee were counted. A person who was only the petitioner, beneficiary or delegate employer on another case lost the whole login. Now every way of being on a case counts.
+2. **Wrong case opened after a deletion**: the landing case was just cleared, and the "newest case" fallback then picked an employee case of another matter for an employer. Now the landing case moves to the person's newest remaining top-level case, and the fallback itself prefers a top-level case.
+3. **Employer with two matters hit a dead end**: Documents sent employers with 2+ cases to the dashboard "to choose" and the dashboard has no chooser. Now it opens the case selected in the header (or the newest matter).
+4. **Lost-update race**: two cases created for the same person at the same moment could drop each other's link (whole-list writes). The add is now one atomic `$addToSet` in staff New case and in single-party filings / "Add to this person's login".
+5. **The "Case Created" e-mail opens the NEW case** after sign-in for a returning person (`/login?case=<id>` -> the sign-in page passes it on; only a well-formed id is used; every other e-mail button still opens the plain login page).
+6. **Dashboard documents count** follows the open case.
+7. **First use of a new built-in checklist** (the I-765 EAD checklist on a brand-new database): the checklist is created in the background and a case created in that instant had none assigned. The server creates all built-in checklists at startup, so production cannot hit it after the restart; filing creation now also waits for its checklist.
+8. **Proper names** (owner report): a filing type's stored code (I765EAD, H4EAD, COSF1 ...) was shown raw in lists. Every screen now shows the proper name ("I-765 EAD", "H-4 EAD", "Change of Status to F-1" ...) in Admin, the Client portal, the Attorney portal, the pipeline board, the person's other-cases lists and the "Case type" line of the case-created e-mail. The stored value is unchanged.
+9. **Case ID** (owner report): single-party filings used an older random "Immiglance-2026-30658" form; new filings now use the same B001, B002 ... sequence and portal id as every case. Existing cases keep the number they have (nothing renumbered).
+
+### Disclosed
+- The first end-to-end run reached uscis.gov once: creating the cases made the form-acquisition step download three public forms (I-765, N-400, N-565) and write two PDFs into the git-ignored `Backend/uploads` folder. The test now blocks all outbound requests. The PDFs were left in place (public forms, content-addressed). The local test database also gained form templates for those three forms.
+- `Not Selected` shown under a case name in the list is the package / plan label (every case without a package), not the visa.
+
+### Not changed / known limits (owner can decide)
+- An existing CLIENT login invited as someone's EMPLOYEE / BENEFICIARY is still refused by the invite flow's existing rule (the reverse direction of the 2B request was never asked for).
+- A second GHL card for a client who already has a case still arrives unlinked and flagged; staff add it to the login with one click.
+- History lists (address / education / employment history) and company details between employer matters are not copied.
+- What no automated test covers: clicking through the portals in a browser and your production data - see `docs/MULTI_CASE_CLIENTS_WALKTHROUGH.md`.
+
+### Production checklist
+1. Deploy and **restart the backend** (it creates the I-765 EAD checklist at startup; the allowed-headers list changed). Check the log has no template errors.
+2. Rebuild and deploy **Admin, Client, Landing and Attorney** (Landing only gets the proper-name change).
+3. Environment: no new variable is required. `MULTI_CASE_CLIENTS` is on unless set to `false`.
+4. No data migration. Existing one-case people are already valid; existing cases keep their numbers.
+5. **Rollback / kill switch**: set `MULTI_CASE_CLIENTS=false` and restart: staff New case, single-party filings and "Add to login" go back to refusing a second case for one login. Nothing is deleted, and cases already created stay accessible to their person.
+6. Run the walkthrough on one test person, then delete its cases from Admin.

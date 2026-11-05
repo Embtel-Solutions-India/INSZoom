@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
 import { chunkApi, messagesApi, usersApi } from "../../services/api";
 import { useActiveCase } from "../../context/ActiveCaseContext";
+import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import { useMyCase } from "../../hooks/useMyCaseProfile";
 import { IconX } from "../../utils/iconComponents";
 import { attachmentProblem, formatFileSize, isChunkedFile, MAX_ATTACHMENTS_PER_MESSAGE, uploadFileInChunks } from "../../utils/chunkedUpload";
@@ -337,7 +338,7 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
     ? (thread.clientId?.displayName || thread.clientId?.email || "Client")
     : "Immiglance Case Team";
   const caseLabel = thread.caseId?.caseId
-    ? `${thread.caseId.caseId} — ${thread.caseId.visaType}`
+    ? `${thread.caseId.caseId} — ${resolveDisplayVisa(thread.caseId)}`
     : thread.subject;
 
   return (

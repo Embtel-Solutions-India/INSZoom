@@ -10,7 +10,7 @@ const Case = require("../../models/Case");
 const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const Questionnaire = require("../../models/Questionnaire");
-const generateCaseNumber = require("../cases/caseId");
+const CaseNumberService = require("../../services/CaseNumberService");
 const caseService = require("../cases/case.service");
 const clientAccount = require("../cases/clientAccount.service");
 const questionnaireService = require("../questionnaires/questionnaire.service");
@@ -48,12 +48,15 @@ exports.createFiling = async (req, res, next) => {
     // login (a new login gets a set-password invitation; an existing one gets this case added and a "case created - log in" e-mail).
     const clientEmail = String(req.body.clientEmail || "").trim().toLowerCase();
     if (!clientEmail) return res.status(400).json({ success: false, code: "CLIENT_EMAIL_REQUIRED", message: "Client email is required" });
-    const caseNumber = await generateCaseNumber(req.body.legacySource === "Admin" ? "INS" : "Immiglance");
+    // the same case-number sequence as every other case (B001, B002 ...), so the Client Case ID looks and behaves the same everywhere; a filing used to get the
+    // older random "Immiglance-2026-30658" form. Existing cases keep the number they already have.
+    const caseNumber = await CaseNumberService.nextPrincipalCaseNumber();
     const caseData = new Case({
       ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
       caseNumber,
       caseId: caseNumber,
+      clientPortalId: caseNumber,
       visaType: filingType.visaType,
       visaCategory: filingType.category,
       caseType: "individual_filing",
@@ -98,7 +101,8 @@ exports.createFiling = async (req, res, next) => {
     // provisions the scaffold template on first use (idempotent, non-
     // destructive — same shared provisioning path every other visa/filing
     // checklist in this codebase uses).
-    await questionnaireService.ensureTemplate(filingType.questionnaireKey);
+    // wait for the checklist to exist (it is created on first use on a brand-new database); an existing one costs nothing
+    await questionnaireService.ensureTemplate(filingType.questionnaireKey, undefined, undefined, { wait: true });
     const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
     let assignment = null;
     if (questionnaire) {
