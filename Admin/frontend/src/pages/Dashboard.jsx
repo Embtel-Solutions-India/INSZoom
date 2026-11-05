@@ -154,7 +154,7 @@ const AdminPanel = ({
             <span className="stage-dot" style={{ backgroundColor: card.dot }} />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{card.title}</p>
           </div>
-          <p className="text-2xl font-bold text-foreground leading-tight">{card.value}</p>
+          <p className={`${card.valueClass || 'text-2xl'} font-bold text-foreground leading-tight`}>{card.value}</p>
           <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
         </Card>
       ))}
@@ -1013,7 +1013,7 @@ const Dashboard = () => {
     { title: 'On Hold', value: stats?.onHoldCases ?? onHoldCount, sub: 'in the On Hold stage', dot: '#ef4444' },
     { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: `${formatUsd(stats?.pendingAmount)} outstanding`, dot: '#f59e0b' },
     { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'submitted, approved or disapproved', dot: '#10b981' },
-    { title: 'Total Revenue', value: formatUsd(stats?.totalRevenue), sub: `of ${formatUsd(stats?.totalFees)} total fees`, dot: '#8b5cf6' }
+    { title: 'Total Revenue', value: formatUsd(stats?.totalRevenue), valueClass: 'text-xl', sub: `of ${formatUsd(stats?.totalFees)} total fees`, dot: '#8b5cf6' }
   ]
 
   const teamStatCards = [

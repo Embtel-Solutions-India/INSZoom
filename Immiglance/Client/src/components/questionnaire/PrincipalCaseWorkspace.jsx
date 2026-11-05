@@ -28,7 +28,8 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   const employerTargetRole = isFamily ? "petitioner" : "employer";
   const employeeTargetRole = isFamily ? "beneficiary" : "employee";
 
-  const [dataEntryMode, setDataEntryMode] = useState(activeCase.dataEntryMode);
+  // an employer matter never waits for a fill / invite choice: the employer fills by default (family cases keep their own question)
+  const [dataEntryMode, setDataEntryMode] = useState(activeCase.dataEntryMode === "not_set" && !isFamily ? "fill_self" : activeCase.dataEntryMode);
   const [children, setChildren] = useState([]);
   const [loadingChildren, setLoadingChildren] = useState(true);
   // Unlike the old tab bar, nothing opens by default — the dashboard grid is

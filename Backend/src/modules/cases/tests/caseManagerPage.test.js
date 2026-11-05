@@ -27,3 +27,32 @@ test("the Friday review e-mail is due from 5:30 AM IST on Friday, and only then"
   assert.equal(dueWeekKey(new Date("2026-11-05T12:00:00Z")), ""); // Thursday
   assert.equal(dueWeekKey(new Date("2026-11-07T00:10:00Z")), ""); // Saturday IST
 });
+
+test("the details endpoint answers for a case manager and for a team lead, with live payment figures (regression: a missing variable once broke the page)", async (t) => {
+  const User = require("../../../models/User");
+  const Case = require("../../../models/Case");
+  const Task = require("../../../models/Task");
+  const caseService = require("../case.service");
+  const finance = require("../../finance/caseFinance.service");
+  const controller = require("../case-manager.controller");
+  const filed = { _id: "c1", status: "active", integrations: { ghl: { unifiedStageKey: "submitted_fedex" } }, createdAt: new Date("2026-01-01"), updatedAt: new Date("2026-01-11") };
+  const working = { _id: "c2", status: "active", integrations: { ghl: { unifiedStageKey: "docs_received" } }, createdAt: new Date("2026-02-01"), updatedAt: new Date("2026-02-02") };
+  const chain = (rows) => ({ sort() { return this; }, limit() { return this; }, then: (resolve) => resolve(rows) });
+  t.mock.method(Case, "find", () => chain([filed, working]));
+  t.mock.method(Task, "find", () => chain([]));
+  t.mock.method(caseService, "populateCaseQuery", async (query) => query);
+  t.mock.method(finance, "totals", async () => ({ total: 10100, uscisFees: 50, revenue: 90, outstanding: 10010, refunded: 0, count: 2 }));
+  for (const role of ["case_manager", "team_lead"]) {
+    t.mock.method(User, "findById", () => ({ select: async () => ({ _id: "u1", role, name: "Person" }) }));
+    let body;
+    let failure;
+    await controller.getCaseManagerDetails({ params: { id: "u1" }, user: { _id: "a", role: "admin" } }, { status() { return this; }, json(value) { body = value; } }, (error) => { failure = error; });
+    assert.equal(failure, undefined, `${role}: ${failure && failure.message}`);
+    assert.equal(body.stats.completedCases, 1, "completed = GoHighLevel stage Submitted (FedEx) or later");
+    assert.equal(body.stats.activeCases, 1);
+    assert.equal(body.stats.totalRevenue, 10100, "US dollars, from the GoHighLevel figures");
+    assert.equal(body.stats.collectedRevenue, 90);
+    assert.equal(body.stats.uscisFees, 50);
+    assert.equal(body.stats.avgProcessingTime, 10, "average days from creation to the last update of the completed cases");
+  }
+});

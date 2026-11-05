@@ -2349,7 +2349,7 @@ const CRMCaseDetail = () => {
                       const childIsInvited = Boolean(child.user) && String(child.user?._id || child.user) !== String(caseData.user?._id || caseData.user)
                       // none = the employer fills this employee in; pending = invited, no login yet; accepted = the employee has their own login
                       const inviteState = !childIsInvited ? 'none' : (child.inviteStatus === 'accepted' ? 'accepted' : 'pending')
-                      const childMode = child.employeeDataEntryMode || (childIsInvited ? 'invite' : caseData.dataEntryMode)
+                      const childMode = child.employeeDataEntryMode || (childIsInvited ? 'invite' : 'fill_self') // the employer fills unless the employee is exclusively invited
                       const employeeFills = childMode === 'invite'
                       return (
                         <Fragment key={child._id}>

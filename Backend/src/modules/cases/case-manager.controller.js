@@ -230,6 +230,7 @@ async function getCaseManagerDetails(req, res, next) {
     const caseIds = cases.map((caseData) => caseData._id);
     // the person's payment figures: all of their cases, from the GoHighLevel figures (US dollars)
     const money$ = await require("../finance/caseFinance.service").totals(require("../finance/caseFinance.service").financeMatch({}, ownCases));
+    const doneCases = cases.filter((caseData) => isCompletedCase(caseData));
     const activeCases = cases.filter((caseData) => !isCompletedCase(caseData) && !CLOSED_CASE_STATUSES.includes(caseData.status)).length;
     const completedCases = doneCases.length;
     // average days from creation to the last update of the filed (completed) cases, from the database
