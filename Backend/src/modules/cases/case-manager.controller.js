@@ -5,7 +5,7 @@ const Payment = require("../../models/Payment");
 const Task = require("../../models/Task");
 const User = require("../../models/User");
 const caseService = require("./case.service");
-const { caseManagerMatch } = require("./caseManagerAccess");
+const { caseManagerMatch, teamLeadMatch, COMPLETED_STAGE_KEYS, isCompletedCase } = require("./caseManagerAccess");
 const caseManagerAnalyticsService = require("./case-manager-analytics.service");
 const ratingService = require("./case-manager-rating.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
@@ -56,6 +56,29 @@ function objectId(value) {
   return mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : value;
 }
 
+// The Case Managers page lists case managers AND team leads (2026-11-06). A team lead's cases are the ones they lead (assignedTeamLead) or manage;
+// a case manager's figures are computed exactly as before.
+const PAGE_ROLES = ["case_manager", "team_lead"];
+
+// Mongo case filter for one person on the page, by that person's role.
+async function casesMatchFor(personId) {
+  const person = await User.findById(personId).select("role").lean().catch(() => null);
+  return normalizeRole(person?.role) === "team_lead" ? teamLeadMatch(personId) : caseManagerMatch(personId);
+}
+
+// One row per person: an employee case is its own row (an employer matter itself has none: countable filter), a family or single case is one row.
+// The name / e-mail shown are the person's own, including an employee who has not been invited yet.
+function rowIdentity(caseData) {
+  const c = asObject(caseData) || {};
+  const pending = c.pendingEmployee || {};
+  const identity = c.employeeIdentity || {};
+  const isEmployee = c.caseRole === "employee";
+  return {
+    listName: (isEmployee ? pending.name || identity.name : "") || c.clientName || pending.name || identity.name || "",
+    listEmail: (isEmployee ? pending.email || identity.email : "") || c.clientEmail || pending.email || identity.email || "",
+  };
+}
+
 const LIST_SORT_FIELDS = ["name", "activeCasesCount", "completedCasesCount", "totalRevenue", "currentWorkload", "performanceRating", "status"];
 const NOT_ACTIVE_CASE_STATUSES = ["closed", "archived", "approved", "denied", "completed"];
 const PENDING_CASE_STATUSES = ["pending_assignment", "assigned", "pending_approval"];
@@ -64,11 +87,11 @@ const PENDING_CASE_STATUSES = ["pending_assignment", "assigned", "pending_approv
 async function buildManagerMetrics() {
   const [caseRows, taskRows, paymentRows] = await Promise.all([
     Case.aggregate([
-      { $match: withCountable({ assignedCaseManager: { $ne: null } }) },
-      // A case counts toward every case manager on it (primary + additional).
-      { $project: { status: 1, managers: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }] } } },
+      { $match: withCountable({ $or: [{ assignedCaseManager: { $ne: null } }, { assignedTeamLead: { $ne: null } }] }) },
+      // A case counts toward every case manager on it (primary + additional) and toward its team lead.
+      { $project: { status: 1, done: { $in: [{ $ifNull: ["$integrations.ghl.unifiedStageKey", ""] }, COMPLETED_STAGE_KEYS] }, hold: { $regexMatch: { input: { $ifNull: ["$integrations.ghl.unifiedStageKey", ""] }, regex: "hold", options: "i" } }, managers: { $filter: { input: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }, ["$assignedTeamLead"]] }, as: "m", cond: { $ne: ["$$m", null] } } } } },
       { $unwind: "$managers" },
-      { $group: { _id: { manager: "$managers", status: "$status" }, count: { $sum: 1 } } },
+      { $group: { _id: { manager: "$managers", status: "$status", done: "$done", hold: "$hold" }, count: { $sum: 1 } } },
     ]),
     Task.aggregate([
       { $match: { status: { $nin: ["completed", "cancelled"] }, assignedTo: { $ne: null } } },
@@ -77,8 +100,8 @@ async function buildManagerMetrics() {
     Payment.aggregate([
       { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
       { $unwind: "$caseData" },
-      { $match: { "caseData.assignedCaseManager": { $ne: null } } },
-      { $project: { amountPaid: 1, managers: { $setUnion: [["$caseData.assignedCaseManager"], { $ifNull: ["$caseData.additionalCaseManagers", []] }] } } },
+      { $match: { $or: [{ "caseData.assignedCaseManager": { $ne: null } }, { "caseData.assignedTeamLead": { $ne: null } }] } },
+      { $project: { amountPaid: 1, managers: { $filter: { input: { $setUnion: [["$caseData.assignedCaseManager"], { $ifNull: ["$caseData.additionalCaseManagers", []] }, ["$caseData.assignedTeamLead"]] }, as: "m", cond: { $ne: ["$$m", null] } } } } },
       { $unwind: "$managers" },
       { $group: { _id: "$managers", total: { $sum: { $ifNull: ["$amountPaid", 0] } } } },
     ]),
@@ -92,8 +115,9 @@ async function buildManagerMetrics() {
   caseRows.forEach(({ _id, count }) => {
     const m = entry(_id.manager);
     m.totalCases += count;
-    if (CLOSED_CASE_STATUSES.includes(_id.status)) m.completed += count;
-    if (!NOT_ACTIVE_CASE_STATUSES.includes(_id.status)) m.active += count;
+    // completed = the GoHighLevel pipeline stage is Submitted (FedEx) or later; those are no longer "active" work
+    if (_id.done) m.completed += count;
+    else if (!_id.hold && !NOT_ACTIVE_CASE_STATUSES.includes(_id.status)) m.active += count; // a case in the On Hold stage is not active work
     if (PENDING_CASE_STATUSES.includes(_id.status)) m.pending += count;
   });
   taskRows.forEach((row) => { const m = entry(row._id); m.openTasks = row.open; m.overdueTasks = row.overdue; });
@@ -109,7 +133,7 @@ async function getCaseManagers(req, res, next) {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
 
     const [managers, metrics, ratingSummaries] = await Promise.all([
-      User.find({ role: "case_manager", status: { $ne: "archived" } }).select("-password").lean(),
+      User.find({ role: { $in: PAGE_ROLES }, status: { $ne: "archived" } }).select("-password").lean(),
       buildManagerMetrics(),
       ratingService.currentWeekSummaries(req.user),
     ]);
@@ -137,12 +161,15 @@ async function getCaseManagers(req, res, next) {
       };
     });
 
+    // the headline totals stay the case managers' own (a case counted for both its case manager and its team lead must not be added twice)
+    const managersOnly = all.filter((cm) => normalizeRole(cm.role) !== "team_lead");
     const stats = {
-      totalCaseManagers: all.length,
-      activeCaseManagers: all.filter((cm) => cm.status === "Active").length,
-      totalActiveCases: all.reduce((sum, cm) => sum + cm.activeCasesCount, 0),
-      totalCompletedCases: all.reduce((sum, cm) => sum + cm.completedCasesCount, 0),
-      totalRevenueManaged: all.reduce((sum, cm) => sum + cm.totalRevenue, 0),
+      totalCaseManagers: managersOnly.length,
+      activeCaseManagers: managersOnly.filter((cm) => cm.status === "Active").length,
+      totalTeamLeads: all.length - managersOnly.length,
+      totalActiveCases: managersOnly.reduce((sum, cm) => sum + cm.activeCasesCount, 0),
+      totalCompletedCases: managersOnly.reduce((sum, cm) => sum + cm.completedCasesCount, 0),
+      totalRevenueManaged: managersOnly.reduce((sum, cm) => sum + cm.totalRevenue, 0),
     };
 
     const term = String(search).trim().toLowerCase();
@@ -197,13 +224,19 @@ async function rateCaseManager(req, res, next) {
 async function getCaseManagerDetails(req, res, next) {
   try {
     const manager = await User.findById(req.params.id).select("-password");
-    if (!manager || manager.role !== "case_manager") return res.status(404).json({ success: false, message: "Case manager not found" });
-    const cases = await caseService.populateCaseQuery(Case.find(caseManagerMatch(manager._id)).sort({ updatedAt: -1 }).limit(100));
+    if (!manager || !PAGE_ROLES.includes(normalizeRole(manager.role))) return res.status(404).json({ success: false, message: "Case manager not found" });
+    const ownCases = normalizeRole(manager.role) === "team_lead" ? teamLeadMatch(manager._id) : caseManagerMatch(manager._id);
+    const cases = await caseService.populateCaseQuery(Case.find(ownCases).sort({ updatedAt: -1 }).limit(100));
     const tasks = await Task.find({ assignedTo: manager._id }).sort({ dueDate: 1 }).limit(100);
     const caseIds = cases.map((caseData) => caseData._id);
     const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).select("totalFee totalAmount amountPaid paidAmount remainingAmount").lean();
-    const activeCases = cases.filter((caseData) => !CLOSED_CASE_STATUSES.includes(caseData.status)).length;
-    const completedCases = cases.filter((caseData) => CLOSED_CASE_STATUSES.includes(caseData.status)).length;
+    const doneCases = cases.filter((caseData) => isCompletedCase(caseData));
+    const activeCases = cases.filter((caseData) => !isCompletedCase(caseData) && !CLOSED_CASE_STATUSES.includes(caseData.status)).length;
+    const completedCases = doneCases.length;
+    // average days from creation to the last update of the filed (completed) cases, from the database
+    const avgProcessingTime = doneCases.length
+      ? doneCases.reduce((sum, caseData) => sum + Math.max(0, (new Date(caseData.updatedAt) - new Date(caseData.createdAt)) / 86400000), 0) / doneCases.length
+      : 0;
     const totalRevenue = payments.reduce((sum, payment) => sum + money(payment.totalAmount || payment.totalFee), 0);
     const collectedRevenue = payments.reduce((sum, payment) => sum + money(payment.amountPaid || payment.paidAmount), 0);
     const stats = {
@@ -214,7 +247,7 @@ async function getCaseManagerDetails(req, res, next) {
       totalRevenue: totalRevenue / 100,
       collectedRevenue: collectedRevenue / 100,
       collectionPercentage: totalRevenue ? Math.round((collectedRevenue / totalRevenue) * 100) : 0,
-      avgProcessingTime: 0,
+      avgProcessingTime: Math.round(avgProcessingTime * 10) / 10,
     };
     res.json({ success: true, data: { caseManager: manager, cases, tasks, stats }, caseManager: manager, cases, tasks, stats });
   } catch (error) {
@@ -224,9 +257,14 @@ async function getCaseManagerDetails(req, res, next) {
 
 async function getCaseManagerCases(req, res, next) {
   try {
-    const filter = caseService.buildCaseFilter({ ...req.query, assignedCaseManager: req.params.id }, req.user);
-    const cases = await caseService.populateCaseQuery(Case.find(filter).sort({ updatedAt: -1 }).limit(Math.min(Number(req.query.limit || 100), 200)));
-    res.json({ success: true, count: cases.length, data: cases, cases });
+    const match = await casesMatchFor(req.params.id);
+    const filter = caseService.buildCaseFilter(req.query, req.user);
+    filter.$and = [...(filter.$and || []), match];
+    // one row per person: an employer matter itself is only a container (its employees are the rows)
+    const cases = await caseService.populateCaseQuery(Case.find(withCountable(filter)).sort({ updatedAt: -1 }).limit(Math.min(Number(req.query.limit || 100), 200)));
+    const rows = cases.map((caseData) => ({ ...asObject(caseData), ...rowIdentity(caseData), completed: isCompletedCase(caseData) }));
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames(cases, rows); // rows[i].pipelineStage = the GoHighLevel stage name (display only)
+    res.json({ success: true, count: rows.length, data: rows, cases: rows });
   } catch (error) {
     next(error);
   }
@@ -234,7 +272,7 @@ async function getCaseManagerCases(req, res, next) {
 
 async function getCaseManagerActivities(req, res, next) {
   try {
-    const cases = await Case.find(caseManagerMatch(req.params.id)).select("caseNumber clientName timeline activityLog updatedAt").sort({ updatedAt: -1 }).limit(50);
+    const cases = await Case.find(await casesMatchFor(req.params.id)).select("caseNumber clientName timeline activityLog updatedAt").sort({ updatedAt: -1 }).limit(50);
     const activities = cases.flatMap((caseData) => [
       ...(caseData.timeline || []).map((item) => ({ ...asObject(item), caseNumber: caseData.caseNumber, clientName: caseData.clientName })),
       ...(caseData.activityLog || []).map((item) => ({ ...asObject(item), caseNumber: caseData.caseNumber, clientName: caseData.clientName })),
@@ -247,7 +285,7 @@ async function getCaseManagerActivities(req, res, next) {
 
 async function getCaseManagerPayments(req, res, next) {
   try {
-    const cases = await Case.find(caseManagerMatch(req.params.id)).select("_id");
+    const cases = await Case.find(await casesMatchFor(req.params.id)).select("_id");
     const caseIds = cases.map((caseData) => caseData._id);
     const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).sort({ updatedAt: -1 });
     res.json({ success: true, count: payments.length, data: payments, payments });
@@ -258,15 +296,16 @@ async function getCaseManagerPayments(req, res, next) {
 
 async function getCaseManagerAnalytics(req, res, next) {
   try {
-    const caseFilter = caseManagerMatch(req.params.id);
+    const caseFilter = await casesMatchFor(req.params.id);
+    const isTeamLeadTarget = Boolean(caseFilter.$or.find((clause) => clause.assignedTeamLead));
     const [caseRows, tasks, payments] = await Promise.all([
-      Case.find(caseFilter).select("caseNumber clientName status stage priority visaType visaCategory category createdAt updatedAt dueDate keyDates").lean(),
+      Case.find(caseFilter).select("caseNumber clientName status stage priority visaType visaCategory category createdAt updatedAt dueDate keyDates integrations.ghl.unifiedStageKey").lean(),
       Task.find({ assignedTo: req.params.id }).select("status priority category dueDate createdAt updatedAt completedAt").lean(),
       Payment.aggregate([
         { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
         { $lookup: { from: "cases", localField: "case", foreignField: "_id", as: "legacyCaseData" } },
         { $addFields: { resolvedCase: { $ifNull: [{ $arrayElemAt: ["$caseData", 0] }, { $arrayElemAt: ["$legacyCaseData", 0] }] } } },
-        { $match: { $or: [{ "resolvedCase.assignedCaseManager": objectId(req.params.id) }, { "resolvedCase.additionalCaseManagers": objectId(req.params.id) }] } },
+        { $match: { $or: [{ "resolvedCase.assignedCaseManager": objectId(req.params.id) }, { "resolvedCase.additionalCaseManagers": objectId(req.params.id) }, ...(isTeamLeadTarget ? [{ "resolvedCase.assignedTeamLead": objectId(req.params.id) }] : [])] } },
         { $project: { totalFee: 1, totalAmount: 1, amountPaid: 1, paidAmount: 1, remainingAmount: 1, paymentStatus: 1, status: 1, paymentDate: 1, updatedAt: 1, createdAt: 1 } },
       ]),
     ]);
@@ -275,8 +314,8 @@ async function getCaseManagerAnalytics(req, res, next) {
     const monthly = months.map((key) => ({ key, month: monthLabel(key), active: 0, attention: 0, closed: 0, payments: 0, activity: 0 }));
     const monthIndex = new Map(monthly.map((item, index) => [item.key, index]));
 
-    const activeCases = caseRows.filter((item) => ACTIVE_CASE_STATUSES.includes(item.status) && !CLOSED_CASE_STATUSES.includes(item.status));
-    const closedCases = caseRows.filter((item) => CLOSED_CASE_STATUSES.includes(item.status));
+    const activeCases = caseRows.filter((item) => ACTIVE_CASE_STATUSES.includes(item.status) && !CLOSED_CASE_STATUSES.includes(item.status) && !isCompletedCase(item));
+    const closedCases = caseRows.filter((item) => isCompletedCase(item));
     const activeByStage = new Map();
     const activeByPriority = new Map();
     const casesByStatus = new Map();
@@ -306,7 +345,7 @@ async function getCaseManagerAnalytics(req, res, next) {
         ...(item.keyDates || []).map((date) => date?.date).filter(Boolean),
       ].filter(Boolean);
       if (["urgent", "high"].includes(item.priority)) increment(attentionMap, "High priority cases");
-      if (dueDates.some((date) => new Date(date) < now) && !CLOSED_CASE_STATUSES.includes(item.status)) increment(attentionMap, "Overdue case dates");
+      if (dueDates.some((date) => new Date(date) < now) && !isCompletedCase(item) && !CLOSED_CASE_STATUSES.includes(item.status)) increment(attentionMap, "Overdue case dates");
     });
 
     tasks.forEach((task) => {
@@ -414,21 +453,27 @@ async function getCaseManagerAnalyticsPanel(req, res, next) {
     const teamFilter = isTeamLead ? { $or: [{ assignedTeamLead: req.user._id }, ...(req.user.teamId ? [{ teamId: req.user.teamId }] : [])] } : {};
 
     if (requestedId) {
+      const target = await User.findById(requestedId).select("role teamId").lean().catch(() => null);
+      const targetIsTeamLead = normalizeRole(target?.role) === "team_lead";
       if (isTeamLead) {
-        const target = req.user.teamId && await User.findOne({ _id: requestedId, role: "case_manager", teamId: req.user.teamId });
-        if (!target) return res.status(403).json({ success: false, message: "Not authorized to view this case manager's analytics" });
+        // a team lead sees their own team's case managers and themselves (never another team lead)
+        const ownTeam = req.user.teamId && target && normalizeRole(target.role) === "case_manager" && String(target.teamId) === String(req.user.teamId);
+        if (!ownTeam && String(requestedId) !== String(req.user._id)) return res.status(403).json({ success: false, message: "Not authorized to view this case manager's analytics" });
       }
-      const panel = await caseManagerAnalyticsService.buildPanel(requestedId, options);
+      const panel = await caseManagerAnalyticsService.buildPanel(requestedId, { ...options, asTeamLead: targetIsTeamLead });
       return res.json({ success: true, scope: { caseManagerId: String(requestedId), period, staleDays }, ...panel });
     }
 
     // Aggregate mode (no caseManagerId): admin/super_admin see every case manager,
     // team_lead is scoped to their own team - mirrors getTeamLeadDashboard's teamFilter.
     const managers = await User.find({ role: "case_manager", ...teamFilter }).select("name displayName email");
-    const perCaseManager = await Promise.all(managers.map(async (manager) => ({
+    // admins / super admins also see the team leads (each by the cases they lead); a team lead's own team view stays the case managers
+    const leads = isTeamLead ? [] : await User.find({ role: "team_lead", status: { $ne: "archived" } }).select("name displayName email");
+    const perCaseManager = await Promise.all([...managers.map((m) => ({ m, asTeamLead: false })), ...leads.map((m) => ({ m, asTeamLead: true }))].map(async ({ m: manager, asTeamLead }) => ({
       caseManagerId: String(manager._id),
       caseManagerName: manager.name || manager.displayName || manager.email,
-      ...(await caseManagerAnalyticsService.buildPanel(manager._id, options)),
+      role: asTeamLead ? "team_lead" : "case_manager",
+      ...(await caseManagerAnalyticsService.buildPanel(manager._id, { ...options, asTeamLead })),
     })));
 
     res.json({ success: true, scope: { caseManagerId: null, period, staleDays, aggregate: true }, perCaseManager });

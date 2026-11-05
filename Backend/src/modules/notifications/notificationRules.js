@@ -65,6 +65,8 @@ const TYPE_RULES = {
   petition_ready_for_approval: { priority: "high", channels: ["in_app", "push"] },
   filing_deadline_approaching: { priority: "urgent", channels: ["in_app", "push"] },
   team_case_created: { priority: "medium", channels: ["in_app"] },
+  weekly_review_reminder: { priority: "medium", channels: ["in_app", "push"] },
+  performance_review_received: { priority: "medium", channels: ["in_app", "push"] },
   case_reassigned: { priority: "medium", channels: ["in_app"] },
   new_user_registered: { priority: "medium", channels: ["in_app"] },
   appointment_scheduled: { priority: "medium", channels: ["in_app"] },
@@ -91,7 +93,7 @@ const PUSH_ON_TYPES = new Set([
   "document_requested", "document_rejected", "new_document_uploaded", "additional_information_requested",
   "rfe_received", "rfe_submitted", "case_approved", "case_rejected", "petition_filed", "case_stage_changed",
   "case_closed", "case_reopened", "workflow_sla_breached", "attorney_access_granted", "attorney_feedback",
-  "lead_created", "lead_approved", "receipt_number_generated",
+  "lead_created", "lead_approved", "receipt_number_generated", "weekly_review_reminder", "performance_review_received",
 ]);
 
 function withPushForTriggerTypes(type, source, channels) {

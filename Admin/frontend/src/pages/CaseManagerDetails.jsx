@@ -99,6 +99,7 @@ const CaseManagerDetails = () => {
   const [caseManager, setCaseManager] = useState(null)
   const [stats, setStats] = useState(null)
   const [cases, setCases] = useState([])
+  const [casesLoading, setCasesLoading] = useState(true) // the list arrives after the page: show a loader, not an empty area
   const [activities, setActivities] = useState([])
   const [payments, setPayments] = useState([])
   const [paymentSummary, setPaymentSummary] = useState(null)
@@ -151,6 +152,7 @@ const CaseManagerDetails = () => {
   }
 
   const fetchCases = async () => {
+    setCasesLoading(true)
     try {
       const params = {
         status: caseStatusFilter,
@@ -163,6 +165,8 @@ const CaseManagerDetails = () => {
       setCasesPagination(response.data.pagination)
     } catch (error) {
       console.error('Error fetching cases:', error)
+    } finally {
+      setCasesLoading(false)
     }
   }
 
@@ -293,7 +297,7 @@ const CaseManagerDetails = () => {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Case Manager Details</h1>
+          <h1 className="text-2xl font-bold text-foreground">{caseManager.role === 'team_lead' ? 'Team Lead Details' : 'Case Manager Details'}</h1>
           <p className="text-muted-foreground mt-1">{caseManager.name}</p>
         </div>
       </div>
@@ -309,7 +313,7 @@ const CaseManagerDetails = () => {
           <div className="flex-1">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-foreground">{caseManager.name}</h2>
+                <h2 className="text-xl font-bold text-foreground">{caseManager.name}{caseManager.role === 'team_lead' && <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 align-middle text-xs font-medium text-muted-foreground">Team Lead</span>}</h2>
                 <p className="text-muted-foreground">Employee ID: {caseManager._id?.slice(-6).toUpperCase()}</p>
                 <div className="flex flex-wrap gap-4 mt-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -442,7 +446,7 @@ const CaseManagerDetails = () => {
               { id: 'payments', label: 'Payments', icon: CreditCard },
               { id: 'analytics', label: 'Analytics', icon: BarChart3 },
               { id: 'performance', label: 'Performance', icon: Star }
-            ].map((tab) => (
+            ].filter((tab) => !(tab.id === 'performance' && caseManager.role === 'team_lead')).map((tab) => ( // reviews are for case managers
               <button
                 key={tab.id}
                 onClick={() => {
@@ -530,37 +534,45 @@ const CaseManagerDetails = () => {
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Progress</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
                   </tr>
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
-                  {cases.map((caseItem) => (
+                  {casesLoading && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">
+                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-primary" aria-hidden="true" />Loading assigned cases…</span>
+                      </td>
+                    </tr>
+                  )}
+                  {!casesLoading && cases.length === 0 && (
+                    <tr><td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">No cases are assigned yet.</td></tr>
+                  )}
+                  {!casesLoading && cases.map((caseItem) => (
                     <tr key={caseItem._id} className="hover:bg-muted">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                      <td className="px-6 py-4 text-sm">
+                        <p className="font-semibold text-foreground">{caseItem.listName || caseItem.clientName || '—'}</p>
+                        <p className="text-muted-foreground">{caseItem.listEmail || caseItem.clientEmail || '—'}</p>
+                        <span className="mt-1 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{resolveDisplayVisa(caseItem) || '—'}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">
                         {caseItem.caseNumber}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {caseItem.clientName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {resolveDisplayVisa(caseItem)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {getStageLabel(caseItem.stage)}
+                        {caseItem.pipelineStage || getStageLabel(caseItem.stage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="w-full bg-muted rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${getStageProgress(caseItem.stage)}%` }}
+                            style={{ width: `${caseItem.completed ? 100 : getStageProgress(caseItem.stage)}%` }}
                           ></div>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">{Math.round(getStageProgress(caseItem.stage))}%</p>
+                        <p className="text-xs text-muted-foreground mt-1">{caseItem.completed ? 100 : Math.round(getStageProgress(caseItem.stage))}%</p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${

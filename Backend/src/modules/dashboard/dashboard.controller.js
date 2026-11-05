@@ -30,6 +30,7 @@ exports.getLegacyDashboardStats = async (req, res, next) => {
       totalCases: dashboard.analytics.cases.total,
       activeCases: dashboard.analytics.cases.active,
       closedCases: dashboard.analytics.cases.closed,
+      onHoldCases: dashboard.analytics.cases.onHold,
       pendingPayments: dashboard.analytics.revenue.byStatus.filter((item) => ["not_started", "pending", "partially_paid", "partial"].includes(item.key)).reduce((sum, item) => sum + item.count, 0),
       pendingAmount: dashboard.analytics.revenue.totals.outstanding,
       totalRevenue: dashboard.analytics.revenue.totals.revenue,

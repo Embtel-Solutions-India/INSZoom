@@ -172,6 +172,19 @@ function startAIMaintenance() {
   return setInterval(run, intervalMs);
 }
 
+// Every Friday 5:30 AM IST: one review-your-case-managers e-mail to team leads and admins (modules/cases/weekly-review-reminder.service.js). Checked every
+// 5 minutes; the week record in the database makes it send once. WEEKLY_REVIEW_EMAILS=false turns it off.
+function startWeeklyReviewReminder() {
+  const intervalMs = Number(process.env.WEEKLY_REVIEW_CHECK_INTERVAL_MS || 5 * 60 * 1000);
+  const run = () =>
+    withJobLock("weekly-review-reminder", intervalMs * 3, async () => {
+      const result = await require("./modules/cases/weekly-review-reminder.service").sendWeeklyReviewReminders();
+      if (result.recipients !== undefined) logger.info("weekly_review_reminder_sent", result);
+    }).catch((error) => logger.error("weekly_review_reminder_failed", { error }));
+  scheduleInitialRun(run, 60 * 1000);
+  return setInterval(run, intervalMs);
+}
+
 function startEodReportMaintenance() {
   const intervalMs = Number(process.env.EOD_REPORT_CHECK_INTERVAL_MS || 5 * 60 * 1000);
   const initialDelayMs = Number(process.env.EOD_REPORT_INITIAL_DELAY_MS || 45 * 1000);
@@ -266,6 +279,7 @@ connectDB()
     }
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
+    const weeklyReviewReminder = startWeeklyReviewReminder();
     const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
     const uscisEditionUpgrade = startUSCISEditionUpgradeJob(withJobLock);
     // every 12 h: compare EVERY uscis.gov form (installed or not) with the installed edition and auto-import new / changed ones
@@ -322,6 +336,7 @@ connectDB()
       if (newsSync) clearInterval(newsSync);
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
+      clearInterval(weeklyReviewReminder);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
       if (uscisEditionUpgrade) clearInterval(uscisEditionUpgrade);
       if (uscisCatalogSync) clearInterval(uscisCatalogSync);

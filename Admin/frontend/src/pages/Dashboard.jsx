@@ -1009,10 +1009,10 @@ const Dashboard = () => {
 
   const statCards = [
     { title: 'Cases Tracked', value: stats?.totalCases || 0, sub: `across ${casesByVisaTypeData.length || 0} categories`, dot: '#2563eb' },
-    { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'in the pipeline now', dot: '#0ea5e9' },
-    { title: 'On Hold', value: onHoldCount, sub: 'paused by client/internal', dot: '#ef4444' },
+    { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'assigned and in progress', dot: '#0ea5e9' },
+    { title: 'On Hold', value: stats?.onHoldCases ?? onHoldCount, sub: 'in the On Hold stage', dot: '#ef4444' },
     { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatCents(stats?.pendingAmount), dot: '#f59e0b' },
-    { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'this period', dot: '#10b981' },
+    { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'submitted, approved or disapproved', dot: '#10b981' },
     { title: 'Total Revenue', value: formatCents(stats?.totalRevenue), sub: 'this period', dot: '#8b5cf6' }
   ]
 

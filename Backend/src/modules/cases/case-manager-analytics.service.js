@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Case = require("../../models/Case");
-const { caseManagerMatch } = require("./caseManagerAccess");
+const { caseManagerMatch, teamLeadMatch } = require("./caseManagerAccess");
 const { COUNTABLE_CASE } = require("./countableCase");
 const env = require("../../config/env");
 const GHLIntegration = require("../../models/GHLIntegration");
@@ -244,8 +244,8 @@ async function byVisaTypeBreakdown(caseManagerFilter) {
 const PRIORITY_RANK = { urgent: 5, high: 4, "Premium Processing": 3, medium: 2, "Standard Processing": 1, low: 0 };
 
 // The case manager's currently assigned, still-active cases (not period-filtered): highest priority first, then newest.
-async function assignedCasesList(caseManagerId, limit = 8) {
-  const rows = await Case.find({ $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE, { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
+async function assignedCasesList(caseManagerId, limit = 8, match = null) {
+  const rows = await Case.find({ $and: [match || caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE, { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
     .select("caseNumber clientName visaType priority status createdAt")
     .lean();
   return rows
@@ -305,11 +305,11 @@ const trendOf = (current, previous) => {
 
 // The three headline cards. Counts follow the selected period like the rest of the panel; the trend is always "last 30 days vs the
 // 30 days before": new cases for total/active (by createdAt), finished cases for closed (updatedAt is the proxy for when it closed).
-async function summarySection(caseManagerId, caseManagerFilter) {
+async function summarySection(caseManagerId, caseManagerFilter, match = null) {
   const finals = await finalStageMatch();
   const isClosed = { $or: [{ status: { $in: ["closed", "completed", "approved", "rejected", "denied"] } }, ...finals] };
   const notClosed = { $nor: isClosed.$or };
-  const mine = { $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE] };
+  const mine = { $and: [match || caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE] };
   const now = Date.now();
   const d30 = new Date(now - 30 * DAY_MS);
   const d60 = new Date(now - 60 * DAY_MS);
@@ -333,10 +333,12 @@ async function summarySection(caseManagerId, caseManagerFilter) {
   };
 }
 
-async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS } = {}) {
+// asTeamLead: the person is a team lead (their cases = assigned team lead, or case manager on the case); anyone else behaves exactly as before.
+async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS, asTeamLead = false } = {}) {
+  const personMatch = asTeamLead ? teamLeadMatch(objectId(caseManagerId)) : caseManagerMatch(objectId(caseManagerId));
   // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager,
   // limited to cases created in the selected period.
-  const periodFilter = { $and: [caseManagerMatch(objectId(caseManagerId)), { createdAt: periodRange(period) }] };
+  const periodFilter = { $and: [personMatch, { createdAt: periodRange(period) }] };
   const caseManagerFilter = { $and: [...periodFilter.$and, COUNTABLE_CASE] };
 
   const [totalCasesInScope, activeTotal, caseIds] = await Promise.all([
@@ -353,9 +355,9 @@ async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_S
     activitySection(caseManagerFilter, staleDays),
     byVisaTypeBreakdown(caseManagerFilter),
     byStageBreakdown(caseManagerFilter),
-    assignedCasesList(caseManagerId),
+    assignedCasesList(caseManagerId, 8, asTeamLead ? personMatch : null),
     assignedTrend(caseManagerFilter, period),
-    summarySection(caseManagerId, caseManagerFilter),
+    summarySection(caseManagerId, caseManagerFilter, asTeamLead ? personMatch : null),
     outcomesSection(caseManagerFilter),
   ]);
 

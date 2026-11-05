@@ -58,6 +58,9 @@ const NOTIFICATION_TYPES = [
   // Notification type is an enum: an unregistered type made the in-app fallback fail validation.
   "form_pipeline_alert",
   "form_pipeline_update",
+  // Weekly case manager reviews (2026-11-06)
+  "weekly_review_reminder",
+  "performance_review_received",
   "escalated_task_overdue",
   "critical_task_overdue",
   "filing_deadline_approaching",

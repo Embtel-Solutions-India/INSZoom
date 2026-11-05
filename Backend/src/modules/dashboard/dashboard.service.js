@@ -130,10 +130,14 @@ async function executiveMetrics(query = {}) {
 
 async function caseAnalytics(query = {}, user) {
   const match = withCountable({ ...dateRange(query), ...scopedCaseFilter(user) });
-  const [total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
+  // The dashboard cards come from each case's GoHighLevel pipeline stage (2026-11-06): closed = Submitted (FedEx), Approved or Disapproved; on hold = the
+  // On Hold stage; active = the assigned cases (a case manager is on it) that are neither closed nor on hold.
+  const { completedCaseMatch, onHoldCaseMatch } = require("../cases/caseManagerAccess");
+  const [total, active, closed, onHold, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
     Case.countDocuments(match),
-    Case.countDocuments({ ...match, status: "active" }),
-    Case.countDocuments({ ...match, status: { $in: ["closed", "approved"] } }),
+    Case.countDocuments({ $and: [match, { assignedCaseManager: { $ne: null } }, { $nor: [completedCaseMatch(), onHoldCaseMatch()] }] }),
+    Case.countDocuments({ $and: [match, completedCaseMatch()] }),
+    Case.countDocuments({ $and: [match, onHoldCaseMatch()] }),
     groupCount(Case, "stage", match),
     groupCount(Case, "visaType", match),
     groupCount(Case, "plan.tier", match),
@@ -164,7 +168,7 @@ async function caseAnalytics(query = {}, user) {
       { $group: { _id: "$visaType", avgProcessingDays: { $avg: "$processingDays" }, minProcessingDays: { $min: "$processingDays" }, maxProcessingDays: { $max: "$processingDays" }, count: { $sum: 1 } } },
     ]),
   ]);
-  return { total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
+  return { total, active, closed, onHold, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
 }
 
 async function revenueAnalytics(query = {}) {
