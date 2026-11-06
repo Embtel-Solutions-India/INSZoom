@@ -33,6 +33,8 @@ import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
 import CaseNotesPanel from '../components/CaseNotesPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import CaseInvoices from '../components/CaseInvoices'
+import EmployerPaymentSummary from '../components/EmployerPaymentSummary'
 import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
@@ -723,6 +725,7 @@ const CRMCaseDetail = () => {
   const [showAddEmployee, setShowAddEmployee] = useState(false)
   // Payment Summary editing (US dollars; saved here at once and sent to the case's GoHighLevel card)
   const [showFinanceEdit, setShowFinanceEdit] = useState(false)
+  const [invoicesOpen, setInvoicesOpen] = useState(false) // the case's Invoices popup (internal only)
   const [financeForm, setFinanceForm] = useState({ totalAmount: '', uscisFee: '', amountPaid: '', invoiceNo: '' })
   const [financeSaving, setFinanceSaving] = useState(false)
   const [financeError, setFinanceError] = useState('')
@@ -2778,6 +2781,7 @@ const CRMCaseDetail = () => {
                           {f.pendingPush ? 'Updating GoHighLevel…' : f.source === 'crm' ? 'Kept in Immiglance (no GoHighLevel card)' : f.source ? 'Synced with GoHighLevel' : 'No figures yet'}
                           {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString()}` : ''}
                         </span>
+                        <button type="button" onClick={() => setInvoicesOpen(true)} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Invoices</button>
                         <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Edit</button>
                       </div>
                     </div>
@@ -2800,6 +2804,9 @@ const CRMCaseDetail = () => {
                   </div>
                 )
               })()}
+
+              {/* An employer (principal) case: the accumulated Payment Summary of all its employees, with a row per employee */}
+              {caseData.caseRole === 'principal' && caseData.caseStructure === 'employer_employee' && <EmployerPaymentSummary caseId={caseData._id} title={`${caseData.caseNumber || ''}${caseData.clientName ? ` · ${caseData.clientName}` : ''}`} />}
 
               {/* Notes for the life of the case: every internal note (who and when) plus the notes typed at creation; any internal staff member adds one at any time */}
               <CaseNotesPanel caseData={caseData} user={user} onChanged={() => fetchCaseDetail(true)} />
@@ -4099,6 +4106,8 @@ const CRMCaseDetail = () => {
           </div>
         </div>
       )}
+
+      {invoicesOpen && caseData?._id && <CaseInvoices caseId={caseData._id} title={`${caseData.caseNumber || ''}${caseData.clientName ? ` · ${caseData.clientName}` : ''}`} onClose={() => setInvoicesOpen(false)} />}
 
       {/* Stage Update Modal */}
       {showFinanceEdit && (

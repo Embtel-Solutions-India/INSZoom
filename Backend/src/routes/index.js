@@ -11,6 +11,7 @@ router.use("/team-members", require("../modules/team-management/team-management.
 router.use("/dashboard", require("../modules/dashboard/dashboard.routes"));
 router.use("/analytics", require("../middleware/requireFeature")("analytics"), require("../modules/dashboard/analytics.routes"));
 router.use("/reports", require("../modules/reports/report.routes"));
+router.use("/case-invoices", require("../modules/case-invoices/caseInvoice.routes"));
 router.use("/referrals", require("../modules/referrals/referral.routes"));
 router.use("/leads", require("../modules/leads/lead.routes"));
 router.use("/audit", require("../modules/audit/audit.routes"));
