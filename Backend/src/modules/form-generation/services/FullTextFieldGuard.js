@@ -160,6 +160,9 @@ async function shrinkLongTextToFit(pdfDoc, form) {
   } catch (error) {
     return shrunk; // best effort - never let this guard stop a download
   }
+  // the two DOL ETA-9089 forms: their auto-size boxes get the size a viewer shows for typed text (~12 pt) BEFORE the loop below, so a too-long entry is then shrunk like in any fixed-size
+  // box. A no-op for every other form (AutoFontSizeGuard.js: why it is hooked here and not in PDFRenderer.js).
+  try { require("./AutoFontSizeGuard").applyAutoFontSizeByBoxes(form); } catch (_error) { /* never stops a download */ }
   let font = null;
   for (const field of fields) {
     if (!isTextField(field)) continue;

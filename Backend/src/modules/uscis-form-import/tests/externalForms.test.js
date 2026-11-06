@@ -431,3 +431,47 @@ test("a future version of a DOL form: matching boxes are healthy; a renamed box 
   // the size and the hidden internal label belong to the FORM, so they apply to every later version unchanged
   assert.equal(externalFormFor("ETA-9089FD").fontSizePt, 12);
 });
+
+// ---- the hook lives in FullTextFieldGuard (both renderers call it); PDFRenderer.js must stay untouched -------------------------------------------------------------------------------------
+const { shrinkLongTextToFit } = require("../../form-generation/services/FullTextFieldGuard");
+const { identifyExternalForm } = require("../../form-generation/services/AutoFontSizeGuard");
+
+async function pdfWithBoxes(names) {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage();
+  const form = doc.getForm();
+  const fields = names.map((name, index) => {
+    const field = form.createTextField(name);
+    field.addToPage(page, { x: 10, y: 10 + index * 30, width: 300, height: 21 });
+    field.acroField.setDefaultAppearance("/Helv 0 Tf 0 g");
+    return field;
+  });
+  return { doc, form, fields };
+}
+
+test("the existing shrink step sets the 12 pt size on a DOL form recognised by its own boxes, and on nothing else", async () => {
+  const fd = await pdfWithBoxes(RULES["ETA-9089FD"].flatMap((rule) => rule.stems));
+  assert.equal(identifyExternalForm(fd.form), "ETA-9089FD");
+  fd.fields[0].setText("NEXTDAY SOLUTIONS INC.");
+  await shrinkLongTextToFit(fd.doc, fd.form);
+  assert.ok(fd.fields.every((field) => /\b12 Tf/.test(field.acroField.getDefaultAppearance())), "every auto box of the DOL form is 12 pt, filled or empty");
+
+  const appendix = await pdfWithBoxes(RULES["ETA-9089A"].flatMap((rule) => rule.stems));
+  assert.equal(identifyExternalForm(appendix.form), "ETA-9089A");
+
+  // a later version that renamed a box is still recognised (at least half of the rule stems present)
+  const renamed = await pdfWithBoxes([...RULES["ETA-9089FD"].flatMap((rule) => rule.stems).slice(0, 5), "8  Position Title", "9  Occupation Code"]);
+  assert.equal(identifyExternalForm(renamed.form), "ETA-9089FD");
+
+  const uscis = await pdfWithBoxes(["Part1_Line2a_FamilyName", "Part1_Line2b_GivenName", "Line3_CompanyorOrgName"]);
+  assert.equal(identifyExternalForm(uscis.form), null);
+  uscis.fields[0].setText("Smith");
+  await shrinkLongTextToFit(uscis.doc, uscis.form);
+  assert.ok(uscis.fields.every((field) => /\b0 Tf/.test(field.acroField.getDefaultAppearance())), "a USCIS form keeps its auto size exactly as before");
+  assert.equal(identifyExternalForm({ getFields() { throw new Error("broken"); } }), null, "a broken form never throws");
+});
+
+test("deploy constraint: PDFRenderer.js is not edited for the DOL forms (the production server keeps a local change to it, so any commit touching it aborts the server's git pull)", () => {
+  const source = require("node:fs").readFileSync(require.resolve("../../form-generation/services/PDFRenderer.js"), "utf8");
+  assert.ok(!/AutoFontSizeGuard|applyAutoFontSize|externalForms/.test(source));
+});
