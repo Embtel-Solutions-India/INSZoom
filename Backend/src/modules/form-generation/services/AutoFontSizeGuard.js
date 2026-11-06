@@ -7,6 +7,10 @@
 //
 // It does nothing for any other form (the size is read from the form's entry in that data file, which only the two DOL forms have), leaves a box that already has a fixed size alone,
 // and never throws: a failure leaves the box exactly as it was. The stored template PDF is never modified.
+//
+// HOOK: FullTextFieldGuard.shrinkLongTextToFit calls applyAutoFontSizeByBoxes() first - both renderers (PDFRenderer, AdobeFormRenderer) already call that function after the values are written and
+// before their appearances are drawn, and it receives only the PDF, not the form code, so the form is recognised by its own boxes (the stems of its authored rules). PDFRenderer.js itself is
+// deliberately NOT edited: the production server keeps a local change to that file, and any commit touching it makes the server's `git pull` (the deploy) abort.
 const { externalFormFor } = require("../../uscis-form-import/config/externalForms");
 
 const AUTO_SIZE = /\/\S+\s+0(?:\.0*)?\s+Tf/; // "/Helv 0 Tf" - font size 0 = auto
@@ -37,4 +41,33 @@ function applyAutoFontSize(form, formCode) {
   return changed;
 }
 
-module.exports = { applyAutoFontSize, AUTO_SIZE };
+const stemOf = (name) => String(name || "").split(".").pop().replace(/\[\d+\]/g, "").toLowerCase();
+const MIN_SHARE = 0.5; // at least half of the form's rule stems must be present (a box DOL renames in a later version does not stop the form being recognised)
+const MIN_STEMS = 3;
+
+/** Which DOL form this PDF is, from its boxes: the entry's form code, or null (every USCIS form, every unknown PDF). Pure of the database. */
+function identifyExternalForm(form) {
+  try {
+    const { externalFormCodes } = require("../../uscis-form-import/config/externalForms");
+    const { RULES } = require("../../form-mapping/config/partyFieldRules");
+    const present = new Set(form.getFields().map((field) => stemOf(field.getName())));
+    let best = null;
+    for (const code of externalFormCodes()) {
+      const stems = [...new Set((RULES[code] || []).flatMap((rule) => rule.stems).map((stem) => String(stem).toLowerCase()))];
+      if (stems.length < MIN_STEMS) continue;
+      const share = stems.filter((stem) => present.has(stem)).length / stems.length;
+      if (share >= MIN_SHARE && (!best || share > best.share)) best = { code, share };
+    }
+    return best ? best.code : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+/** applyAutoFontSize for whichever DOL form this PDF is (0 for any other PDF). The entry point FullTextFieldGuard calls. */
+function applyAutoFontSizeByBoxes(form) {
+  const code = identifyExternalForm(form);
+  return code ? applyAutoFontSize(form, code) : 0;
+}
+
+module.exports = { applyAutoFontSize, applyAutoFontSizeByBoxes, identifyExternalForm, AUTO_SIZE };

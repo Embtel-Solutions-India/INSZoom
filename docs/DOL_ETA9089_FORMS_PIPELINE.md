@@ -33,7 +33,7 @@ Small additive edits: `OnDemandFormAcquisitionService` (branch for the two codes
 
 ## Future versions of these two forms
 Everything below is keyed to the FORM CODE, so it applies to every later version (v2, v3, ...) automatically and to no other form:
-- **Text size** - `AutoFontSizeGuard` gives the auto-size boxes `fontSizePt` (12 pt) when the form is rendered, whichever version is live; a version that ships fixed sizes keeps its own.
+- **Text size** - `AutoFontSizeGuard` (hooked in `FullTextFieldGuard`, see the deploy constraint below) gives the auto-size boxes `fontSizePt` (12 pt) when the form is rendered, whichever version is live; a version that ships fixed sizes keeps its own.
 - **Version label** - the internal `v<number>` is hidden in the Forms tab (`Admin/frontend/src/utils/formVersion.js`); USCIS versions (dates) are shown as before.
 - **Box types and canonical values** - `fieldTypeOverrides` and the authored rules match boxes by NAME. After every import `ExternalFormHealth` checks that each rule stem and override still matches a box of the new version. If DOL renames a box, the log warns `external_form_rules_unmatched` naming the exact stem, and the template records it in `lifecycle.external.ruleHealth`; the fix is one edit of `etaFieldRules.js` (and the override in `externalForms.js`). Nothing fails and nothing is guessed: the affected box stays blank and editable until then.
 
@@ -57,6 +57,9 @@ Every failure of these two forms has a named error code, a diagnosis in the pipe
 | One form or the DOL step fails | - | Each form is its own pipeline job; the DOL step runs before and independently of the USCIS sync; `EXTERNAL_FORMS_SYNC=false` switches it off |
 
 Latent issue noticed, deliberately NOT changed for USCIS forms: `PartyFieldMappingService.plan` skips promoting a review-status edge that already equals its authored rule (the defect above) for every form. It is fixed for the two DOL forms only, because promoting edges on live USCIS forms would change what their cases fill. Say so if you want it fixed for all forms.
+
+## Deploy constraint: PDFRenderer.js is never edited for these forms
+The production server keeps a local change to `Backend/src/modules/form-generation/services/PDFRenderer.js`. A commit that touches that file makes the server's `git pull` abort ("Your local changes ... would be overwritten by merge"), so the deploy fails. The 12 pt font fix therefore does NOT live there: `FullTextFieldGuard.shrinkLongTextToFit` (called by both `PDFRenderer` and `AdobeFormRenderer`, after the values are written and before their appearances are drawn) calls `AutoFontSizeGuard.applyAutoFontSizeByBoxes`, which recognises the two DOL forms from their own boxes. A test (`externalForms.test.js`) fails if `PDFRenderer.js` ever references the guard again.
 
 ## Production environment
 No new variable is required. Optional: `EXTERNAL_FORMS_SYNC=false` switches the DOL step off. Restart the backend; the first import runs at the next catalog sync (10 minutes after start, then every 12 hours). Check beforehand with `node src/scripts/checkExternalFormSources.js` (read-only).
