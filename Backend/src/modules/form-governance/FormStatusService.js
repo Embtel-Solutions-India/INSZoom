@@ -97,7 +97,9 @@ function holdOf(release, policy) {
 
 function monitoringStatus(template, now) {
   const last = template?.lastChecked ? new Date(template.lastChecked) : null;
-  if (!last) return { state: "unknown", detail: "this edition has not been checked against uscis.gov yet", lastChecked: null };
+  // the two DOL ETA-9089 forms are watched at the official DOL site (uscis-form-import/config/externalForms.js), not uscis.gov
+  const source = require("../uscis-form-import/config/externalForms").externalFormFor(template?.formCode) ? "the official DOL site" : "uscis.gov";
+  if (!last) return { state: "unknown", detail: `this edition has not been checked against ${source} yet`, lastChecked: null };
   const fresh = now.getTime() - last.getTime() <= MONITOR_FRESH_MS;
   return { state: fresh ? "ok" : "warning", detail: fresh ? "checked recently" : "not checked for more than 3 days", lastChecked: last.toISOString() };
 }

@@ -10,6 +10,7 @@ import GoogleDriveExport from '../components/GoogleDriveExport'
 import { useCaseOrigin } from '../utils/caseOrigin'
 import { useRouteRevisit, useKeepAlivePin } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
+import { formVersionLabel } from '../utils/formVersion'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
@@ -63,8 +64,8 @@ import {
   Zap
 } from 'lucide-react'
 
-// Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`).
-const NO_FORM_VISA_TYPES = new Set(['PERM', 'GC-NVC'])
+// Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`, minus the types that allow forms added by hand - PERM: `manualForms`).
+const NO_FORM_VISA_TYPES = new Set(['GC-NVC'])
 
 const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
 const PetitionTab = lazy(() => import('./petition/PetitionTab'))
@@ -3728,7 +3729,7 @@ const CRMCaseDetail = () => {
                               : form.formTemplateId?.title}
                           </p>
                         </td>
-                        <td className="py-2 px-3 text-sm whitespace-nowrap">{form.formVersion}</td>
+                        <td className="py-2 px-3 text-sm whitespace-nowrap">{formVersionLabel(form.formVersion)}</td>
                         <td className="py-2 px-3 min-w-[150px]">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 bg-muted rounded-full">

@@ -527,7 +527,9 @@ function duplicateNames(fields = [], property) {
 }
 
 class PDFFieldScannerService {
-  async scan(buffer) {
+  // scanOptions.typeOverrides (optional; only the forms published outside uscis.gov pass it - config/externalForms.js): [{ match: RegExp, type }] replaces the NAME-based type guess for the boxes whose
+  // names fool it ("Name of Institution that issued ..." is not a date). Applied here, before validation is derived from the type, so the box validates as what it really is.
+  async scan(buffer, scanOptions = {}) {
     const warnings = [];
     const errors = [];
     let pdfDoc;
@@ -549,7 +551,8 @@ class PDFFieldScannerService {
         const widgets = extractWidgets(pdfDoc, field);
         const primaryWidget = widgets[0] || {};
         const pageNumber = primaryWidget.pageNumber || 1;
-        const type = inferPdfFieldType(field);
+        const overridden = (scanOptions?.typeOverrides || []).find((rule) => rule.match.test(fieldName));
+        const type = overridden ? overridden.type : inferPdfFieldType(field);
         const baseFieldId = normalizeFieldId(fieldName, index, pageNumber);
         const duplicateIndex = usedIds.get(baseFieldId) || 0;
         usedIds.set(baseFieldId, duplicateIndex + 1);

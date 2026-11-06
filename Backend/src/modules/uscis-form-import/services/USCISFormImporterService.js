@@ -251,7 +251,9 @@ class USCISFormImporterService {
       }
       // the PDF must be the form that was asked for (its own footers say which form it is); a wrong file is refused before anything is stored (FormIdentityService)
       await require("./FormIdentityService").assertMatches(normalizedBuffer, input.formType || input.formCode || input.formNumber);
-      const scanResult = await this.scanner.scan(normalizedBuffer);
+      // a form published outside uscis.gov (the DOL ETA-9089 forms) may name boxes the generic type guess misreads; its entry in config/externalForms.js corrects exactly those. Every other form: no options.
+      const externalEntry = require("../config/externalForms").externalFormFor(input.formType || input.formCode || input.formNumber);
+      const scanResult = await this.scanner.scan(normalizedBuffer, externalEntry?.fieldTypeOverrides?.length ? { typeOverrides: externalEntry.fieldTypeOverrides } : undefined);
       this.validation.validateFields(scanResult, { allowEmpty: (input.provider || "uscis") === "uscis" });
       // Explicit stop even when validateFields' allowEmpty would otherwise
       // tolerate it — a normalized PDF with zero AcroForm fields means

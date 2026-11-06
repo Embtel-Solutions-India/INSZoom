@@ -6,6 +6,7 @@
 // Each edition is checked on its own: a failure for one (page unreachable, ...) never stops the others, and nothing here can activate or change a form.
 
 const { editionOf } = require("./EditionPolicyEnforcer");
+const { isExternalFormCode } = require("../uscis-form-import/config/externalForms");
 
 const logger = () => require("../../utils/logger");
 
@@ -31,6 +32,7 @@ async function runScheduledEditionChecks(overrides = {}) {
       if (!ACTIVE_OR_PENDING.has(template.status)) continue;
       const edition = editionOf(template);
       if (!edition.editionIdentifier) continue; // no trusted edition date: nothing to ask USCIS about
+      if (isExternalFormCode(edition.formCode)) continue; // a DOL form (ETA-9089 Appendix A / Final Determination): there is no USCIS page to ask
       const key = `${edition.formCode}|${edition.editionIdentifier}`;
       if (seen.has(key)) continue;
       seen.add(key);

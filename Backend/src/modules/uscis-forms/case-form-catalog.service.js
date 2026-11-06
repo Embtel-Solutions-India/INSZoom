@@ -17,6 +17,7 @@
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const VisaFormMapping = require("../../models/VisaFormMapping");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+const { externalFormFor } = require("../uscis-form-import/config/externalForms");
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache = { at: 0, promise: null };
@@ -82,9 +83,12 @@ async function buildEntries() {
     const agencies = registry ? [...registry.agencies] : [];
     const fromUscisGov = isUscisHost(template?.artifacts?.form?.sourceUrl);
     const registryUscis = agencies.includes("USCIS");
-    const otherAgency = agencies.length > 0 && !registryUscis && !fromUscisGov;
+    // the two DOL ETA-9089 forms the pipeline fetches from dol.gov (uscis-form-import/config/externalForms.js): their source is the official DOL site, listed by CODE (never by a registry
+    // row or a host guess), so a Case Manager can add them to a case exactly like any USCIS form. Any other DOL / DOS form stays excluded.
+    const external = externalFormFor(code);
+    const otherAgency = agencies.length > 0 && !registryUscis && !fromUscisGov && !external;
     if (otherAgency) continue; // DS-160, ETA-9035, ... : never offered as a USCIS form
-    const verified = registryUscis || fromUscisGov;
+    const verified = registryUscis || fromUscisGov || Boolean(external);
     const state = availabilityOfTemplate(template);
     entries.push({
       key: code,
@@ -93,7 +97,7 @@ async function buildEntries() {
       title: template?.title || template?.formName || registry?.formName || code,
       parentFormCode: null,
       componentCode: null,
-      agency: verified ? "USCIS" : "unverified",
+      agency: external ? String(external.provider).toUpperCase() : verified ? "USCIS" : "unverified",
       selectable: verified && state.availability !== "not_eligible",
       category: template?.category || "",
       availability: verified ? state.availability : "not_eligible",

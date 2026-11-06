@@ -3,10 +3,12 @@ const count = (list, predicate) => (Array.isArray(list) ? list.filter(predicate)
 
 /** FormCatalogSyncService.runCatalogSync result -> run summary counts. */
 function summarizeCatalogSync(result) {
-  const results = result?.results || [];
+  // the DOL ETA-9089 forms are checked by their own step of the same scheduled run (ExternalFormsSyncService); its outcomes are counted here so the governance run summary covers them too
+  const external = Array.isArray(result?.externalForms) ? result.externalForms : [];
+  const results = [...(result?.results || []), ...external.map((item) => ({ ...item, outcome: item.outcome === "new_version_live" ? "live" : item.outcome === "source_unreachable" ? "uscis_unreachable" : item.outcome }))];
   return {
-    checked: Number(result?.published) || 0,
-    changed: (Number(result?.upgradesFound) || 0) + (Number(result?.newFormsFound) || 0),
+    checked: (Number(result?.published) || 0) + external.length,
+    changed: (Number(result?.upgradesFound) || 0) + (Number(result?.newFormsFound) || 0) + count(external, (item) => item.outcome === "new_version_live" || item.outcome === "kept_in_review"),
     promoted: count(results, (item) => item.outcome === "live"),
     held: count(results, (item) => item.outcome === "kept_in_review"),
     failed: count(results, (item) => item.outcome === "error" || item.outcome === "uscis_unreachable") + (Array.isArray(result?.errors) ? result.errors.length : 0),

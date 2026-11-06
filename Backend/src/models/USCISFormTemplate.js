@@ -103,6 +103,9 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       retiredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       retiredWhy: String, // set when the promotion reconciler (not a person) retires an edition
+      // Forms published outside uscis.gov (DOL ETA-9089 Appendix A / Final Determination; uscis-form-import/config/externalForms.js): { provider, internalVersion ("ETA-9089-APPENDIX-A-v2"),
+      // internalVersionNumber, firstDetectedAt, fingerprint { sha256, content, pageCount, fieldCount, ... }, via, sourcePdfUrl, ombExpiration (information only), changeReason, reissued[] }
+      external: mongoose.Schema.Types.Mixed,
       // Phase 3: set WITH an activation that replaces a live edition ({ newId, oldIds, step, at, by }); cleared once the old edition is retired. A crash in between leaves it
       // for VersionManagementService.reconcilePromotions() to finish or revert. Phase 0's audited non-critical-check override is stored next to it.
       promotionIntent: mongoose.Schema.Types.Mixed,

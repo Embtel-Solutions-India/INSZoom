@@ -20,6 +20,7 @@ import {
   Upload
 } from 'lucide-react'
 import InfoModal from '../components/InfoModal'
+import { formVersionLabel } from '../utils/formVersion'
 
 // ── Registry helpers ────────────────────────────────────────────────────────
 // The signed PDF URL the backend mints (GET /:id/url) is a backend path
@@ -1237,7 +1238,7 @@ const USCISForms = () => {
                     </td>
                     <td className="py-3 px-4">{caseForm.formCode}</td>
                     <td className="py-3 px-4">{caseForm.formTemplateId?.title || 'N/A'}</td>
-                    <td className="py-3 px-4">{caseForm.formVersion}</td>
+                    <td className="py-3 px-4">{formVersionLabel(caseForm.formVersion)}</td>
                     <td className="py-3 px-4">
                       <span className={`badge ${getCaseFormStatusColor(caseForm.status)}`}>
                         {caseForm.status.replace('_', ' ')}
@@ -2220,7 +2221,7 @@ const USCISForms = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Version</p>
-                  <p className="font-medium">{selectedCaseForm.formVersion}</p>
+                  <p className="font-medium">{formVersionLabel(selectedCaseForm.formVersion)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>

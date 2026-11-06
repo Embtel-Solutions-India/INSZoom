@@ -28,7 +28,9 @@ function strategy(id, description, steps) {
 module.exports = {
   id: "source_not_found",
   description: "The official page or PDF address answered 404 or could not be located; find the real address, verify it, and remember it",
-  matches(diagnosis, error) {
+  matches(diagnosis, error, ctx) {
+    // the two DOL ETA-9089 forms have their own catalog entry (externalSource.js): uscis.gov addresses are never tried for them
+    if (/^EXTERNAL_SOURCE_/.test(String(error?.code || "")) || require("../../../uscis-form-import/config/externalForms").isExternalFormCode(ctx?.formCode || ctx?.job?.formCode)) return false;
     return diagnosis?.cause === "source_not_found" || (!diagnosis?.cause && looksUnresolved(error));
   },
   strategies: [

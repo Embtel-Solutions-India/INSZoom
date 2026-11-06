@@ -34,7 +34,7 @@ const VISA_CATEGORIES = {
   // Its checklists (perm_employer_information / perm_employee_information) are assigned at case creation.
   // PERM is a checklist/questionnaire-driven case type: no USCIS forms are provisioned automatically at case creation. (ETA-9089 /
   // ETA-9141 are Department of Labor filings and are deliberately NOT in the USCIS form registry.)
-  PERM: { caseStructure: "employer_employee", forms: [], noForms: true, checklists: ["perm_employer_information", "perm_employee_information"], label: "PERM (Labor Certification)" },
+  PERM: { caseStructure: "employer_employee", forms: [], noForms: true, manualForms: true, checklists: ["perm_employer_information", "perm_employee_information"], label: "PERM (Labor Certification)" },
 
   // ─── GC-NVC (GREEN CARD VIA THE NATIONAL VISA CENTER) ────────────────────
   // Checklist/questionnaire-driven like PERM: ONE client checklist (gc_nvc_checklist, questionnaires/gcNvcChecklist.js), no USCIS
@@ -361,6 +361,12 @@ function hasNoForms(visaType) {
   return Boolean(VISA_CATEGORIES[visaType]?.noForms);
 }
 
+// A no-forms case type that still lets a Case Manager add forms BY HAND (PERM: the DOL ETA-9089 forms today, others in future). Nothing is ever assigned to it automatically
+// (hasNoForms stays true); the Forms tab is shown and lists whatever the Case Manager added.
+function allowsManualForms(visaType) {
+  return Boolean(VISA_CATEGORIES[visaType]?.manualForms);
+}
+
 // The checklist keys a no-form case type is provisioned with (declared next to the case type; assigned through each checklist's
 // own isDefault + visaType + checklistRole, the same path every checklist-driven case uses).
 function getNoFormChecklistKeys(visaType) {
@@ -403,6 +409,7 @@ function getVisaTypesByStructure(structure) {
 module.exports = {
   VISA_CATEGORIES,
   hasNoForms,
+  allowsManualForms,
   getNoFormChecklistKeys,
   hasCustomChecklist,
   getCaseStructure,
