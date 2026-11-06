@@ -8,6 +8,8 @@ const firebaseAdmin = require("../../config/firebase-admin");
 const logger = require("../../utils/logger");
 const env = require("../../config/env");
 const deviceTokenService = require("./device-token.service");
+const pushRouting = require("./pushRouting");
+const User = require("../../models/User");
 
 const PUSH_SUPPRESSED = "Notifications are paused (NOTIFICATIONS_SUPPRESS_ALL)";
 const PUSH_NOT_CONFIGURED = "Push notifications are temporarily unavailable (delivery provider not configured)";
@@ -32,7 +34,8 @@ function buildMessage(payload = {}) {
     // `link` goes into `data` (not just webpush.fcmOptions below) because the foreground handler (onMessage) and the
     // service worker's onBackgroundMessage both read payload.data.link to route the click. title/body are repeated in
     // `data` so a service worker can always render the notification itself.
-    data: stringifyDataValues({ ...payload.data, link, title: payload.title, body: payload.body, tag }),
+    // `url` = the absolute address on the recipient's own portal (opened when no tab of that portal is open); `link` stays the in-app path.
+    data: stringifyDataValues({ ...payload.data, link, url: payload.url, title: payload.title, body: payload.body, tag }),
     webpush: {
       // High urgency + a day of retention: delivered immediately to a sleeping browser, like a chat app.
       headers: { Urgency: "high", TTL: "86400" },
@@ -43,7 +46,8 @@ function buildMessage(payload = {}) {
         // Same tag = the thread's notification is replaced (and re-alerts) instead of piling up.
         ...(tag ? { tag, renotify: true } : {}),
       },
-      ...(link ? { fcmOptions: { link } } : {}),
+      // FCM only accepts an https link here; the service worker reads data.url / data.link either way.
+      ...(/^https:\/\//i.test(payload.url || "") ? { fcmOptions: { link: payload.url } } : {}),
     },
   };
 }
@@ -94,6 +98,8 @@ async function sendMulticast(tokens, payload = {}) {
   }
 }
 
+// Delivers to the user's devices on THEIR OWN portal only (see pushRouting.js). If routing cannot be worked out for any reason the
+// previous behaviour (every device, link as given) is used, so a routing problem can never stop a notification.
 async function sendToUser(userId, payload = {}) {
   if (!userId) return { successCount: 0, failureCount: 0, skipped: "No userId" };
   if (!firebaseAdmin.isConfigured()) {
@@ -102,7 +108,33 @@ async function sendToUser(userId, payload = {}) {
   }
   const tokens = await deviceTokenService.tokensForUser(userId);
   if (!tokens.length) logger.info("push_no_devices", { userId: String(userId) });
-  return sendMulticast(tokens.map((entry) => entry.token), payload);
+
+  let plan = null;
+  try {
+    const user = await User.findById(userId).select("role").lean();
+    plan = pushRouting.planDeliveries({ role: user?.role, tokens, link: payload.link });
+  } catch (error) {
+    logger.warn("push_routing_failed", { error: error.message });
+  }
+  if (!plan) return sendMulticast(tokens.map((entry) => entry.token), payload);
+  if (!plan.groups.length) {
+    return tokens.length
+      ? { successCount: 0, failureCount: 0, skipped: `No device registered on the ${plan.portal} portal` }
+      : { successCount: 0, failureCount: 0, responses: [] };
+  }
+
+  const results = [];
+  for (const group of plan.groups) results.push(await sendMulticast(group.tokens, { ...payload, link: plan.link, url: group.url }));
+  const successCount = results.reduce((sum, r) => sum + (r.successCount || 0), 0);
+  const failureCount = results.reduce((sum, r) => sum + (r.failureCount || 0), 0);
+  const combined = { successCount, failureCount, responses: results.flatMap((r) => r.responses || []) };
+  if (!successCount) {
+    const skipped = results.find((r) => r.skipped)?.skipped;
+    const error = results.find((r) => r.error)?.error;
+    if (skipped && !error) combined.skipped = skipped;
+    if (error) combined.error = error;
+  }
+  return combined;
 }
 
 async function sendToUsers(userIds, payload = {}) {

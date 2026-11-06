@@ -380,6 +380,13 @@ async function createNotification(payload, actor, req) {
   const targetUser = payload?.userId || payload?.user || payload?.recipient;
   if (caseRef && targetUser && await require("./caseAudience").isOutsideCaseTeam({ userId: targetUser, caseId: caseRef, type: payload.type })) return null;
   const renderedPayload = await renderTemplate(payload.templateKey, payload);
+  // Point the link at a page that exists in THIS recipient's portal (see pushRouting.js). Best-effort: any failure keeps the link as given.
+  if (renderedPayload.link && targetUser) {
+    try {
+      const recipient = await User.findById(targetUser).select("role").lean();
+      renderedPayload.link = require("./pushRouting").resolveLinkForRole(recipient?.role, renderedPayload.link, { caseId: caseRef });
+    } catch { /* keep the link as given */ }
+  }
   if (renderedPayload.dedupeKey) {
     const existing = await Notification.findOne({ dedupeKey: renderedPayload.dedupeKey, deletedAt: { $exists: false } });
     if (existing) return existing;

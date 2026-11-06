@@ -31,13 +31,15 @@ messaging.onBackgroundMessage((payload) => {
     // Same tag as the one the server sets: the browser shows ONE notification per conversation (and re-alerts on a new
     // message) instead of two copies or a growing pile.
     ...(tag ? { tag, renotify: true } : {}),
-    data: { link },
+    // `url` = absolute address on this person's own portal (set by the server); `link` = in-app path.
+    data: { link, url: payload.data?.url },
   });
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const link = event.notification.data?.link || "/";
+  const url = event.notification.data?.url;
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
@@ -46,7 +48,7 @@ self.addEventListener("notificationclick", (event) => {
           return client.focus();
         }
       }
-      if (clients.openWindow) return clients.openWindow(link);
+      if (clients.openWindow) return clients.openWindow(url || link);
       return undefined;
     })
   );

@@ -27,13 +27,15 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(payload.notification?.title || "New notification", {
     body: payload.notification?.body,
     icon: "/favicon.svg",
-    data: { link },
+    // `url` = absolute address on this person's own portal (set by the server); `link` = in-app path.
+    data: { link, url: payload.data?.url },
   });
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const link = event.notification.data?.link || "/";
+  const url = event.notification.data?.url;
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
@@ -42,7 +44,7 @@ self.addEventListener("notificationclick", (event) => {
           return client.focus();
         }
       }
-      if (clients.openWindow) return clients.openWindow(link);
+      if (clients.openWindow) return clients.openWindow(url || link);
       return undefined;
     })
   );

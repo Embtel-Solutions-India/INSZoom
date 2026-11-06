@@ -8,6 +8,7 @@ import EnablePushButton from '../components/EnablePushButton'
 import BrandMark from '../components/BrandMark'
 import { useBranding } from '../utils/branding'
 import useScrollRestoration from '../hooks/useScrollRestoration'
+import useNotificationClickNavigation from '../hooks/useNotificationClickNavigation'
 import { useCaseOriginTracker } from '../utils/caseOrigin'
 import {
   LayoutDashboard,
@@ -47,6 +48,7 @@ const Layout = () => {
   const { notifications, unreadCount, unreadMessageCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
+  useNotificationClickNavigation()
   const location = useLocation()
   useScrollRestoration() // back to a list returns to exactly where you were, then stops
   useCaseOriginTracker() // remembers which list (Cases / Corporations / Clients) a case was opened from, for its back button

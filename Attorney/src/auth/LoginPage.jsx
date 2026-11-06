@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import BrandMark from '../components/BrandMark'
@@ -11,6 +11,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  // RequireAttorney passes the page the person asked for (a notification link, a bookmark) - '/dashboard' when none.
+  const requested = useLocation().state?.from
+  const afterLogin = typeof requested?.pathname === 'string' && requested.pathname.startsWith('/') && requested.pathname !== '/login'
+    ? `${requested.pathname}${requested.search || ''}${requested.hash || ''}`
+    : '/dashboard'
 
   // Never show the login form to an already-authenticated attorney, not even
   // for a frame — while the session check is still in flight, render nothing
@@ -21,7 +26,7 @@ export default function LoginPage() {
     return <div className="min-h-screen bg-background" />
   }
   if (user) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={afterLogin} replace />
   }
 
   const handleSubmit = async (event) => {
@@ -30,7 +35,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/dashboard', { replace: true })
+      navigate(afterLogin, { replace: true })
     } catch (err) {
       setError(err.message === 'Access denied — this portal is for attorneys only.'
         ? err.message

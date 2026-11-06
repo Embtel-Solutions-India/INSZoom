@@ -6,6 +6,8 @@ const deviceTokenSchema = new mongoose.Schema(
     token: { type: String, required: true, unique: true, trim: true },
     browser: String,
     platform: String,
+    // Browser origin the token was registered from (admin./attorney./client. portal) - routes a push to the right app.
+    origin: String,
     active: { type: Boolean, default: true },
     lastUsedAt: { type: Date, default: Date.now },
   },

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Lock, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import BrandMark from '../components/BrandMark'
@@ -25,6 +25,11 @@ const Login = () => {
   const [loading, setLoading] = useState(false)
   const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  // The page the person was trying to open before being sent here (a notification link, a bookmark) - '/dashboard' when none.
+  const requested = useLocation().state?.from
+  const afterLogin = typeof requested?.pathname === 'string' && requested.pathname.startsWith('/') && requested.pathname !== '/login'
+    ? `${requested.pathname}${requested.search || ''}${requested.hash || ''}`
+    : '/dashboard'
 
   // A valid shared session already exists (e.g. staff signed in via the
   // Immiglance client portal's "Team member" tab, which redirects here with
@@ -36,7 +41,7 @@ const Login = () => {
     return <div className="min-h-screen bg-background" />
   }
   if (user) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={afterLogin} replace />
   }
 
   const attemptLogin = async (loginEmail, loginPassword) => {
@@ -46,7 +51,7 @@ const Login = () => {
     const result = await login(loginEmail, loginPassword)
 
     if (result.success) {
-      navigate('/dashboard')
+      navigate(afterLogin)
     } else {
       setError(result.message)
     }

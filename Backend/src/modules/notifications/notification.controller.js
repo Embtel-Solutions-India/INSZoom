@@ -283,7 +283,8 @@ exports.retryFailed = async (req, res, next) => {
 exports.registerDevice = async (req, res, next) => {
   try {
     const { token, browser, platform } = req.body;
-    const device = await deviceTokenService.registerDevice(req.user._id, { token, browser, platform });
+    const origin = require("./pushRouting").sanitizeOrigin(req.headers.origin);
+    const device = await deviceTokenService.registerDevice(req.user._id, { token, browser, platform, origin });
     res.status(201).json({ success: true, device });
   } catch (error) {
     next(error);

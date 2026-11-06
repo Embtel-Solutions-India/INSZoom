@@ -52,7 +52,7 @@ async function notifyStaffOfLead(lead) {
       type: "lead_created",
       title: `New lead: ${lead.fullName}${tierLabel}`,
       message: `${lead.visaPathway || "General inquiry"} — ${lead.email}`,
-      link: "/admin/portal?tab=leads",
+      link: "/leads",
       priority: lead.scoreResult?.tier === "A" ? "high" : "medium",
       channels: ["in_app", "socket", "push"],
       metadata: { leadId: String(lead._id), tier: lead.scoreResult?.tier },
