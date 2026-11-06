@@ -180,6 +180,7 @@ function opportunityFromPayload(p) {
     pipelineId: pick(p, "pipelineId", "pipeline_id"),
     pipelineStageId: pick(p, "pipelineStageId", "pipeline_stage_id"),
     status: p.status,
+    monetaryValue: p.monetaryValue ?? p.monetary_value,
     lastStageChangeAt: pick(p, "lastStageChangeAt", "dateUpdated", "updatedAt"),
     contact: p.contact,
     source: p.source,
@@ -190,6 +191,13 @@ function opportunityFromPayload(p) {
 async function handleOpportunityEvent(event, config) {
   let opportunity = opportunityFromPayload(event.payload);
   if (!opportunity.id) return { outcome: "ignored", note: "no opportunity id" };
+
+  // The separate "Immiglance Pipeline" holds leads only: its events never create or touch a case; a card deleted there deletes its lead.
+  const leadPipelineOutcome = await require("./ghlLeadPipeline").handleOpportunityEvent(event, opportunity);
+  if (leadPipelineOutcome) {
+    if (leadPipelineOutcome.outcome === "failed") throw new Error(leadPipelineOutcome.note);
+    return leadPipelineOutcome;
+  }
 
   // The card was deleted in GHL: its case follows, but only after the deletion is confirmed again a little later (ghlDeletedInGhl.js), driven by
   // the reconcile pass - so this only records the sighting, and a delete event for an opportunity WE are deleting is simply ignored.
@@ -245,6 +253,7 @@ async function handleOpportunityEvent(event, config) {
 
   await recheckPendingVisa(existing, opportunity, config, pipeline);
   await syncCardName(existing, opportunity);
+  await require("./ghlFinance").syncCaseFinance(existing, opportunity); // the card's Value / USCIS Fee / QB Amount Paid -> the case's finance (never throws)
   return applyStageChange(event, existing, opportunity, pipeline, mapping);
 }
 

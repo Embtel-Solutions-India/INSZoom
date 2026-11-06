@@ -1190,6 +1190,26 @@ const caseSchema = new mongoose.Schema(
      * deliberately separate from `stage` (the immigration workflow stage):
      * moving a pipeline card must never touch `stage`.
      */
+    // Payment figures read from the case's GoHighLevel card (integrations/ghl/ghlFinance.js), ALL IN US DOLLARS (never cents):
+    //   totalAmount = the card's Value (the company's own fees, USCIS fees not included), uscisFee = USCIS Fee, amountPaid = QB Amount Paid.
+    // The Admin payment analytics read only these. Internal: never sent to client-side roles (case.service serializeCaseForUser).
+    finance: {
+      totalAmount: { type: Number, default: 0 },
+      uscisFee: { type: Number, default: 0 },
+      amountPaid: { type: Number, default: 0 },
+      invoiceNo: { type: String, default: "" },
+      lastPaymentAt: Date,
+      updatedAt: Date,
+      source: { type: String }, // "ghl" (read from the card) or "crm" (typed in Immiglance, a case with no card)
+      pendingPush: { type: Boolean, default: false }, // an edit made in Immiglance that is still being sent to GoHighLevel: its older value must not overwrite it meanwhile
+      pushedAt: Date,
+      pushError: String,
+      editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      // Every change of the figures, as signed amounts (US dollars), so the graphs can show fees and payments by day / week / month and the
+      // sum of all entries always equals the current figures. Capped at the last 200 entries.
+      history: [{ _id: false, at: Date, totalDelta: { type: Number, default: 0 }, uscisDelta: { type: Number, default: 0 }, paidDelta: { type: Number, default: 0 } }],
+    },
+
     integrations: {
       ghl: {
         locationId: { type: String },

@@ -278,8 +278,10 @@ async function clientPipelineForCase(caseDoc) {
     if (!config?.mappingsConfirmedAt) return null;
     const pipeline = (config.pipelines || []).find((item) => item.enabled && item.ghlPipelineId === ghl.pipelineId);
     if (!pipeline?.stages?.length) return null;
-    const stages = [...pipeline.stages].sort((a, b) => a.order - b.order).map((stage) => ({ key: stage.key, name: stage.name }));
-    return { name: pipeline.ghlPipelineName || null, currentKey: ghl.unifiedStageKey || stages[0].key, stages };
+    // The On Hold stage is not a step of the client's journey: it is shown only while the case is actually on hold.
+    const current = ghl.unifiedStageKey;
+    const stages = [...pipeline.stages].sort((a, b) => a.order - b.order).map((stage) => ({ key: stage.key, name: stage.name })).filter((stage) => !/hold/i.test(stage.key) || stage.key === current);
+    return { name: pipeline.ghlPipelineName || null, currentKey: current || stages[0].key, stages };
   } catch (error) {
     logger.warn?.("client_pipeline_lookup_failed", { error: error.message });
     return null;

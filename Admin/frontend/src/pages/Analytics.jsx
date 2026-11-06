@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
+import { useOptionalSocket } from '../contexts/SocketContext'
+import RevenueTrendChart from '../components/RevenueTrendChart'
+import { FINANCE_COLORS, CATEGORY_COLORS, TEAM_COLORS } from '../utils/financeColors'
+import MonthlyRevenueBars from '../components/MonthlyRevenueBars'
+import { packageRows, NOT_ASSIGNED } from '../utils/packages'
 import {
   BarChart3,
   DollarSign,
@@ -27,14 +32,17 @@ import {
   AreaChart,
   Area,
   LineChart,
-  Line
+  Line,
+  Legend
 } from 'recharts'
 
 const COLORS = ['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6']
-const formatCents = (amount) => new Intl.NumberFormat('en-US', {
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'USD'
-}).format((Number(amount) || 0) / 100)
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const Analytics = () => {
   const [activeTab, setActiveTab] = useState('overview')
@@ -61,6 +69,18 @@ const Analytics = () => {
     fetchAllData()
   }, [startDate, endDate])
 
+  // Live: everything on this page (including the payment figures and charts) is re-read from the database when any case's GoHighLevel figures change,
+  // and every minute as a safety net.
+  const socket = useOptionalSocket()
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) fetchAllData() }
+    const unsubscribers = socket?.connected && socket?.subscribe
+      ? ['payment:updated', 'ghl:pipeline:updated', 'case:created', 'case:assigned'].map((event) => socket.subscribe(event, refresh))
+      : []
+    const timer = window.setInterval(refresh, 60000)
+    return () => { unsubscribers.forEach((unsubscribe) => unsubscribe && unsubscribe()); window.clearInterval(timer) }
+  }, [socket?.connected, startDate, endDate])
+
   const fetchAllData = async () => {
     try {
       if (!hasLoadedOnce.current) setLoading(true)
@@ -86,7 +106,7 @@ const Analytics = () => {
       setDashboardStats(dashboardRes.data)
       setRevenueData((revenueRes.data.monthlyRevenue || []).map(item => ({
         ...item,
-        amount: Number(item.value || item.amount || 0) / 100
+        amount: Number(item.value || item.amount || 0)
       })))
       setPaymentsData(paymentsRes.data)
       setProcessingTimeData(processingRes.data.processingTimes || [])
@@ -96,10 +116,16 @@ const Analytics = () => {
         const caseCount = cm.activeCasesCount || 0
         const completedCases = cm.completedCasesCount || 0
         const decided = caseCount + completedCases
+        const onHold = cm.onHoldCasesCount || 0
         return {
           name: cm.displayName || cm.name || 'Unassigned',
+          role: cm.role,
           caseCount,
           completedCases,
+          onHold,
+          total: cm.totalCasesCount ?? (caseCount + completedCases + onHold),
+          openTasks: cm.openTasksCount || 0,
+          overdueTasks: cm.overdueTasksCount || 0,
           score: decided > 0 ? Math.round((completedCases / decided) * 100) : 0,
         }
       }))
@@ -146,10 +172,11 @@ const Analytics = () => {
       value: item.count
     })) || []
 
-    const casesByPackageData = analyticsData?.cases?.byPackage?.map(item => ({
-      name: (item.key ?? item._id) || 'No Package Selected',
-      value: item.count
-    })) || []
+    // exactly the three packages of the New case dropdown, plus "Not assigned" for cases with no package yet (every one listed, even at 0)
+    const casesByPackageData = packageRows(
+      (analyticsData?.cases?.byPackage || []).map(item => ({ name: item.key ?? item._id, value: item.count })),
+      ['value']
+    )
 
     const rfeRate = rfeTrendsData.length > 0 
       ? (rfeTrendsData.reduce((sum, item) => sum + item.rfeCount, 0) / rfeTrendsData.reduce((sum, item) => sum + item.totalCases, 0) * 100).toFixed(1)
@@ -158,7 +185,7 @@ const Analytics = () => {
     const statCards = [
       { title: 'Total Cases', value: dashboardStats?.totalCases || 0, icon: Briefcase, color: 'from-blue-500 to-blue-600' },
       { title: 'Active Cases', value: dashboardStats?.activeCases || 0, icon: FileText, color: 'from-blue-500 to-cyan-600' },
-      { title: 'Total Revenue', value: formatCents(dashboardStats?.totalRevenue), icon: DollarSign, color: 'from-purple-500 to-pink-600' },
+      { title: 'Total Revenue', value: formatUsd(dashboardStats?.totalRevenue), icon: DollarSign, color: 'from-purple-500 to-pink-600' },
       { title: 'RFE Rate', value: rfeRate + '%', icon: AlertTriangle, color: 'from-amber-500 to-orange-600' }
     ]
 
@@ -255,16 +282,33 @@ const Analytics = () => {
 
           <div className="card lg:col-span-2">
             <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Package</h3>
-            {casesByPackageData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={casesByPackageData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#8b5cf6" />
-                </BarChart>
-              </ResponsiveContainer>
+            {casesByPackageData.some((item) => item.value > 0) ? (
+              <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-2">
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={casesByPackageData.filter((item) => item.value > 0)} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={2} stroke="none">
+                      {casesByPackageData.filter((item) => item.value > 0).map((entry) => (
+                        <Cell key={entry.name} fill={entry.name === NOT_ASSIGNED ? FINANCE_COLORS.neutral : CATEGORY_COLORS[casesByPackageData.findIndex((item) => item.name === entry.name) % CATEGORY_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value, name) => [`${value} case${value === 1 ? '' : 's'}`, name]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul className="space-y-2.5">
+                  {casesByPackageData.map((entry, index) => {
+                    const total = casesByPackageData.reduce((sum, item) => sum + item.value, 0)
+                    return (
+                      <li key={entry.name} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="flex min-w-0 items-center gap-2 text-foreground">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.name === NOT_ASSIGNED ? FINANCE_COLORS.neutral : CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} aria-hidden="true" />
+                          <span className="truncate">{entry.name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground"><span className="font-semibold text-foreground">{entry.value}</span>{total ? ` · ${Math.round((entry.value / total) * 100)}%` : ''}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             ) : renderEmptyState('No data available')}
           </div>
         </div>
@@ -281,53 +325,37 @@ const Analytics = () => {
     // also read as-is elsewhere (PaymentsOverview.jsx).
     const revenueByVisaTypeData = analyticsData?.revenue?.byVisaType?.map(item => ({
       name: item._id ?? 'Unspecified',
-      totalRevenue: Number(item.revenue || 0) / 100,
-      pendingRevenue: Number(item.outstanding || 0) / 100
+      totalRevenue: Number(item.revenue || 0),
+      pendingRevenue: Number(item.outstanding || 0)
     })) || []
 
-    const revenueByPackageData = analyticsData?.revenue?.byPackage?.map(item => ({
-      name: item._id || 'No Package Selected',
-      totalRevenue: Number(item.revenue || 0) / 100,
-      pendingRevenue: Number(item.outstanding || 0) / 100
-    })) || []
+    // the three packages of the New case dropdown plus "Not assigned", all listed
+    const revenueByPackageData = packageRows(
+      (analyticsData?.revenue?.byPackage || []).map(item => ({ name: item._id, totalRevenue: Number(item.revenue || 0), pendingRevenue: Number(item.outstanding || 0) })),
+      ['totalRevenue', 'pendingRevenue']
+    )
 
     return (
       <div className="space-y-6">
-        {/* Monthly Revenue Chart */}
-        <div className="card">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Monthly Revenue</h3>
-          {revenueData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="amount" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : renderEmptyState('No revenue data available')}
-        </div>
+        {/* Monthly revenue: fees set next to what was paid, per month, as bars */}
+        <MonthlyRevenueBars />
 
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="card">
-            <p className="text-sm font-medium text-muted-foreground mb-1">Total Revenue</p>
-            <p className="text-2xl font-bold text-foreground">{formatCents(paymentsData?.totalRevenue)}</p>
-          </div>
-          <div className="card">
-            <p className="text-sm font-medium text-muted-foreground mb-1">Pending Amount</p>
-            <p className="text-2xl font-bold text-amber-600">{formatCents(paymentsData?.pendingAmount)}</p>
-          </div>
-          <div className="card">
-            <p className="text-sm font-medium text-muted-foreground mb-1">Overdue Amount</p>
-            <p className="text-2xl font-bold text-red-600">{formatCents(paymentsData?.overdueAmount)}</p>
-          </div>
-          <div className="card">
-            <p className="text-sm font-medium text-muted-foreground mb-1">Payment Rate</p>
-            <p className="text-2xl font-bold text-blue-600">{paymentsData?.paymentRate || 0}%</p>
-          </div>
+          {[
+            ['Total Revenue', formatUsd(paymentsData?.totalRevenue), FINANCE_COLORS.paid],
+            ['Pending Amount', formatUsd(paymentsData?.pendingAmount), FINANCE_COLORS.outstanding],
+            ['Total Fees', formatUsd(paymentsData?.total), FINANCE_COLORS.total],
+            ['Payment Rate', `${paymentsData?.paymentRate || 0}%`, FINANCE_COLORS.partial],
+          ].map(([label, value, dot]) => (
+            <div key={label} className="card">
+              <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}</p>
+              <p className="text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+            </div>
+          ))}
         </div>
+
+        <RevenueTrendChart />
 
         {/* Revenue Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -367,29 +395,145 @@ const Analytics = () => {
 
   // TAB 3: Team Performance
   const TeamPerformanceTab = () => {
+    const shortName = (name) => (String(name || '').length > 14 ? `${String(name).slice(0, 13)}…` : String(name || ''))
+    const team = caseManagerWorkload.map((cm) => ({ ...cm, shortName: shortName(cm.name) }))
+    // team totals count case managers only (a case is counted once, for the person it is assigned to); team leads are still shown in the rankings
+    const managersOnly = team.filter((cm) => cm.role !== 'team_lead')
+    const sum = (rows, key) => rows.reduce((total, cm) => total + (Number(cm[key]) || 0), 0)
+    const totals = { total: sum(managersOnly, 'total'), active: sum(managersOnly, 'caseCount'), onHold: sum(managersOnly, 'onHold'), closed: sum(managersOnly, 'completedCases'), openTasks: sum(managersOnly, 'openTasks'), overdueTasks: sum(managersOnly, 'overdueTasks') }
+    const statusSplit = [
+      { name: 'Active', value: totals.active, color: TEAM_COLORS.active },
+      { name: 'On hold', value: totals.onHold, color: TEAM_COLORS.onHold },
+      { name: 'Closed', value: totals.closed, color: TEAM_COLORS.closed },
+    ]
+    const statusTotal = statusSplit.reduce((acc, item) => acc + item.value, 0)
+    const topAssigned = [...team].sort((x, y) => y.total - x.total).slice(0, 10)
+    const topClosed = [...team].sort((x, y) => (y.completedCases || 0) - (x.completedCases || 0)).slice(0, 8)
+    const byRate = [...team].filter((cm) => cm.total > 0).sort((x, y) => y.score - x.score).slice(0, 10)
     return (
       <div className="space-y-6">
+        {team.length > 0 && (
+          <>
+            {/* Team totals (case managers; a case is counted once for the person it is assigned to) */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+              {[
+                ['Assigned cases', totals.total, 'all cases on a case manager', TEAM_COLORS.assigned],
+                ['Active cases', totals.active, 'being worked on', TEAM_COLORS.active],
+                ['On hold', totals.onHold, 'in the On Hold stage', TEAM_COLORS.onHold],
+                ['Cases closed', totals.closed, 'submitted, approved or disapproved', TEAM_COLORS.closed],
+                ['Open tasks', totals.openTasks, `${totals.overdueTasks} overdue`, TEAM_COLORS.tasks],
+              ].map(([label, value, sub, dot]) => (
+                <div key={label} className="card">
+                  <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="card lg:col-span-2">
+                <h3 className="text-lg font-semibold text-foreground">Highest assigned cases</h3>
+                <p className="mb-3 text-xs text-muted-foreground">Who has the most cases assigned, split into active, on hold and closed</p>
+                <ResponsiveContainer width="100%" height={Math.max(240, topAssigned.length * 34 + 30)}>
+                  <BarChart data={topAssigned} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <YAxis dataKey="shortName" type="category" width={110} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: 'rgba(148,163,184,0.12)' }} labelFormatter={(label, items) => items?.[0]?.payload?.name || label} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => <span className="text-muted-foreground">{value}</span>} />
+                    <Bar dataKey="caseCount" name="Active" stackId="cases" fill={TEAM_COLORS.active} barSize={16} />
+                    <Bar dataKey="onHold" name="On hold" stackId="cases" fill={TEAM_COLORS.onHold} barSize={16} />
+                    <Bar dataKey="completedCases" name="Closed" stackId="cases" fill={TEAM_COLORS.closed} radius={[0, 4, 4, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="card">
+                <h3 className="text-lg font-semibold text-foreground">Case status</h3>
+                <p className="mb-2 text-xs text-muted-foreground">All assigned cases</p>
+                <ResponsiveContainer width="100%" height={190}>
+                  <PieChart>
+                    <Pie data={statusSplit} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={78} paddingAngle={2} stroke="none">
+                      {statusSplit.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul className="mt-2 space-y-1.5">
+                  {statusSplit.map((entry) => (
+                    <li key={entry.name} className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} aria-hidden="true" />{entry.name}</span>
+                      <span className="tabular-nums text-muted-foreground"><span className="font-semibold text-foreground">{entry.value}</span>{statusTotal ? ` · ${Math.round((entry.value / statusTotal) * 100)}%` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="card">
+                <h3 className="text-lg font-semibold text-foreground">Cases closed</h3>
+                <p className="mb-3 text-xs text-muted-foreground">Submitted, approved or disapproved, by person</p>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={topClosed} margin={{ left: 0, right: 8, top: 6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="shortName" tick={{ fontSize: 11 }} interval={0} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} cursor={{ fill: 'rgba(148,163,184,0.12)' }} labelFormatter={(label, items) => items?.[0]?.payload?.name || label} />
+                    <Bar dataKey="completedCases" name="Closed" radius={[4, 4, 0, 0]}>
+                      {topClosed.map((entry, index) => <Cell key={entry.name} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="card">
+                <h3 className="text-lg font-semibold text-foreground">Completion rate</h3>
+                <p className="mb-3 text-xs text-muted-foreground">Closed cases as a share of closed + active (%), by person</p>
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart data={byRate} margin={{ left: 0, right: 12, top: 6, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="rateFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={TEAM_COLORS.assigned} stopOpacity={0.22} />
+                        <stop offset="100%" stopColor={TEAM_COLORS.assigned} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="shortName" tick={{ fontSize: 11 }} interval={0} />
+                    <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 11 }} width={40} />
+                    <Tooltip formatter={(value) => `${value}%`} contentStyle={{ fontSize: 12, borderRadius: 8 }} labelFormatter={(label, items) => items?.[0]?.payload?.name || label} />
+                    <Area type="monotone" dataKey="score" name="Completion rate" stroke={TEAM_COLORS.assigned} strokeWidth={2.5} fill="url(#rateFill)" dot={{ r: 3, strokeWidth: 0, fill: TEAM_COLORS.assigned }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Case Manager Workload */}
         <div className="card">
           <h3 className="text-lg font-semibold text-foreground mb-4">Case Manager Workload</h3>
           {caseManagerWorkload.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Active Cases</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Closed Cases</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Score</th>
+            <div className="overflow-x-hidden overflow-y-auto rounded-lg border border-border" style={{ maxHeight: 440 }}>
+              <table className="w-full table-fixed text-sm">
+                <thead className="sticky top-0 z-10 bg-muted">
+                  <tr>
+                    {['Name', 'Assigned', 'Active', 'On hold', 'Closed', 'Open tasks', 'Completion'].map((heading) => (
+                      <th key={heading} className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{heading}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {caseManagerWorkload.map((cm, index) => (
-                    <tr key={index} className="border-b border-border">
-                      <td className="py-3 px-4">{cm.name}</td>
-                      <td className="py-3 px-4">{cm.caseCount}</td>
-                      <td className="py-3 px-4">{cm.completedCases || 0}</td>
-                      <td className="py-3 px-4">{cm.score || 0}</td>
+                  {[...caseManagerWorkload].sort((x, y) => y.total - x.total).map((cm, index) => (
+                    <tr key={index} className="border-t border-border">
+                      <td className="px-3 py-2"><p className="truncate font-medium text-foreground" title={cm.name}>{cm.name}</p>{cm.role === 'team_lead' ? <p className="text-[11px] text-muted-foreground">Team Lead</p> : null}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.total}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.caseCount}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.onHold}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.completedCases || 0}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.openTasks}</td>
+                      <td className="px-3 py-2 tabular-nums">{cm.score || 0}%</td>
                     </tr>
                   ))}
                 </tbody>

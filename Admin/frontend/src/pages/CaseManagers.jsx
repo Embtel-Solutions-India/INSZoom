@@ -98,7 +98,7 @@ const CaseManagers = () => {
       cm.activeCasesCount,
       cm.completedCasesCount,
       cm.pendingCasesCount,
-      `$${cm.totalRevenue?.toLocaleString() || 0}`,
+      `$${Math.round(cm.totalRevenue || 0).toLocaleString()}`,
       cm.assignedClientsCount,
       cm.currentWorkload,
       cm.status,
@@ -140,7 +140,7 @@ const CaseManagers = () => {
   // completed is automatic and shown as a small figure under it; it is not a rating.
   const getWeeklyRating = (cm) => (
     <div className="flex flex-col items-center leading-tight" title={`Completion rate ${Number(cm.completionRate || 0).toFixed(0)}% of assigned cases`}>
-      {cm.weeklyRating != null ? (
+      {cm.role === 'team_lead' ? null : cm.weeklyRating != null ? (
         <div className="flex items-center gap-1"><Star className="w-4 h-4 text-primary fill-current" /><span className="text-sm font-semibold text-foreground">{cm.weeklyRating.toFixed(1)}</span><span className="text-xs text-muted-foreground">({cm.weeklyRatingCount})</span></div>
       ) : <span className="text-xs text-muted-foreground">Not rated this week</span>}
       <span className="text-[0.7rem] text-muted-foreground">{Number(cm.completionRate || 0).toFixed(0)}% completed</span>
@@ -241,7 +241,7 @@ const CaseManagers = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Revenue Managed</p>
-                <p className="text-2xl font-bold text-foreground">${(stats.totalRevenueManaged || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">${Math.round(stats.totalRevenueManaged || 0).toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-blue-500" />
             </div>
@@ -345,7 +345,7 @@ const CaseManagers = () => {
                         {cm.name?.charAt(0).toUpperCase()}
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-foreground">{cm.name}</div>
+                        <div className="text-sm font-medium text-foreground">{cm.name}{cm.role === 'team_lead' && <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">Team Lead</span>}</div>
                         <div className="text-sm text-muted-foreground">ID: {cm._id?.slice(-6).toUpperCase()}</div>
                       </div>
                     </div>
@@ -369,7 +369,7 @@ const CaseManagers = () => {
                     <div className="text-sm font-semibold text-green-600">{cm.completedCasesCount}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
-                    <div className="text-sm font-semibold text-foreground">${(cm.totalRevenue || 0).toLocaleString()}</div>
+                    <div className="text-sm font-semibold text-foreground">${Math.round(cm.totalRevenue || 0).toLocaleString()}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     <div className="flex items-center justify-center gap-1">

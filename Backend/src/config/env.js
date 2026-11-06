@@ -243,6 +243,8 @@ const env = {
     // Pipelines are matched by ID when set, otherwise by exact name.
     immigrantPipelineId: (process.env.GHL_IMMIGRANT_PIPELINE_ID || "").trim(),
     nonImmigrantPipelineId: (process.env.GHL_NON_IMMIGRANT_PIPELINE_ID || "").trim(),
+    // The separate "Immiglance Pipeline": holds only the Leads page leads (one card each, first stage). Not part of the two case pipelines above.
+    leadPipelineId: (process.env.GHL_IMMIGLANCE_PIPELINE_ID || "").trim(),
     immigrantPipelineName: process.env.GHL_IMMIGRANT_PIPELINE_NAME || "Immigrant Documentation pipeline",
     nonImmigrantPipelineName: process.env.GHL_NON_IMMIGRANT_PIPELINE_NAME || "Non-Immigrant Documentation pipeline",
     // GHL's OFFICIAL Ed25519 public key (PEM or bare base64 SPKI) used to verify

@@ -155,7 +155,7 @@ async function notifyHost(appointment, config, lead) {
     type: "consultation_booked",
     title: `New consultation booked: ${appointment.name}`,
     message: `${appointment.startAt.toLocaleString?.() || appointment.startAt} — ${lead?.scoreResult?.tier ? `Tier ${lead.scoreResult.tier}` : "General inquiry"}`,
-    link: "/admin/portal?tab=appointments",
+    link: "/leads",
     priority: lead?.scoreResult?.tier === "A" ? "high" : "medium",
     channels: ["in_app", "socket", "push"],
     metadata: { appointmentId: String(appointment._id), leadId: lead ? String(lead._id) : undefined },

@@ -214,6 +214,8 @@ export const recycleBinApi = {
 }
 
 export const casesApi = {
+  // edit a case's payment figures (US dollars); sent on to the case's GoHighLevel card
+  updateFinance: (id, payload) => api.put(`/cases/${id}/finance`, payload),
   dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
   list: (params = {}) => api.get('/cases', { params }),
   // Every creatable case type from the registry (drives the Create Case dropdown).
@@ -830,6 +832,8 @@ export const leadsApi = {
   markSeen: (id) => api.post(`/eligibility-quiz/leads/${id}/seen`, {}),
   updateStatus: (id, status) => api.patch(`/eligibility-quiz/leads/${id}/status`, { status }),
   addNote: (id, text) => api.post(`/eligibility-quiz/leads/${id}/notes`, { text }),
+  // Deletes the lead and its card in the GoHighLevel Immiglance Pipeline (the server deletes the card first).
+  remove: (id) => api.delete(`/eligibility-quiz/leads/${id}`),
   // State-machine-enforced lifecycle transitions (Phase 6) — each permits
   // exactly one transition server-side, unlike the freeform updateStatus above.
   confirmConsultation: (id) => api.patch(`/eligibility-quiz/leads/${id}/confirm-consultation`, {}),
@@ -856,6 +860,7 @@ export const ghlApi = {
   moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
   setupPreview: () => api.get('/integrations/ghl/setup'),
   confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
+  addNewStages: () => api.post('/integrations/ghl/setup/add-stages'),
   // A full pass reads every opportunity of both pipelines from GoHighLevel, so it can legitimately run longer than the default 2 minutes.
   syncNow: () => api.post('/integrations/ghl/sync', {}, { timeout: 600_000 }),
   reconcileNow: () => api.post('/integrations/ghl/reconcile', {}, { timeout: 600_000 }),

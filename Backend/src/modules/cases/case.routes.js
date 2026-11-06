@@ -81,6 +81,7 @@ router.post(
 router.get("/:id/person-cases", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.getPersonCases);
 router.post("/:id/attach-to-login", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.attachCaseToLogin);
 router.get("/:id", authenticate, authorizePermissions("cases:read"), ctrl.getCase);
+router.put("/:id/finance", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), require("../finance/caseFinance.controller").updateCaseFinance);
 router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.updateCase);
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);
 // Permanent delete (database removal): team leads and administrators only - a case manager cannot delete a case.

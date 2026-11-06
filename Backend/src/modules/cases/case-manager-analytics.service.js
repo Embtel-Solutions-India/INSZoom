@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Case = require("../../models/Case");
-const { caseManagerMatch } = require("./caseManagerAccess");
+const { caseManagerMatch, teamLeadMatch } = require("./caseManagerAccess");
 const { COUNTABLE_CASE } = require("./countableCase");
 const env = require("../../config/env");
 const GHLIntegration = require("../../models/GHLIntegration");
@@ -48,13 +48,13 @@ function openRfeDeadlineFilter({ dueSoonOnly = false } = {}) {
   return filter;
 }
 
+// Cases with something left to pay: the card's Value minus QB Amount Paid is above zero (GoHighLevel figures, US dollars).
 async function caseIdsWithBalanceDue(caseIds) {
-  const rows = await Payment.aggregate([
-    { $match: { $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] } },
-    { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
-    { $match: { remainingAmount: { $gt: 0 } } },
-    { $group: { _id: "$resolvedCase" } },
-  ]);
+  const rows = await Case.find({
+    _id: { $in: caseIds },
+    "finance.source": { $in: ["ghl", "crm"] },
+    $expr: { $gt: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] },
+  }).select("_id").lean();
   return new Set(rows.map((row) => String(row._id)));
 }
 
@@ -139,43 +139,21 @@ async function byStageBreakdown(caseManagerFilter) {
 // which no job in this codebase ever advances past "unreconciled". Confirmed
 // product decision; see plan for the reasoning.
 async function paymentsSection(caseIds) {
-  const ledgerMatch = { "payment.resolvedCase": { $in: caseIds } };
-
-  const [ledgerRows, balanceRows] = await Promise.all([
-    PaymentLedgerEntry.aggregate([
-      { $lookup: { from: "payments", localField: "paymentId", foreignField: "_id", as: "payment" } },
-      { $unwind: "$payment" },
-      { $addFields: { "payment.resolvedCase": { $ifNull: ["$payment.caseId", "$payment.case"] } } },
-      { $match: ledgerMatch },
-      {
-        $group: {
-          _id: null,
-          collected: {
-            $sum: {
-              $cond: [
-                { $in: ["$entryType", ["charge", "reconciliation"]] },
-                "$amount",
-                { $cond: [{ $in: ["$entryType", ["refund", "write_off"]] }, { $multiply: ["$amount", -1] }, 0] },
-              ],
-            },
-          },
-        },
-      },
-    ]),
-    Payment.aggregate([
-      { $match: { $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] } },
-      { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
-      { $match: { remainingAmount: { $gt: 0 } } },
-      { $group: { _id: "$resolvedCase", remaining: { $sum: "$remainingAmount" } } },
-    ]),
+  // collected = QB Amount Paid, outstanding = Value - QB Amount Paid (never below 0), per case, from each case's GoHighLevel figures. US dollars.
+  const [row] = await Case.aggregate([
+    { $match: { _id: { $in: caseIds }, "finance.source": { $in: ["ghl", "crm"] } } },
+    { $project: { paid: { $ifNull: ["$finance.amountPaid", 0] }, total: { $ifNull: ["$finance.totalAmount", 0] }, uscis: { $ifNull: ["$finance.uscisFee", 0] } } },
+    { $addFields: { owed: { $max: [{ $subtract: ["$total", "$paid"] }, 0] } } },
+    { $group: { _id: null, collected: { $sum: "$paid" }, outstanding: { $sum: "$owed" }, total: { $sum: "$total" }, uscisFees: { $sum: "$uscis" }, casesWithBalance: { $sum: { $cond: [{ $gt: ["$owed", 0] }, 1, 0] } } } },
   ]);
-
+  const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
   return {
-    collected: ledgerRows[0]?.collected || 0,
-    outstanding: balanceRows.reduce((sum, row) => sum + row.remaining, 0),
-    casesWithBalance: balanceRows.length,
+    collected: round2(row?.collected),
+    outstanding: round2(row?.outstanding),
+    total: round2(row?.total),
+    uscisFees: round2(row?.uscisFees),
+    casesWithBalance: row?.casesWithBalance || 0,
     currency: "USD",
-    _note: "collected is summed from the immutable PaymentLedgerEntry ledger (charge/reconciliation minus refund/write_off), not Payment.reconciliation.status - no reconciliation job in this codebase ever advances that field, so gating on it would always read 0. outstanding/casesWithBalance are point-in-time balances, not period-filtered.",
   };
 }
 
@@ -244,8 +222,8 @@ async function byVisaTypeBreakdown(caseManagerFilter) {
 const PRIORITY_RANK = { urgent: 5, high: 4, "Premium Processing": 3, medium: 2, "Standard Processing": 1, low: 0 };
 
 // The case manager's currently assigned, still-active cases (not period-filtered): highest priority first, then newest.
-async function assignedCasesList(caseManagerId, limit = 8) {
-  const rows = await Case.find({ $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE, { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
+async function assignedCasesList(caseManagerId, limit = 8, match = null) {
+  const rows = await Case.find({ $and: [match || caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE, { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
     .select("caseNumber clientName visaType priority status createdAt")
     .lean();
   return rows
@@ -305,11 +283,11 @@ const trendOf = (current, previous) => {
 
 // The three headline cards. Counts follow the selected period like the rest of the panel; the trend is always "last 30 days vs the
 // 30 days before": new cases for total/active (by createdAt), finished cases for closed (updatedAt is the proxy for when it closed).
-async function summarySection(caseManagerId, caseManagerFilter) {
+async function summarySection(caseManagerId, caseManagerFilter, match = null) {
   const finals = await finalStageMatch();
   const isClosed = { $or: [{ status: { $in: ["closed", "completed", "approved", "rejected", "denied"] } }, ...finals] };
   const notClosed = { $nor: isClosed.$or };
-  const mine = { $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE] };
+  const mine = { $and: [match || caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE] };
   const now = Date.now();
   const d30 = new Date(now - 30 * DAY_MS);
   const d60 = new Date(now - 60 * DAY_MS);
@@ -333,10 +311,12 @@ async function summarySection(caseManagerId, caseManagerFilter) {
   };
 }
 
-async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS } = {}) {
+// asTeamLead: the person is a team lead (their cases = assigned team lead, or case manager on the case); anyone else behaves exactly as before.
+async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS, asTeamLead = false } = {}) {
+  const personMatch = asTeamLead ? teamLeadMatch(objectId(caseManagerId)) : caseManagerMatch(objectId(caseManagerId));
   // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager,
   // limited to cases created in the selected period.
-  const periodFilter = { $and: [caseManagerMatch(objectId(caseManagerId)), { createdAt: periodRange(period) }] };
+  const periodFilter = { $and: [personMatch, { createdAt: periodRange(period) }] };
   const caseManagerFilter = { $and: [...periodFilter.$and, COUNTABLE_CASE] };
 
   const [totalCasesInScope, activeTotal, caseIds] = await Promise.all([
@@ -353,9 +333,9 @@ async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_S
     activitySection(caseManagerFilter, staleDays),
     byVisaTypeBreakdown(caseManagerFilter),
     byStageBreakdown(caseManagerFilter),
-    assignedCasesList(caseManagerId),
+    assignedCasesList(caseManagerId, 8, asTeamLead ? personMatch : null),
     assignedTrend(caseManagerFilter, period),
-    summarySection(caseManagerId, caseManagerFilter),
+    summarySection(caseManagerId, caseManagerFilter, asTeamLead ? personMatch : null),
     outcomesSection(caseManagerFilter),
   ]);
 

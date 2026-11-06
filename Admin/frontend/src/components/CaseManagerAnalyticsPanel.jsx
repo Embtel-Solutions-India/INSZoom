@@ -19,10 +19,12 @@ const VISA_COLORS = ['#10b981', '#8b5cf6', '#f59e0b', '#0ea5e9', '#ec4899', '#14
 
 const PRIORITY_COLORS = { urgent: '#ef4444', high: '#f97316', 'Premium Processing': '#8b5cf6', medium: '#3b82f6', 'Standard Processing': '#14b8a6', low: '#10b981' }
 
-const formatCents = (amount) => new Intl.NumberFormat('en-US', {
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'USD'
-}).format((Number(amount) || 0) / 100)
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 export const PERIODS = [
   { key: '30d', label: 'Last 30 days' },
@@ -318,7 +320,7 @@ const CaseManagerAnalyticsPanel = () => {
                   <Pie data={paymentsChartData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={2} dataKey="value">
                     {paymentsChartData.map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
                   </Pie>
-                  <Tooltip formatter={(value) => formatCents(value)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Tooltip formatter={(value) => formatUsd(value)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -327,8 +329,8 @@ const CaseManagerAnalyticsPanel = () => {
             )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
-            <MetricCard label="Collected" value={formatCents(payments.collected)} dot={STATUS_COLORS.good} />
-            <MetricCard label="Outstanding" value={formatCents(payments.outstanding)} dot={STATUS_COLORS.critical} />
+            <MetricCard label="Collected" value={formatUsd(payments.collected)} dot={STATUS_COLORS.good} />
+            <MetricCard label="Outstanding" value={formatUsd(payments.outstanding)} dot={STATUS_COLORS.critical} />
             <MetricCard label="Balance due" value={payments.casesWithBalance} sub="cases" dot={STATUS_COLORS.warning} />
           </div>
         </div>

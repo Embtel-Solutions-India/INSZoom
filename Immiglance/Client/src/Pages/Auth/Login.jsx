@@ -35,7 +35,6 @@ export default function Login() {
   const sessionIdParam = searchParams.get("sessionId") || "";
   // a returning person's "case created" e-mail opens THIS case after sign-in: /login?case=<id> -> /dashboard?case=<id> (only a well-formed id is used)
   const caseParam = /^[a-f0-9]{24}$/i.test(searchParams.get("case") || "") ? searchParams.get("case") : "";
-  const afterLogin = caseParam ? `/dashboard?case=${caseParam}` : "/dashboard";
 
   // loginMethod: "email" drives the email-first two-step flow below;
   // "caseId" keeps the original single-step caseId+password form (a
@@ -48,6 +47,11 @@ export default function Login() {
   // independently validates the real credential regardless of this step.
   const [emailStep,   setEmailStep]   = useState("enter");
   const location = useLocation();
+  // AuthGate passes the page the person asked for (a notification link, a bookmark); the e-mail "?case=" link wins, "/dashboard" when neither.
+  const requested = location.state?.from;
+  const requestedPath = typeof requested?.pathname === "string" && requested.pathname.startsWith("/") && !/^\/(login|signup|accept-invite|forgot-password|reset-password|auth\/)/.test(requested.pathname)
+    ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}` : "";
+  const afterLogin = caseParam ? `/dashboard?case=${caseParam}` : (requestedPath || "/dashboard");
   const notice = location.state?.notice || "";
   const [email,       setEmail]       = useState(location.state?.email || "");
   const [caseId,      setCaseId]      = useState("");

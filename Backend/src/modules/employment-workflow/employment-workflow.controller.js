@@ -283,10 +283,9 @@ exports.createEmployerCase = async (req, res, next) => {
     const employeeName = req.body.employee?.name || req.body.employeeName;
     const employeePhone = clean(req.body.employee?.phone || req.body.employeePhone);
     if (!employeeEmail) return res.status(400).json({ success: false, message: "Employee email is required" });
-    // "invite" (default): the employee gets their own account + secure emailed
-    // link. "employer_completes": the employer fills the employee's
-    // questionnaire themselves — no account or email is created for them.
-    const completionMode = req.body.employeeCompletionMode === "employer_completes" ? "employer_completes" : "invite";
+    // "employer_completes" (default): the employer fills the employee's questionnaire themselves - no account or email is created for them.
+    // "invite": ONLY when exclusively chosen: the employee gets their own account + secure emailed link.
+    const completionMode = req.body.employeeCompletionMode === "invite" ? "invite" : "employer_completes";
     if (completionMode === "invite" && !employeePhone) {
       return res.status(400).json({ success: false, message: "Employee mobile number is required to send an invitation" });
     }

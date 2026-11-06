@@ -117,6 +117,32 @@ function detectDrift(stageMappings, pipelines) {
   return drift;
 }
 
+// Pure. A stage ADDED in GoHighLevel (a new column such as "On Hold") joins the confirmed mapping without re-mapping anything: only when every difference
+// is a new stage (a renamed or removed stage still needs an admin's review). Returns the stages and mappings to append and the refreshed column order
+// of every mapped stage; touches nothing itself.
+function planAddedStages(config, pipelines, drift = detectDrift(config.stageMappings, pipelines)) {
+  const added = drift.filter((item) => item.type === "stage_added");
+  if (!added.length) return { ok: false, reason: "No new stages to add" };
+  if (added.length !== drift.length) return { ok: false, reason: "Stages were also renamed or removed in GoHighLevel: that needs the full setup review" };
+  const byPipeline = new Map(pipelines.map((p) => [p.id, p]));
+  const additions = [];
+  for (const item of added) {
+    const pipeline = byPipeline.get(item.ghlPipelineId);
+    const stage = (pipeline?.stages || []).find((s) => s.id === item.ghlStageId);
+    const stored = (config.pipelines || []).find((p) => p.ghlPipelineId === item.ghlPipelineId);
+    if (!stage || !stored) return { ok: false, reason: `Pipeline or stage not found for "${item.name}"` };
+    const key = slug(stage.name);
+    if (!key || stored.stages.some((s) => s.key === key)) return { ok: false, reason: `A column "${key}" already exists in ${stored.ghlPipelineName}` };
+    additions.push({ ghlPipelineId: item.ghlPipelineId, stage: { key, name: stage.name }, mapping: { ghlPipelineId: item.ghlPipelineId, ghlStageId: stage.id, ghlStageName: stage.name, unifiedStageKey: key, unifiedStageName: stage.name } });
+  }
+  // the column order follows the order in GoHighLevel, for the stages already mapped and the new ones alike
+  const orders = new Map();
+  for (const pipeline of pipelines) {
+    sortStages(pipeline.stages || []).forEach((stage, index) => orders.set(`${pipeline.id}:${stage.id}`, index));
+  }
+  return { ok: true, additions, orders };
+}
+
 // (pipelineId, stageId) -> unified column, and unified column + pipeline -> GHL stage.
 function resolveUnifiedStage(stageMappings, ghlPipelineId, ghlStageId) {
   return stageMappings.find((m) => m.ghlPipelineId === ghlPipelineId && m.ghlStageId === ghlStageId) || null;
@@ -125,4 +151,4 @@ function resolveGhlStage(stageMappings, ghlPipelineId, unifiedStageKey) {
   return stageMappings.find((m) => m.ghlPipelineId === ghlPipelineId && m.unifiedStageKey === unifiedStageKey) || null;
 }
 
-module.exports = { listPipelines, selectPipelines, buildPipelinePlans, detectDrift, resolveUnifiedStage, resolveGhlStage, slug };
+module.exports = { listPipelines, selectPipelines, buildPipelinePlans, detectDrift, planAddedStages, resolveUnifiedStage, resolveGhlStage, slug };

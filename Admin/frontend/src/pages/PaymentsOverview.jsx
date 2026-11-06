@@ -1,436 +1,311 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import { useNavigate } from 'react-router-dom'
-import { DollarSign, TrendingUp, AlertTriangle, Clock, Search, Eye, ExternalLink, X } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import RevenueTrendChart from '../components/RevenueTrendChart'
+import StatusDot from '../components/ui/StatusDot'
+import { FINANCE_COLORS, FINANCE_STATUS } from '../utils/financeColors'
+import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
+
+// Payments Overview. Every figure is read live from each case's GoHighLevel card, in US DOLLARS:
+//   Total = the card's Value (the company's own fees, USCIS fees not included), USCIS Fee = the USCIS fees,
+//   Paid = QB Amount Paid, Outstanding = Total - Paid.
+// LIVE: the whole page (cards, every chart, the table) is re-read from the database the moment any case's figures change (the server announces it as
+// payment:updated), and again every 30 seconds and whenever the tab is shown, so nothing here is ever stale.
+const usd = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(amount) || 0)
+const short = (value) => `$${Math.round(Number(value) || 0).toLocaleString('en-US')}`
+const clip = (text, max = 18) => (String(text || '').length > max ? `${String(text).slice(0, max - 1)}…` : String(text || ''))
+const TOOLTIP_STYLE = { fontSize: 12, borderRadius: 8 }
+const REFRESH_MS = 30000
+// each chart has its own palette, so the page is not just blue, green and red everywhere
+const SHARE_COLORS = ['#8B5CF6', '#06B6D4', '#F59E0B', '#EC4899', '#84CC16', '#F97316', '#6366F1'] // paid by case type
+const TYPE_BAR_COLORS = ['#06B6D4', '#F59E0B', '#8B5CF6', '#EC4899', '#84CC16', '#F97316', '#6366F1', '#14B8A6'] // outstanding by case type
+const CASE_BAR_COLORS = ['#F97316', '#EC4899', '#8B5CF6', '#06B6D4', '#84CC16', '#EAB308', '#6366F1', '#14B8A6', '#F43F5E', '#3B82F6'] // outstanding by case
+const MANAGER_COLORS = { total: '#6366F1', paid: '#14B8A6', outstanding: '#F97316' } // case managers
+
+function Panel({ title, subtitle, children, empty, height = 230 }) {
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      {subtitle ? <p className="mb-2 text-xs text-muted-foreground">{subtitle}</p> : <div className="mb-2" />}
+      {empty ? <div className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>No data yet</div> : children}
+    </div>
+  )
+}
+
+// a donut with a legend of colour dots and dollar amounts
+function Donut({ data, height = 170 }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={height}>
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={2} stroke="none">
+            {data.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+          </Pie>
+          <Tooltip formatter={(value, name) => [usd(value), name]} contentStyle={TOOLTIP_STYLE} />
+        </PieChart>
+      </ResponsiveContainer>
+      <ul className="mt-1 space-y-1">
+        {data.map((entry) => (
+          <li key={entry.name} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-1.5"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} aria-hidden="true" /><span className="truncate" title={entry.name}>{entry.name}</span></span>
+            <span className="shrink-0 tabular-nums text-foreground">{usd(entry.value)}{total ? <span className="text-muted-foreground"> · {Math.round((entry.value / total) * 100)}%</span> : null}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
 
 const PaymentsOverview = () => {
   const { user } = useAuth()
   const { subscribe, connected } = useSocket()
   const navigate = useNavigate()
-  const [payments, setPayments] = useState([])
+  const [rows, setRows] = useState([])
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 })
+  const [page, setPage] = useState(1)
   const [stats, setStats] = useState(null)
-  const [revenueData, setRevenueData] = useState([])
+  const [breakdown, setBreakdown] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')                    
+  const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
-  const [period, setPeriod] = useState('this_month')
-  const [selectedPayment, setSelectedPayment] = useState(null)
   const normalizedRole = String(user?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
   const canViewAnalytics = ['super_admin', 'admin', 'team_lead'].includes(normalizedRole)
+  const hasLoadedOnce = useRef(false)
 
+  // the search box waits a moment after typing
   useEffect(() => {
-    fetchPayments()
-    if (canViewAnalytics) {
-      fetchStats()
-      fetchRevenueData()
-    }
-  }, [statusFilter, period, canViewAnalytics])
+    const timer = setTimeout(() => { setAppliedSearch(searchTerm.trim()); setPage(1) }, 350)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
-  useEffect(() => {
-    const refresh = () => {
-      fetchPayments()
-      if (canViewAnalytics) {
-        fetchStats()
-        fetchRevenueData()
-      }
+  const fetchRows = useCallback(async () => {
+    try {
+      if (!hasLoadedOnce.current) setLoading(true)
+      const response = await api.get('/analytics/payments/cases', { params: { page, limit: 25, search: appliedSearch || undefined, status: statusFilter || undefined } })
+      setRows(response.data.items || [])
+      setPagination(response.data.pagination || { page: 1, pages: 1, total: 0 })
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not load the payments.')
+    } finally {
+      hasLoadedOnce.current = true
+      setLoading(false)
     }
-    // Live-refresh on the backend's existing payment:updated socket event
-    // (payment.service.js already emits it) instead of relying solely on
-    // polling; the interval below now only exists as a safety net.
+  }, [page, appliedSearch, statusFilter])
+
+  const fetchSummary = useCallback(async () => {
+    if (!canViewAnalytics) return
+    try {
+      const [totals, parts] = await Promise.all([api.get('/analytics/payments'), api.get('/analytics/payments/breakdown')])
+      setStats(totals.data)
+      setBreakdown(parts.data)
+    } catch (err) {
+      console.error('Error fetching payment totals:', err)
+    }
+  }, [canViewAnalytics])
+
+  useEffect(() => { fetchRows() }, [fetchRows])
+  useEffect(() => { fetchSummary() }, [fetchSummary])
+
+  // Live refresh of everything on the page (the trend chart refreshes itself the same way)
+  useEffect(() => {
+    const refresh = () => { fetchRows(); fetchSummary() }
     const unsubscribe = subscribe('payment:updated', refresh)
-    const interval = window.setInterval(refresh, 120000)
-    const onVisibilityChange = () => {
-      if (!document.hidden) refresh()
-    }
+    const interval = window.setInterval(() => { if (!document.hidden) refresh() }, REFRESH_MS)
+    const onVisibilityChange = () => { if (!document.hidden) refresh() }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       unsubscribe()
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [statusFilter, period, canViewAnalytics, subscribe, connected])
+  }, [fetchRows, fetchSummary, subscribe, connected])
 
-  // Only the very first load blocks the table — filter changes, socket-driven
-  // refreshes, and the safety-net poll all update the rows in place.
-  const hasLoadedOnce = useRef(false)
+  const collectionRate = stats?.paymentRate || 0
 
-  const fetchPayments = async () => {
-    try {
-      if (!hasLoadedOnce.current) setLoading(true)
-      const params = {}
-      if (statusFilter) params.paymentStatus = statusFilter
-
-      const response = await api.get('/payments', { params })
-      setPayments(response.data.payments || [])
-    } catch (error) {
-      console.error('Error fetching payments:', error)
-    } finally {
-      hasLoadedOnce.current = true
-      setLoading(false)
-    }
-  }
-
-  const fetchStats = async () => {
-    try {
-      const response = await api.get('/analytics/payments')
-      setStats(response.data)
-    } catch (error) {
-      console.error('Error fetching payment stats:', error)
-    }
-  }
-
-  const fetchRevenueData = async () => {
-    try {
-      const response = await api.get('/analytics/revenue')
-      setRevenueData((response.data.monthlyRevenue || []).map(item => ({
-        ...item,
-        amount: Number(item.value || item.amount || 0) / 100
-      })))
-    } catch (error) {
-      console.error('Error fetching revenue data:', error)
-    }
-  }
-
-  const filteredPayments = payments.filter(payment => {
-    const caseData = payment.caseId || payment.case
-    const query = searchTerm.toLowerCase()
-    const matchesSearch = !query ||
-      payment.invoiceNumber?.toLowerCase().includes(query) ||
-      caseData?.caseNumber?.toLowerCase().includes(query) ||
-      caseData?.clientName?.toLowerCase().includes(query) ||
-      payment.user?.email?.toLowerCase().includes(query)
-    return matchesSearch
-  })
-
-  const getStatusColor = (status) => {
-    const colors = {
-      paid: 'bg-green-100 text-green-800',
-      partially_paid: 'bg-amber-100 text-amber-800',
-      not_started: 'bg-red-100 text-red-800',
-      overdue: 'bg-red-100 text-red-800'
-    }
-    return colors[status] || 'bg-secondary text-foreground'
-  }
-
-  const formatCurrency = (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: String(currency || 'USD').toUpperCase()
-    }).format((Number(amount) || 0) / 100)
-  }
-
-  const formatDate = (...values) => {
-    for (const value of values) {
-      if (!value) continue
-      const parsed = new Date(value)
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-      }
-    }
-    return 'Not available'
-  }
-
-  const paymentDate = (payment) => {
-    const paidTransaction = [...(payment.transactions || [])]
-      .filter((transaction) => transaction.paidAt || ['paid', 'succeeded'].includes(transaction.status))
-      .sort((left, right) => new Date(right.paidAt || right.createdAt || 0) - new Date(left.paidAt || left.createdAt || 0))[0]
-    const paymentHistory = [...(payment.paymentHistory || [])]
-      .sort((left, right) => new Date(right.paymentDate || 0) - new Date(left.paymentDate || 0))[0]
-    const paidDate = formatDate(payment.paymentDate, paidTransaction?.paidAt, paymentHistory?.paymentDate)
-    return paidDate === 'Not available' ? 'Not paid yet' : paidDate
-  }
-
-  const activityDate = (payment) => {
-    const paidDate = paymentDate(payment)
-    return paidDate === 'Not paid yet' ? formatDate(payment.updatedAt, payment.createdAt) : paidDate
-  }
-
-  const caseFor = (payment) => payment.caseId || payment.case || null
-  const packageFor = (payment) => payment.packageName || payment.plan?.packageName || payment.package || caseFor(payment)?.plan?.packageName || caseFor(payment)?.package || 'Not assigned'
-  const displayText = (value) => String(value || 'Not available').replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-  const selectedCase = selectedPayment ? caseFor(selectedPayment) : null
+  // ---- chart data ----
+  const types = breakdown?.byVisaType || []
+  const paidByType = (() => {
+    const sorted = types.filter((item) => item.paid > 0).sort((a, b) => b.paid - a.paid)
+    const head = sorted.slice(0, 7).map((item, index) => ({ name: item.visaType, value: item.paid, color: SHARE_COLORS[index % SHARE_COLORS.length] }))
+    const rest = sorted.slice(7).reduce((sum, item) => sum + item.paid, 0)
+    return rest > 0 ? [...head, { name: 'Other', value: rest, color: FINANCE_COLORS.neutral }] : head
+  })()
+  const outstandingByType = types.filter((item) => item.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding).slice(0, 8).map((item) => ({ name: clip(item.visaType, 16), full: item.visaType, outstanding: item.outstanding }))
+  // each bar is named by the petitioner only (no case number), cut with … to stay on one line; the tooltip has the full name and the case type
+  const topCases = (breakdown?.topOutstandingCases || []).map((item) => ({ name: clip(item.petitioner || item.name, 22), full: `${item.petitioner || item.name}${item.visaType ? ` · ${item.visaType}` : ''}`, outstanding: item.outstanding }))
+  const managers = (breakdown?.byCaseManager || []).slice(0, 8).map((item) => ({ name: clip(item.name, 12), full: item.name, cases: item.cases, total: item.total, paid: item.paid, outstanding: item.outstanding, average: item.averageCaseValue }))
+  const overallDonut = [
+    { name: 'Paid', value: Number(stats?.totalRevenue) || 0, color: FINANCE_COLORS.paid },
+    { name: 'Outstanding', value: Number(stats?.pendingAmount) || 0, color: FINANCE_COLORS.outstanding },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Payments Overview</h1>
-        <p className="text-muted-foreground mt-1">
-          {canViewAnalytics ? 'Track case payments, balances, and revenue' : 'Review case invoices, payments, and outstanding balances'}
-        </p>
+        <p className="text-muted-foreground mt-1">Case fees, USCIS fees and what clients have paid (live from GoHighLevel, in US dollars)</p>
       </div>
 
-      {/* Manager Payment Analytics */}
-      {canViewAnalytics && <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Total Revenue</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats?.totalRevenue || 0)}</p>
-              <p className="text-sm text-blue-600 mt-1">This month</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
-              <DollarSign className="w-6 h-6 text-white" />
-            </div>
+      {canViewAnalytics && (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            {[
+              { label: 'Total Fees', value: usd(stats?.total), sub: `${stats?.count || 0} case${stats?.count === 1 ? '' : 's'}`, dot: FINANCE_COLORS.total },
+              { label: 'USCIS Fees', value: usd(stats?.uscisFees), sub: 'tracked separately', dot: FINANCE_COLORS.uscis },
+              { label: 'Collected', value: usd(stats?.totalRevenue), sub: 'paid by clients', dot: FINANCE_COLORS.paid },
+              { label: 'Outstanding', value: usd(stats?.pendingAmount), sub: 'total fees not yet paid', dot: FINANCE_COLORS.outstanding },
+              { label: 'Collection Rate', value: `${collectionRate}%`, sub: 'collected / total fees', dot: FINANCE_COLORS.partial },
+            ].map(({ label, value, sub, dot }) => (
+              <div key={label} className="card">
+                <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Pending Payments</p>
-              <p className="text-2xl font-bold text-foreground">{stats?.pendingPayments || 0}</p>
-              <p className="text-sm text-amber-600 mt-1">{formatCurrency(stats?.pendingAmount || 0)}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-              <Clock className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Overdue Payments</p>
-              <p className="text-2xl font-bold text-foreground">{stats?.overduePayments || 0}</p>
-              <p className="text-sm text-red-600 mt-1">{formatCurrency(stats?.overdueAmount || 0)}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-red-500 to-pink-600">
-              <AlertTriangle className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Payment Rate</p>
-              <p className="text-2xl font-bold text-foreground">{stats?.paymentRate || 0}%</p>
-              <p className="text-sm text-green-600 mt-1">Collection rate</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600">
-              <TrendingUp className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-      </div>}
 
-      {/* Revenue Chart */}
-      {canViewAnalytics && <div className="card">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Revenue by Month</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={revenueData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="amount" fill="#10b981" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>}
+          <RevenueTrendChart title="Collected per day" />
 
-      {/* Filters */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <Panel title="Paid vs outstanding" subtitle="All cases" empty={overallDonut[0].value + overallDonut[1].value === 0}>
+              <Donut data={overallDonut} />
+            </Panel>
+            <Panel title="Paid by case type" subtitle="Share of what has been collected" empty={paidByType.length === 0}>
+              <Donut data={paidByType} />
+            </Panel>
+            <Panel title="Outstanding by case type" subtitle="Still to be paid" empty={outstandingByType.length === 0}>
+              <ResponsiveContainer width="100%" height={Math.max(200, outstandingByType.length * 34 + 20)}>
+                <BarChart data={outstandingByType} layout="vertical" margin={{ left: 0, right: 12, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={short} />
+                  <YAxis dataKey="name" type="category" width={92} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => usd(value)} labelFormatter={(label, items) => items?.[0]?.payload?.full || label} contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
+                  <Bar dataKey="outstanding" name="Outstanding" radius={[0, 4, 4, 0]} barSize={14}>
+                    {outstandingByType.map((entry, index) => <Cell key={entry.full} fill={TYPE_BAR_COLORS[index % TYPE_BAR_COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <Panel title="Outstanding by case" subtitle="The 10 cases with the most still to pay" empty={topCases.length === 0}>
+              <ResponsiveContainer width="100%" height={Math.max(220, topCases.length * 32 + 20)}>
+                <BarChart data={topCases} layout="vertical" margin={{ left: 0, right: 12, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={short} />
+                  <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(value) => usd(value)} labelFormatter={(label, items) => items?.[0]?.payload?.full || label} contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
+                  <Bar dataKey="outstanding" name="Outstanding" radius={[0, 4, 4, 0]} barSize={14}>
+                    {topCases.map((entry, index) => <Cell key={`${entry.full}-${index}`} fill={CASE_BAR_COLORS[index % CASE_BAR_COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+            <Panel title="Case managers: fees handled vs collected" subtitle="By the case manager assigned to each case: who handles the most valuable cases" empty={managers.length === 0}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={managers} margin={{ left: 0, right: 8, top: 6, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={short} width={64} />
+                  <Tooltip formatter={(value, name) => [usd(value), name]} labelFormatter={(label, items) => { const p = items?.[0]?.payload; return p ? `${p.full} · ${p.cases} case${p.cases === 1 ? '' : 's'} · average ${usd(p.average)}` : label }} contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.12)' }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => <span className="text-muted-foreground">{value}</span>} />
+                  <Bar dataKey="total" name="Total fees" fill={MANAGER_COLORS.total} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="paid" name="Collected" fill={MANAGER_COLORS.paid} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="outstanding" name="Outstanding" fill={MANAGER_COLORS.outstanding} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+          </div>
+        </>
+      )}
+
       <div className="card">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search payments..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <input type="text" placeholder="Search name, email, case, invoice or visa…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
           </div>
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="partially_paid">Partially Paid</option>
-              <option value="not_started">Not Started</option>
-              <option value="overdue">Overdue</option>
-            </select>
-          </div>
-          {canViewAnalytics && <div>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="this_month">This Month</option>
-              <option value="this_week">This Week</option>
-              <option value="today">Today</option>
-            </select>
-          </div>}
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">All Status</option>
+            <option value="paid">Paid</option>
+            <option value="partially_paid">Partially paid</option>
+            <option value="pending">Unpaid</option>
+          </select>
         </div>
       </div>
 
-      {/* Payments Table */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-foreground mb-1">Case Payment Accounts</h3>
-        <p className="text-sm text-muted-foreground mb-4">Each account is linked to its immigration case, invoice, package, and current balance.</p>
+        <h3 className="text-sm font-semibold text-foreground">Case Payments</h3>
+        <p className="mb-3 text-xs text-muted-foreground">Cases whose GoHighLevel card has a Value, USCIS Fee or QB Amount Paid. Click a row to open the case.</p>
+        {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-muted-foreground">Loading payments...</div>
-          </div>
+          <div className="flex items-center justify-center h-40"><div className="text-muted-foreground">Loading payments…</div></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead>
-                <tr className="bg-muted">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Invoice</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Package</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Remaining</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Activity Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Action</th>
+          // fits the page width (no sideways scroll); scrolls up and down after 10 rows
+          <div className="overflow-x-hidden overflow-y-auto rounded-lg border border-border" style={{ maxHeight: 570 }}>
+            <table className="w-full table-fixed text-[13px]">
+              <colgroup>
+                <col style={{ width: '24%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '11%' }} /><col style={{ width: '9%' }} /><col style={{ width: '11%' }} /><col style={{ width: '11%' }} /><col style={{ width: '9%' }} />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr>
+                  {['Client', 'Case type', 'Case', 'Total fees', 'USCIS', 'Paid', 'Outstanding', 'Status'].map((heading) => (
+                    <th key={heading} className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{heading}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredPayments.length > 0 ? (
-                  filteredPayments.map((payment) => {
-                    const caseData = caseFor(payment)
-                    const currency = payment.currency || 'USD'
-                    return (
-                    <tr key={payment._id} className="border-b hover:bg-muted">
-                      <td className="px-6 py-4">
-                        <p className="font-semibold text-foreground">{caseData?.caseNumber || caseData?.caseId || 'Unlinked case'}</p>
-                        <p className="text-xs text-muted-foreground">{displayText(caseData?.status || caseData?.stage)}</p>
+                {rows.length > 0 ? rows.map((row) => {
+                  const status = FINANCE_STATUS[row.status] || FINANCE_STATUS.no_fee
+                  const visa = resolveDisplayVisa(row) || '—'
+                  return (
+                    <tr key={row._id} onClick={() => navigate(`/crm-cases/${row._id}`)} className="cursor-pointer border-t border-border hover:bg-muted/60">
+                      <td className="px-3 py-2">
+                        <p className="truncate font-medium text-foreground" title={row.clientName}>{row.clientName || '—'}</p>
+                        <p className="truncate text-[11px] text-muted-foreground" title={row.clientEmail}>{row.clientEmail || ''}</p>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="font-medium text-foreground">{caseData?.clientName || payment.user?.name || payment.user?.displayName || 'Client unavailable'}</p>
-                        <p className="text-xs text-muted-foreground">{caseData?.clientEmail || payment.user?.email || ''}</p>
+                      <td className="px-3 py-2"><p className="truncate text-foreground" title={visa}>{visa}</p></td>
+                      <td className="px-3 py-2">
+                        <p className="truncate text-foreground" title={row.caseNumber}>{row.caseNumber}</p>
+                        {row.invoiceNo ? <p className="truncate text-[11px] text-muted-foreground" title={`Invoice ${row.invoiceNo}`}>{row.invoiceNo}</p> : null}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-medium">{payment.invoiceNumber || payment.invoices?.[0]?.invoiceNumber || 'Pending invoice'}</td>
-                      <td className="px-6 py-4 max-w-[180px]">{displayText(packageFor(payment))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{formatCurrency(payment.totalAmount || payment.totalFee, currency)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap font-semibold text-green-600">{formatCurrency(payment.amountPaid ?? payment.paidAmount, currency)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap font-semibold text-amber-600">{formatCurrency(payment.remainingAmount, currency)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(payment.paymentStatus)}`}>
-                          {displayText(payment.paymentStatus)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">{activityDate(payment)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedPayment(payment)}
-                          className="inline-flex items-center gap-1.5 font-medium text-blue-700 hover:text-blue-900"
-                        >
-                          <Eye className="h-4 w-4" /> View Details
-                        </button>
-                      </td>
+                      <td className="px-3 py-2 tabular-nums">{usd(row.totalAmount)}</td>
+                      <td className="px-3 py-2 tabular-nums">{usd(row.uscisFee)}</td>
+                      <td className="px-3 py-2 font-medium tabular-nums text-foreground">{usd(row.amountPaid)}</td>
+                      <td className="px-3 py-2 font-medium tabular-nums text-foreground">{usd(row.outstanding)}</td>
+                      <td className="px-3 py-2"><StatusDot color={status.color}>{status.label}</StatusDot></td>
                     </tr>
-                  )})
-                ) : (
-                  <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center text-muted-foreground">
-                      No payments found
-                    </td>
-                  </tr>
+                  )
+                }) : (
+                  <tr><td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">No payments found</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
-      </div>
-
-      {selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-card shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-6 py-4">
-              <div>
-                <h2 className="text-xl font-bold text-foreground">Case Payment Details</h2>
-                <p className="text-sm text-muted-foreground">{selectedPayment.invoiceNumber || 'Invoice pending'}</p>
-              </div>
-              <button type="button" onClick={() => setSelectedPayment(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary" aria-label="Close payment details">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-6 p-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  ['Case Number', selectedCase?.caseNumber || selectedCase?.caseId || 'Unlinked'],
-                  ['Client Name', selectedCase?.clientName || selectedPayment.user?.name || selectedPayment.user?.displayName || 'Not available'],
-                  ['Case Status', displayText(selectedCase?.status || selectedCase?.stage)],
-                  ['Invoice Number', selectedPayment.invoiceNumber || selectedPayment.invoices?.[0]?.invoiceNumber || 'Pending'],
-                  ['Package', displayText(packageFor(selectedPayment))],
-                  ['Visa Type', resolveDisplayVisa(selectedCase) || 'Not available'],
-                  ['Payment Status', displayText(selectedPayment.paymentStatus)],
-                  ['Payment Date', paymentDate(selectedPayment)],
-                  ['Next Due Date', formatDate(selectedPayment.nextPaymentDueDate)],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-border bg-muted p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-                    <p className="mt-1 font-semibold text-foreground">{value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded-xl bg-slate-100 p-4">
-                  <p className="text-sm text-slate-600">Total Invoice</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">{formatCurrency(selectedPayment.totalAmount || selectedPayment.totalFee, selectedPayment.currency)}</p>
-                </div>
-                <div className="rounded-xl bg-blue-50 p-4">
-                  <p className="text-sm text-blue-700">Amount Paid</p>
-                  <p className="mt-1 text-xl font-bold text-blue-800">{formatCurrency(selectedPayment.amountPaid ?? selectedPayment.paidAmount, selectedPayment.currency)}</p>
-                </div>
-                <div className="rounded-xl bg-amber-50 p-4">
-                  <p className="text-sm text-amber-700">Remaining Balance</p>
-                  <p className="mt-1 text-xl font-bold text-amber-800">{formatCurrency(selectedPayment.remainingAmount, selectedPayment.currency)}</p>
-                </div>
-              </div>
-
-              {selectedPayment.invoices?.length > 0 && (
-                <div>
-                  <h3 className="mb-3 font-semibold text-foreground">Invoices</h3>
-                  <div className="space-y-2">
-                    {selectedPayment.invoices.map((invoice) => (
-                      <div key={invoice._id || invoice.invoiceNumber} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-                        <div>
-                          <p className="font-semibold text-foreground">{invoice.invoiceNumber}</p>
-                          <p className="text-muted-foreground">Issued {formatDate(invoice.issuedAt)} · Due {formatDate(invoice.dueDate)}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{formatCurrency(invoice.total, invoice.currency || selectedPayment.currency)}</p>
-                          <p className="text-muted-foreground">{displayText(invoice.status)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
-                <button type="button" onClick={() => setSelectedPayment(null)} className="btn-secondary">Close</button>
-                {selectedCase?._id && (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/crm-cases/${selectedCase._id}`)}
-                    className="btn-primary inline-flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" /> Open Case
-                  </button>
-                )}
-              </div>
+        {pagination.pages > 1 ? (
+          <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+            <span>{pagination.total} cases · page {pagination.page} of {pagination.pages}</span>
+            <div className="flex gap-2">
+              <button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
+              <button type="button" className="btn-secondary" disabled={page >= pagination.pages} onClick={() => setPage((current) => Math.min(pagination.pages, current + 1))}>Next</button>
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   )
 }

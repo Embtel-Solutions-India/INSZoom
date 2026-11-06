@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import CaseManagerPerformance from '../components/CaseManagerPerformance'
+import StatusDot from '../components/ui/StatusDot'
+import { FINANCE_COLORS, FINANCE_STATUS } from '../utils/financeColors'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import {
   Area,
@@ -51,8 +53,10 @@ import {
 
 const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: String(currency || 'USD').toUpperCase()
-}).format((Number(amount) || 0) / 100)
+  currency: String(currency || 'USD').toUpperCase(),
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const CHART_COLORS = ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#eab308', '#db2777']
 
@@ -99,6 +103,7 @@ const CaseManagerDetails = () => {
   const [caseManager, setCaseManager] = useState(null)
   const [stats, setStats] = useState(null)
   const [cases, setCases] = useState([])
+  const [casesLoading, setCasesLoading] = useState(true) // the list arrives after the page: show a loader, not an empty area
   const [activities, setActivities] = useState([])
   const [payments, setPayments] = useState([])
   const [paymentSummary, setPaymentSummary] = useState(null)
@@ -151,6 +156,7 @@ const CaseManagerDetails = () => {
   }
 
   const fetchCases = async () => {
+    setCasesLoading(true)
     try {
       const params = {
         status: caseStatusFilter,
@@ -163,6 +169,8 @@ const CaseManagerDetails = () => {
       setCasesPagination(response.data.pagination)
     } catch (error) {
       console.error('Error fetching cases:', error)
+    } finally {
+      setCasesLoading(false)
     }
   }
 
@@ -228,25 +236,8 @@ const CaseManagerDetails = () => {
   }
 
   const getPaymentStatusBadge = (status) => {
-    const badges = {
-      paid: 'bg-green-100 text-green-800',
-      partially_paid: 'bg-yellow-100 text-yellow-800',
-      not_started: 'bg-secondary text-foreground',
-      overdue: 'bg-red-100 text-red-800',
-      refunded: 'bg-purple-100 text-purple-800'
-    }
-    const labels = {
-      paid: 'Paid',
-      partially_paid: 'Partially Paid',
-      not_started: 'Pending',
-      overdue: 'Overdue',
-      refunded: 'Refunded'
-    }
-    return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badges[status] || badges.not_started}`}>
-        {labels[status] || status}
-      </span>
-    )
+    const entry = FINANCE_STATUS[status] || FINANCE_STATUS.no_fee
+    return <StatusDot color={entry.color}>{entry.label}</StatusDot>
   }
 
   if (loading) {
@@ -293,7 +284,7 @@ const CaseManagerDetails = () => {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Case Manager Details</h1>
+          <h1 className="text-2xl font-bold text-foreground">{caseManager.role === 'team_lead' ? 'Team Lead Details' : 'Case Manager Details'}</h1>
           <p className="text-muted-foreground mt-1">{caseManager.name}</p>
         </div>
       </div>
@@ -309,7 +300,7 @@ const CaseManagerDetails = () => {
           <div className="flex-1">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-foreground">{caseManager.name}</h2>
+                <h2 className="text-xl font-bold text-foreground">{caseManager.name}{caseManager.role === 'team_lead' && <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 align-middle text-xs font-medium text-muted-foreground">Team Lead</span>}</h2>
                 <p className="text-muted-foreground">Employee ID: {caseManager._id?.slice(-6).toUpperCase()}</p>
                 <div className="flex flex-wrap gap-4 mt-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -387,7 +378,7 @@ const CaseManagerDetails = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold text-foreground">${(stats.totalRevenue || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">${Math.round(stats.totalRevenue || 0).toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-blue-500" />
             </div>
@@ -396,7 +387,7 @@ const CaseManagerDetails = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Collected</p>
-                <p className="text-2xl font-bold text-foreground">${(stats.collectedRevenue || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">${Math.round(stats.collectedRevenue || 0).toLocaleString()}</p>
               </div>
               <TrendingUp className="w-8 h-8 text-purple-500" />
             </div>
@@ -442,7 +433,7 @@ const CaseManagerDetails = () => {
               { id: 'payments', label: 'Payments', icon: CreditCard },
               { id: 'analytics', label: 'Analytics', icon: BarChart3 },
               { id: 'performance', label: 'Performance', icon: Star }
-            ].map((tab) => (
+            ].filter((tab) => !(tab.id === 'performance' && caseManager.role === 'team_lead')).map((tab) => ( // reviews are for case managers
               <button
                 key={tab.id}
                 onClick={() => {
@@ -530,37 +521,45 @@ const CaseManagerDetails = () => {
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Progress</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
                   </tr>
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
-                  {cases.map((caseItem) => (
+                  {casesLoading && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">
+                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-primary" aria-hidden="true" />Loading assigned cases…</span>
+                      </td>
+                    </tr>
+                  )}
+                  {!casesLoading && cases.length === 0 && (
+                    <tr><td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">No cases are assigned yet.</td></tr>
+                  )}
+                  {!casesLoading && cases.map((caseItem) => (
                     <tr key={caseItem._id} className="hover:bg-muted">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                      <td className="px-6 py-4 text-sm">
+                        <p className="font-semibold text-foreground">{caseItem.listName || caseItem.clientName || '—'}</p>
+                        <p className="text-muted-foreground">{caseItem.listEmail || caseItem.clientEmail || '—'}</p>
+                        <span className="mt-1 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{resolveDisplayVisa(caseItem) || '—'}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">
                         {caseItem.caseNumber}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {caseItem.clientName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {resolveDisplayVisa(caseItem)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {getStageLabel(caseItem.stage)}
+                        {caseItem.pipelineStage || getStageLabel(caseItem.stage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="w-full bg-muted rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${getStageProgress(caseItem.stage)}%` }}
+                            style={{ width: `${caseItem.completed ? 100 : getStageProgress(caseItem.stage)}%` }}
                           ></div>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">{Math.round(getStageProgress(caseItem.stage))}%</p>
+                        <p className="text-xs text-muted-foreground mt-1">{caseItem.completed ? 100 : Math.round(getStageProgress(caseItem.stage))}%</p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -667,22 +666,17 @@ const CaseManagerDetails = () => {
           <div className="p-6">
             {paymentSummary && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Total Assigned</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueAssigned)}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Collected</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueCollected)}</p>
-                </div>
-                <div className="bg-orange-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Outstanding</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.outstandingRevenue)}</p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Collection Rate</p>
-                  <p className="text-xl font-bold text-foreground">{paymentSummary.collectionRate}%</p>
-                </div>
+                {[
+                  ['Total Assigned', formatPaymentAmount(paymentSummary.totalRevenueAssigned), FINANCE_COLORS.total],
+                  ['Collected', formatPaymentAmount(paymentSummary.totalRevenueCollected), FINANCE_COLORS.paid],
+                  ['Outstanding', formatPaymentAmount(paymentSummary.outstandingRevenue), FINANCE_COLORS.outstanding],
+                  ['Collection Rate', `${paymentSummary.collectionRate}%`, FINANCE_COLORS.partial],
+                ].map(([label, value, dot]) => (
+                  <div key={label} className="rounded-lg border border-border bg-card p-4">
+                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}</p>
+                    <p className="text-xl font-semibold tabular-nums text-foreground">{value}</p>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -795,7 +789,7 @@ const CaseManagerDetails = () => {
                             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                             <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} />
                             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} hide />
-                            <Tooltip formatter={(value, name) => [name === 'payments' ? `$${Number(value || 0).toLocaleString()}` : value, formatLabel(name)]} />
+                            <Tooltip formatter={(value, name) => [name === 'payments' ? `$${Math.round(Number(value || 0)).toLocaleString()}` : value, formatLabel(name)]} />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
                             <Line yAxisId="left" type="monotone" dataKey="active" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
                             <Line yAxisId="left" type="monotone" dataKey="attention" stroke="#f97316" strokeWidth={2} dot={{ r: 2 }} />

@@ -4,10 +4,10 @@ const DeviceToken = require("../../models/DeviceToken");
 // can log out and back in as a different user, and the token should follow
 // whoever is currently authenticated rather than accumulate stale duplicates.
 // The schema's unique index on `token` makes this race-safe.
-async function registerDevice(userId, { token, browser, platform } = {}) {
+async function registerDevice(userId, { token, browser, platform, origin } = {}) {
   return DeviceToken.findOneAndUpdate(
     { token },
-    { userId, token, browser, platform, active: true, lastUsedAt: new Date() },
+    { userId, token, browser, platform, ...(origin ? { origin } : {}), active: true, lastUsedAt: new Date() },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 }
@@ -26,7 +26,7 @@ async function deactivateToken(token) {
 }
 
 async function tokensForUser(userId) {
-  return DeviceToken.find({ userId, active: true }).select("token").lean();
+  return DeviceToken.find({ userId, active: true }).select("token origin").lean();
 }
 
 async function tokensForUsers(userIds) {

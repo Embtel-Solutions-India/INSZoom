@@ -244,6 +244,8 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              {/* Pre-split notification links ("/admin/portal?tab=leads", "?tab=appointments") live on in stored notifications. */}
+              <Route path="admin/portal" element={<Navigate to="/leads" replace />} />
               <Route path="users/*" element={<Navigate to="/dashboard" replace />} />
               <Route path="staff-profile/:userId" element={<Navigate to="/dashboard" replace />} />
               <Route 
@@ -334,6 +336,8 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              {/* Any other unknown address: never a blank page. Inside the protected layout, so a signed-out visitor is sent to /login first. */}
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Routes>
           </Suspense>

@@ -258,6 +258,8 @@ async function getMappingView() {
 // nothing is saved unless every row is valid.
 async function saveMapping(inputEntries) {
   const checked = validateEntries(inputEntries);
+  // An empty table would silently leave EVERY GoHighLevel card without a visa type (it reads as "deliberately emptied"), so it is refused.
+  if (checked.ok && checked.entries.length === 0) throw Object.assign(new Error("The visa mapping cannot be empty: GoHighLevel cards would get no visa type. Keep at least one row."), { status: 400, code: "INVALID_MAPPING", errors: ["empty mapping"] });
   if (!checked.ok) throw Object.assign(new Error(checked.errors.slice(0, 5).join("; ")), { status: 400, code: "INVALID_MAPPING", errors: checked.errors });
   const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId });
   if (!config) throw Object.assign(new Error("Run the GHL setup first."), { status: 409 });

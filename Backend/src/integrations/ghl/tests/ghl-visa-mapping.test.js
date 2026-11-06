@@ -177,3 +177,24 @@ test("a visa that exists in the mapping but not in the app is treated as unmappe
   assert.equal(getCaseStructure("GONE-VISA"), null);
   assert.equal(planFromResolution(r).applied, false);
 });
+
+test("the real GoHighLevel dropdown options (2026-11-06): every unambiguous one maps to an exact visa type; the combined / undefined ones stay unmapped", () => {
+  const options = {
+    work_visa: { "H-1B - Specialty Occupation": "H-1B", "O-2 - Essential Support": "O-2", "R-1 - Religious Worker": "R-1", "TN - NAFTA Professionals": "TN", "E-3 - Australian Professionals": "E-3" },
+    study_visa: { "F-1 - Academic Student": "F-1", "J-1 - Exchange Visitor": "J-1", "M-1 - Vocational Training": "M-1" },
+    green_card: { "EB-1A - Extraordinary Ability": "EB-1A", "EB-1B - Outstanding Professor": "EB-1B", "EB-1C - Multinational Executive": "EB-1C", "EB-2 NIW - National Interest": "EB-2 NIW", "EB-4 - Special Immigrant": "EB-4" },
+    business__investment: { "E-1 - Treaty Trader": "E-1", "B-1 / B-2 - Visitor Visa": "B-1/B-2", "E-2 - Treaty Investor": "E-2" },
+  };
+  for (const [field, map] of Object.entries(options)) {
+    for (const [value, visa] of Object.entries(map)) assert.equal(resolve({ [field]: value }).visaType, visa, `${field} = ${value}`);
+  }
+  // two visas in one option, or no case type behind it: never guessed
+  for (const [field, value] of [["work_visa", "L-1A / L-1B - Intra-company Transfer"], ["work_visa", "O-1A / O-1B - Extraordinary Ability"], ["work_visa", "P-1 - Athletes & Entertainers"], ["study_visa", "OPT / STEM OPT"], ["study_visa", "CPT / Day 1 CPT"], ["green_card", "EB-2 / EB-3 - Employment Based"], ["green_card", "I-130 - Family Green Card Petition"], ["business__investment", "EB-5 - Investor Green Card"], ["business__investment", "L-1A / L-1B - New Office"]]) {
+    assert.equal(resolve({ [field]: value }).status, "unmapped", `${field} = ${value}`);
+  }
+});
+
+test("an empty mapping table cannot be saved (it would leave every GoHighLevel card without a visa)", async () => {
+  const visaService = require("../ghlVisaService");
+  await assert.rejects(() => visaService.saveMapping([]), /cannot be empty/);
+});

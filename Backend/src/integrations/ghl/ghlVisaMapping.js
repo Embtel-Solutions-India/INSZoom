@@ -62,6 +62,7 @@ const DEFAULT_ENTRIES = [
   row("business__investment", "E-1 - Treaty Trader", "E-1"),
   row("business__investment", "B-1", "B-1"),
   row("business__investment", "B-2 - Visitor Visa", "B-2"),
+  row("business__investment", "B-1 / B-2 - Visitor Visa", "B-1/B-2"), // the dropdown option as GoHighLevel words it today; B-1/B-2 is its own case type
   row("business__investment", "E-2 - Treaty Investor", "E-2"),
   row("business__investment", "L-1A", "L-1A"),
   row("business__investment", "L-1B - New Office", "L-1B"),

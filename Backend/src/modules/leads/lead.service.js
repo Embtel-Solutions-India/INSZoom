@@ -52,7 +52,7 @@ async function notifyStaffOfLead(lead) {
       type: "lead_created",
       title: `New lead: ${lead.fullName}${tierLabel}`,
       message: `${lead.visaPathway || "General inquiry"} — ${lead.email}`,
-      link: "/admin/portal?tab=leads",
+      link: "/leads",
       priority: lead.scoreResult?.tier === "A" ? "high" : "medium",
       channels: ["in_app", "socket", "push"],
       metadata: { leadId: String(lead._id), tier: lead.scoreResult?.tier },
@@ -68,6 +68,12 @@ async function notifyStaffOfLead(lead) {
     data: { fullName: lead.fullName, email: lead.email, phone: lead.phone, visaPathway: lead.visaPathway },
     covered: { admin: { notified: true, emailed: true } }, // the internal lead email above is the existing one
   });
+}
+
+// A new lead also becomes one card in the GoHighLevel "Immiglance Pipeline" (first stage). In the background, after the lead is saved; it never throws and
+// never delays the request (integrations/ghl/ghlLeadPipeline.js). Does nothing unless GHL_IMMIGLANCE_PIPELINE_ID is set.
+function sendToGhlLeadPipeline(lead) {
+  try { require("../../integrations/ghl/ghlLeadPipeline").leadCreated(lead); } catch (_error) { /* never affects the lead */ }
 }
 
 async function createConsultationLead(payload = {}, req, options = {}) {
@@ -96,6 +102,7 @@ async function createConsultationLead(payload = {}, req, options = {}) {
   // (e.g. Atlas M0 timeout on Settings.findOne inside notifyStaffOfLead)
   // never loses or delays the lead itself.
   notifyStaffOfLead(lead).catch(() => {});
+  sendToGhlLeadPipeline(lead);
   return lead;
 }
 
@@ -189,6 +196,7 @@ async function createQuizLead(payload, req) {
 
   // Fire-and-forget: CRM sync must never delay or fail the quiz submit response.
   crmSyncService.syncLead(lead, req).catch(() => {});
+  sendToGhlLeadPipeline(lead);
 
   return lead;
 }
@@ -282,6 +290,7 @@ async function createLeadFromQuiz(payload = {}, req) {
 
   const lead = await LeadModel.create(leadData);
   // Quiz leads intentionally trigger no email / in-app / push notification.
+  sendToGhlLeadPipeline(lead);
   return lead;
 }
 
@@ -313,6 +322,7 @@ async function createLeadFromIntake(payload = {}, user, req) {
   const lead = await LeadModel.create(leadData);
   // Fire-and-forget - see createConsultationLead's comment above for why.
   notifyStaffOfLead(lead).catch(() => {});
+  sendToGhlLeadPipeline(lead);
   return lead;
 }
 

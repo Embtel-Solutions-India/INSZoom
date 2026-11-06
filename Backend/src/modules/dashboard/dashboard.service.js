@@ -76,22 +76,6 @@ function scopedCaseFilter(user) {
   return {};
 }
 
-async function paymentTotals(match = {}) {
-  const result = await Payment.aggregate([
-    { $match: match },
-    {
-      $group: {
-        _id: null,
-        revenue: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } },
-        outstanding: { $sum: "$remainingAmount" },
-        refunded: { $sum: "$refundedAmount" },
-        count: { $sum: 1 },
-      },
-    },
-  ]);
-  return result[0] || { revenue: 0, outstanding: 0, refunded: 0, count: 0 };
-}
-
 async function executiveMetrics(query = {}) {
   const range = dateRange(query);
   const [users, clients, companies, beneficiaries, cases, payments, documents, securityAlerts, userGrowth] = await Promise.all([
@@ -100,7 +84,7 @@ async function executiveMetrics(query = {}) {
     Company.countDocuments(range),
     Beneficiary.countDocuments(range),
     Case.countDocuments(withCountable(range)),
-    paymentTotals(range),
+    require("../finance/caseFinance.service").totals(require("../finance/caseFinance.service").financeMatch(range)),
     Document.aggregate([{ $match: range }, { $group: { _id: null, count: { $sum: 1 }, storageBytes: { $sum: { $ifNull: ["$size", "$fileSize"] } } } }]),
     Notification.countDocuments({ category: { $in: ["security", "system"] }, isRead: false }),
     monthlyTrend(User, null, range),
@@ -130,10 +114,14 @@ async function executiveMetrics(query = {}) {
 
 async function caseAnalytics(query = {}, user) {
   const match = withCountable({ ...dateRange(query), ...scopedCaseFilter(user) });
-  const [total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
+  // The dashboard cards come from each case's GoHighLevel pipeline stage (2026-11-06): closed = Submitted (FedEx), Approved or Disapproved; on hold = the
+  // On Hold stage; active = the assigned cases (a case manager is on it) that are neither closed nor on hold.
+  const { completedCaseMatch, onHoldCaseMatch } = require("../cases/caseManagerAccess");
+  const [total, active, closed, onHold, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
     Case.countDocuments(match),
-    Case.countDocuments({ ...match, status: "active" }),
-    Case.countDocuments({ ...match, status: { $in: ["closed", "approved"] } }),
+    Case.countDocuments({ $and: [match, { assignedCaseManager: { $ne: null } }, { $nor: [completedCaseMatch(), onHoldCaseMatch()] }] }),
+    Case.countDocuments({ $and: [match, completedCaseMatch()] }),
+    Case.countDocuments({ $and: [match, onHoldCaseMatch()] }),
     groupCount(Case, "stage", match),
     groupCount(Case, "visaType", match),
     groupCount(Case, "plan.tier", match),
@@ -164,41 +152,16 @@ async function caseAnalytics(query = {}, user) {
       { $group: { _id: "$visaType", avgProcessingDays: { $avg: "$processingDays" }, minProcessingDays: { $min: "$processingDays" }, maxProcessingDays: { $max: "$processingDays" }, count: { $sum: 1 } } },
     ]),
   ]);
-  return { total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
+  return { total, active, closed, onHold, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
 }
 
-async function revenueAnalytics(query = {}) {
-  const match = dateRange(query);
-  const [totals, byPackage, byVisaType, monthlyRevenue, byStatus] = await Promise.all([
-    paymentTotals(match),
-    Payment.aggregate([{ $match: match }, { $group: { _id: "$package", revenue: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } }, outstanding: { $sum: "$remainingAmount" }, count: { $sum: 1 } } }]),
-    // Revenue has no visaType field of its own (it's a property of the
-    // linked Case) — resolvedCase mirrors the caseId/case dual-field
-    // lookup pattern used elsewhere (see case-manager-analytics.service.js's
-    // caseIdsWithBalanceDue) since not every Payment document is guaranteed
-    // to have both populated.
-    Payment.aggregate([
-      { $match: match },
-      { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
-      { $lookup: { from: "cases", localField: "resolvedCase", foreignField: "_id", as: "caseData" } },
-      { $unwind: { path: "$caseData", preserveNullAndEmptyArrays: true } },
-      { $group: {
-        _id: { $ifNull: ["$caseData.visaType", "Unspecified"] },
-        revenue: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } },
-        outstanding: { $sum: "$remainingAmount" },
-        count: { $sum: 1 },
-      } },
-      { $sort: { revenue: -1 } },
-    ]),
-    Payment.aggregate([
-      { $match: match },
-      { $group: { _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } }, count: { $sum: 1 }, value: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } } } },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-      { $project: { _id: 0, month: { $concat: [{ $toString: "$_id.year" }, "-", { $cond: [{ $lt: ["$_id.month", 10] }, { $concat: ["0", { $toString: "$_id.month" }] }, { $toString: "$_id.month" }] }] }, count: 1, value: 1 } },
-    ]),
-    groupCount(Payment, "paymentStatus", match),
-  ]);
-  return { totals, byPackage, byVisaType, monthlyRevenue, byStatus };
+// Payment analytics (2026-11-06): read live from each case's GoHighLevel figures - Value (total fees), USCIS Fee, QB Amount Paid - in US DOLLARS.
+// The Payment collection (the client portal's) is not used here. A client-side requester gets no figures.
+async function revenueAnalytics(query = {}, user) {
+  if (user && ["client", "user", "employer", "employee", "beneficiary"].includes(roleOf(user))) {
+    return { totals: { total: 0, uscisFees: 0, revenue: 0, outstanding: 0, refunded: 0, count: 0 }, byPackage: [], byVisaType: [], monthlyRevenue: [], byStatus: [] };
+  }
+  return require("../finance/caseFinance.service").revenueAnalytics(dateRange(query));
 }
 
 async function documentAnalytics(query = {}, user) {
@@ -313,7 +276,7 @@ function buildInsights({ cases, revenue, documents, workflows, questionnaires, m
 async function buildAnalytics(query, user) {
   const [cases, revenue, users, documents, workflows, questionnaires, messages, appointments, evidence] = await Promise.all([
     caseAnalytics(query, user),
-    revenueAnalytics(query),
+    revenueAnalytics(query, user),
     userAnalytics(query),
     documentAnalytics(query, user),
     workflowAnalytics(query, user),

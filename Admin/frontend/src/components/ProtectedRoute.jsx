@@ -1,9 +1,10 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 
 const ProtectedRoute = ({ children, requiredRoles = [], requiredPermissions = [], module = null }) => {
   const { isAuthenticated, loading, user, logout, hasRole, hasPermission, canAccessModule } = useAuth()
+  const location = useLocation()
   const isClientPortalOnly = user?.role === 'client' || user?.role === 'user'
 
   useEffect(() => {
@@ -23,7 +24,8 @@ const ProtectedRoute = ({ children, requiredRoles = [], requiredPermissions = []
 
   // Check if user is authenticated
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    // `from` lets Login send the person to the page they asked for (e.g. a notification link) once they sign in.
+    return <Navigate to="/login" replace state={{ from: location }} />
   }
 
   if (isClientPortalOnly) {

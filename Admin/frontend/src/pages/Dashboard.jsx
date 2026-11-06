@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import CaseManagerAnalyticsPanel from '../components/CaseManagerAnalyticsPanel'
+import { FINANCE_COLORS } from '../utils/financeColors'
 import Card from '../components/ui/Card'
 import ChartCard from '../components/ui/ChartCard'
 import StatBadge from '../components/ui/StatBadge'
@@ -85,10 +86,12 @@ const stageKey = (name) => String(name || '').toLowerCase().trim().replace(/[\s-
 const stageColor = (name) => STAGE_COLORS[stageKey(name)] || '#2563eb'
 const stageLabel = (name) => String(name || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
-const formatCents = (amount) => new Intl.NumberFormat('en-US', {
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'USD'
-}).format((Number(amount) || 0) / 100)
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
+}).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const timeAgo = (date) => {
   const seconds = Math.floor((new Date() - new Date(date)) / 1000)
@@ -154,7 +157,7 @@ const AdminPanel = ({
             <span className="stage-dot" style={{ backgroundColor: card.dot }} />
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{card.title}</p>
           </div>
-          <p className="text-2xl font-bold text-foreground leading-tight">{card.value}</p>
+          <p className={`${card.valueClass || 'text-2xl'} font-bold text-foreground leading-tight`}>{card.value}</p>
           <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
         </Card>
       ))}
@@ -197,14 +200,16 @@ const AdminPanel = ({
       {/* Cases by category */}
       <div className="lg:col-span-4">
         <ChartCard
-          title="Cases by category"
+          title="Cases by category · top 10"
           isEmpty={casesByVisaTypeData.length === 0}
           emptyLabel="No category data yet"
-          height={Math.max(180, casesByVisaTypeData.length * 26)}
+          height={Math.max(200, Math.min(casesByVisaTypeData.length, 10) * 26 + 24)}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={casesByVisaTypeData} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-              <XAxis type="number" hide />
+            <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
+              {/* dashed grid, horizontal and vertical, in large cells: 4 horizontal bands instead of one line per category; the counts along the bottom are whole numbers */}
+              <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={10} />
@@ -236,7 +241,7 @@ const AdminPanel = ({
                   <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <Tooltip formatter={(value) => formatUsd(value)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             </PieChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -245,7 +250,7 @@ const AdminPanel = ({
             {paymentStatusData.map((entry, index) => (
               <div key={index} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="stage-dot" style={{ backgroundColor: entry.color }} />
-                {entry.name} · {entry.value}
+                {entry.name} · {formatUsd(entry.value)}
               </div>
             ))}
           </div>
@@ -480,11 +485,12 @@ const TeamLeadPanel = ({
 
         {/* Cases by category */}
         <div className="card lg:col-span-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Cases by category</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Cases by category · top 10</h3>
           {casesByVisaTypeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={Math.max(180, casesByVisaTypeData.length * 26)}>
-              <BarChart data={casesByVisaTypeData} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
+            <ResponsiveContainer width="100%" height={Math.max(200, Math.min(casesByVisaTypeData.length, 10) * 26 + 24)}>
+              <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
                 <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
                 <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                 <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={10} />
@@ -515,14 +521,14 @@ const TeamLeadPanel = ({
                       <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Tooltip formatter={(value) => formatUsd(value)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-col gap-1.5 mt-2">
                 {paymentStatusData.map((entry, index) => (
                   <div key={index} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="stage-dot" style={{ backgroundColor: entry.color }} />
-                    {entry.name} · {entry.value}
+                    {entry.name} · {formatUsd(entry.value)}
                   </div>
                 ))}
               </div>
@@ -850,6 +856,16 @@ const Dashboard = () => {
     })
   }, [connected, user?.role])
 
+  // Live payment figures: the cards and the Payment status donut are re-read from the database the moment any case's GoHighLevel figures change
+  // (payment:updated), and every minute as a safety net.
+  useEffect(() => {
+    if (!seesAnalytics) return undefined
+    const refreshPayments = () => { fetchDashboardStats({ force: true }); fetchRevenueData({ force: true }) }
+    const unsubscribe = connected ? subscribe('payment:updated', refreshPayments) : null
+    const timer = window.setInterval(() => { if (!document.hidden) refreshPayments() }, 60000)
+    return () => { if (unsubscribe) unsubscribe(); window.clearInterval(timer) }
+  }, [connected, user?.role])
+
   // Live-update the "New Cases Queue" the instant a case is created and
   // routed to this Team Lead, without requiring a page refresh.
   useEffect(() => {
@@ -1001,19 +1017,19 @@ const Dashboard = () => {
 
   const maxStageValue = Math.max(1, ...casesByStageData.map(s => s.value))
   const onHoldCount = casesByStageData.find(s => stageKey(s.name) === 'on_hold')?.value ?? 0
-  const paidCount = Math.max(0, (stats?.totalCases || 0) - (stats?.pendingPayments || 0))
+  // Payment status in DOLLARS: what clients have paid (QB Amount Paid) against what is still to be paid (Value minus paid)
   const paymentStatusData = useMemo(() => [
-    { name: 'Paid / Cleared', value: paidCount, color: '#10b981' },
-    { name: 'Outstanding', value: stats?.pendingPayments || 0, color: '#ef4444' }
-  ], [paidCount, stats?.pendingPayments])
+    { name: 'Paid', value: Number(stats?.totalRevenue) || 0, color: FINANCE_COLORS.paid },
+    { name: 'Outstanding', value: Number(stats?.pendingAmount) || 0, color: FINANCE_COLORS.outstanding }
+  ], [stats?.totalRevenue, stats?.pendingAmount])
 
   const statCards = [
     { title: 'Cases Tracked', value: stats?.totalCases || 0, sub: `across ${casesByVisaTypeData.length || 0} categories`, dot: '#2563eb' },
-    { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'in the pipeline now', dot: '#0ea5e9' },
-    { title: 'On Hold', value: onHoldCount, sub: 'paused by client/internal', dot: '#ef4444' },
-    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatCents(stats?.pendingAmount), dot: '#f59e0b' },
-    { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'this period', dot: '#10b981' },
-    { title: 'Total Revenue', value: formatCents(stats?.totalRevenue), sub: 'this period', dot: '#8b5cf6' }
+    { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'assigned and in progress', dot: '#0ea5e9' },
+    { title: 'On Hold', value: stats?.onHoldCases ?? onHoldCount, sub: 'in the On Hold stage', dot: '#ef4444' },
+    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: `${formatUsd(stats?.pendingAmount)} outstanding`, dot: FINANCE_COLORS.outstanding },
+    { title: 'Closed Cases', value: stats?.closedCases || 0, sub: 'submitted, approved or disapproved', dot: '#10b981' },
+    { title: 'Total Revenue', value: formatUsd(stats?.totalRevenue), sub: `of ${formatUsd(stats?.totalFees)} total fees`, dot: FINANCE_COLORS.paid }
   ]
 
   const teamStatCards = [
@@ -1022,7 +1038,7 @@ const Dashboard = () => {
     { title: 'Assigned', value: roleStats?.assignedCases || 0, sub: 'in the pipeline now', dot: '#0ea5e9' },
     { title: 'Aging Cases', value: roleStats?.agingCases || 0, sub: 'unassigned 7+ days', dot: '#ef4444' },
     { title: 'Active Cases', value: stats?.activeCases || 0, sub: 'across the org pipeline', dot: '#10b981' },
-    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatCents(stats?.pendingAmount), dot: '#8b5cf6' }
+    { title: 'Pending Payments', value: stats?.pendingPayments || 0, sub: formatUsd(stats?.pendingAmount), dot: '#8b5cf6' }
   ]
 
   if (loading) {

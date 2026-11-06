@@ -30,9 +30,12 @@ exports.getLegacyDashboardStats = async (req, res, next) => {
       totalCases: dashboard.analytics.cases.total,
       activeCases: dashboard.analytics.cases.active,
       closedCases: dashboard.analytics.cases.closed,
+      onHoldCases: dashboard.analytics.cases.onHold,
       pendingPayments: dashboard.analytics.revenue.byStatus.filter((item) => ["not_started", "pending", "partially_paid", "partial"].includes(item.key)).reduce((sum, item) => sum + item.count, 0),
       pendingAmount: dashboard.analytics.revenue.totals.outstanding,
       totalRevenue: dashboard.analytics.revenue.totals.revenue,
+      totalFees: dashboard.analytics.revenue.totals.total,
+      uscisFees: dashboard.analytics.revenue.totals.uscisFees,
       casesByStage: caseStage,
       casesByVisaType: caseVisa,
       topCaseManager: topCaseManager?.staff?.name || topCaseManager?.staff?.displayName || "N/A",
@@ -94,7 +97,7 @@ exports.getCaseAnalytics = async (req, res, next) => {
 
 exports.getRevenueAnalytics = async (req, res, next) => {
   try {
-    const revenue = await cachedDashboardCompute(cacheKeyFor("revenueAnalytics", req), () => dashboardService.revenueAnalytics(req.query));
+    const revenue = await cachedDashboardCompute(cacheKeyFor("revenueAnalytics", req), () => dashboardService.revenueAnalytics(req.query, req.user));
     res.json({ success: true, revenue, monthlyRevenue: revenue.monthlyRevenue });
   } catch (error) {
     next(error);
@@ -103,8 +106,51 @@ exports.getRevenueAnalytics = async (req, res, next) => {
 
 exports.getPaymentAnalytics = async (req, res, next) => {
   try {
-    const revenue = await cachedDashboardCompute(cacheKeyFor("revenueAnalytics", req), () => dashboardService.revenueAnalytics(req.query));
-    res.json({ success: true, ...revenue.totals, byStatus: revenue.byStatus, monthlyRevenue: revenue.monthlyRevenue });
+    const revenue = await cachedDashboardCompute(cacheKeyFor("revenueAnalytics", req), () => dashboardService.revenueAnalytics(req.query, req.user));
+    const t = revenue.totals;
+    // the names the Analytics page reads, plus the GoHighLevel figures: everything in US dollars
+    res.json({
+      success: true, ...t, totalRevenue: t.revenue, pendingAmount: t.outstanding, overdueAmount: 0,
+      paymentRate: t.total ? Math.round((t.revenue / t.total) * 100) : 0,
+      byStatus: revenue.byStatus, monthlyRevenue: revenue.monthlyRevenue,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// One row per case with its GoHighLevel figures (total / USCIS fee / paid / outstanding), for the Payments Overview table. US dollars.
+exports.getPaymentCases = async (req, res, next) => {
+  try {
+    const range = {};
+    const from = req.query.from || req.query.startDate;
+    const to = req.query.to || req.query.endDate;
+    if (from || to) range.createdAt = { ...(from ? { $gte: new Date(from) } : {}), ...(to ? { $lte: new Date(to) } : {}) };
+    // a case manager sees the cases they are on; admins, super admins and team leads see all
+    const extra = require("../authorization/roleHierarchy").normalizeRole(req.user?.role) === "case_manager" ? require("../cases/caseManagerAccess").caseManagerMatch(req.user._id) : {};
+    const data = await require("../finance/caseFinance.service").listCases({ range, search: req.query.search, status: req.query.status, page: req.query.page, limit: req.query.limit, extra });
+    res.json({ success: true, ...data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Paid vs total by day / week / month (India time), with this period against the previous one on the same dates. US dollars.
+exports.getPaymentTrend = async (req, res, next) => {
+  try {
+    const granularity = ["day", "week", "month"].includes(req.query.granularity) ? req.query.granularity : "day";
+    const data = await cachedDashboardCompute(cacheKeyFor("paymentTrend", req), () => require("../finance/caseFinance.service").trend({ granularity }));
+    res.json({ success: true, ...data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Payments Overview graphs: by case type, the cases with the most still to pay, and by case manager (US dollars).
+exports.getPaymentBreakdown = async (req, res, next) => {
+  try {
+    const data = await cachedDashboardCompute(cacheKeyFor("paymentBreakdown", req), () => require("../finance/caseFinance.service").breakdown({}));
+    res.json({ success: true, ...data });
   } catch (error) {
     next(error);
   }

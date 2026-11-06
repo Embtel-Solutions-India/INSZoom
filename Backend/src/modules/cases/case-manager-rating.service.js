@@ -3,7 +3,7 @@ const Case = require("../../models/Case");
 const Task = require("../../models/Task");
 const User = require("../../models/User");
 const { normalizeRole } = require("../authorization/roleHierarchy");
-const { caseManagerMatch } = require("./caseManagerAccess");
+const { caseManagerMatch, completedCaseMatch } = require("./caseManagerAccess");
 
 // Weekly performance ratings for case managers. A week runs Monday 00:00 to the next Monday 00:00 (server time).
 const DAY = 24 * 60 * 60 * 1000;
@@ -45,19 +45,27 @@ async function loadCaseManager(id) {
 
 // What each viewer sees of the individual ratings: the super admin everything (with the rater's name), the case manager their own received
 // ratings (rater's role only), an admin / team lead just their own rating (the week's average and count are always shown).
+// (2026-11-06) Every review is shown separately to everyone who may open this page - the case manager, admins, super admins and the team lead of the
+// case manager's team - each with who gave it (name and role), its stars and its paragraph: "Admin 3/5", "Team Lead 4/5 - excellent ...".
 function visibleRatings(viewer, managerId, ratings, raterNames) {
-  const role = normalizeRole(viewer.role);
-  const isSelf = String(viewer._id) === String(managerId);
   const shape = (r, extra = {}) => ({ _id: r._id, rating: r.rating, review: r.review, ratedByRole: r.ratedByRole, updatedAt: r.updatedAt, ...extra });
-  if (role === "super_admin") return ratings.map((r) => shape(r, { ratedByName: raterNames.get(String(r.ratedBy)) || "", mine: String(r.ratedBy) === String(viewer._id) }));
-  if (isSelf) return ratings.map((r) => shape(r));
-  return ratings.filter((r) => String(r.ratedBy) === String(viewer._id)).map((r) => shape(r, { mine: true }));
+  return ratings.map((r) => shape(r, { ratedByName: raterNames.get(String(r.ratedBy)) || "", mine: String(r.ratedBy) === String(viewer._id) }));
+}
+
+// The overall performance: the average of every review ever given to this case manager (one decimal), recalculated from the stored reviews on every read,
+// so a new or changed review moves it at once.
+async function overallSummary(managerId) {
+  const [row] = await CaseManagerRating.aggregate([
+    { $match: { caseManager: managerId } },
+    { $group: { _id: null, average: { $avg: "$rating" }, count: { $sum: 1 } } },
+  ]);
+  return { average: row ? Math.round(row.average * 10) / 10 : null, count: row?.count || 0 };
 }
 
 async function weekAnalytics(managerId, start) {
   const end = weekEndOf(start);
   const [completedCases, completedTasks] = await Promise.all([
-    Case.countDocuments({ ...caseManagerMatch(managerId), status: { $in: CLOSED_CASE_STATUSES }, updatedAt: { $gte: start, $lt: end } }),
+    Case.countDocuments({ $and: [caseManagerMatch(managerId), completedCaseMatch(), { updatedAt: { $gte: start, $lt: end } }] }), // completed = GoHighLevel stage Submitted (FedEx) or later
     Task.countDocuments({ assignedTo: managerId, status: "completed", updatedAt: { $gte: start, $lt: end } }),
   ]);
   return { completedCases, completedTasks };
@@ -95,6 +103,7 @@ async function getRatings(viewer, managerId, { historyWeeks = 12 } = {}) {
       analytics: await weekAnalytics(manager._id, start),
     };
   };
+  const overall = await overallSummary(manager._id);
   const currentWeek = await shape(thisWeek);
   const pastStarts = [...byWeek.keys()].filter((time) => time < thisWeek.getTime()).sort((a, b) => b - a).map((time) => new Date(time));
   const history = await Promise.all(pastStarts.map(shape));
@@ -102,6 +111,7 @@ async function getRatings(viewer, managerId, { historyWeeks = 12 } = {}) {
     caseManager: { _id: manager._id, name: manager.displayName || manager.name, email: manager.email },
     isSelf,
     canRate: !isSelf && RATER_ROLES.includes(role) && owns,
+    overall,
     currentWeek,
     history,
   };
@@ -113,11 +123,35 @@ async function rateCurrentWeek(user, managerId, { rating, review } = {}) {
   const value = Number(rating);
   if (!Number.isInteger(value) || value < 1 || value > 5) throw httpError(400, "Rating must be a whole number from 1 to 5");
   const text = String(review || "").trim().slice(0, 2000);
-  return CaseManagerRating.findOneAndUpdate(
+  const saved = await CaseManagerRating.findOneAndUpdate(
     { caseManager: manager._id, weekStart: weekStartOf(), ratedBy: user._id },
     { $set: { rating: value, review: text, ratedByRole: normalizeRole(user.role) } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
+  // after the save, never failing it: tell the case manager (e-mail + bell + browser) and refresh their open page
+  Promise.resolve().then(() => notifyReviewReceived(manager, user, saved)).catch((error) => console.error("[review] notify failed (non-fatal):", error.message));
+  return saved;
+}
+
+// The case manager is told they received a review for their week; the Performance page they may have open refreshes at once.
+async function notifyReviewReceived(manager, rater, saved) {
+  const roleLabel = { super_admin: "Super Admin", admin: "Admin", team_lead: "Team Lead" }[normalizeRole(rater.role)] || "A reviewer";
+  try { require("../realtime/realtime.gateway").emitToUser(manager._id, "rating:updated", { caseManagerId: String(manager._id) }); } catch (_error) { /* live refresh only */ }
+  if (String(process.env.WEEKLY_REVIEW_EMAILS || "").toLowerCase() === "false") return;
+  await require("../notifications/notification.service").createNotification({
+    userId: manager._id,
+    type: "performance_review_received",
+    category: "system",
+    title: "You received feedback on your performance",
+    message: `${roleLabel} rated your performance this week ${saved.rating}/5.`,
+    link: "/my-performance",
+    priority: "medium",
+    channels: ["in_app", "socket", "push"],
+    source: "shared",
+    emailTemplate: "performance-review-received",
+    emailTo: manager.email,
+    emailData: { name: manager.displayName || manager.name, reviewerRole: roleLabel, rating: saved.rating },
+  }, rater, null);
 }
 
 // This week's average + count per case manager, and the viewer's own rating, for the case managers list (one grouped query).

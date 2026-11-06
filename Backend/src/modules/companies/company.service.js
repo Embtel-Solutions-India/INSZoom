@@ -244,8 +244,10 @@ async function getRelated(id, user) {
 async function getDashboard(id, user) {
   const related = await getRelated(id, user);
   const openCases = related.cases.filter((caseData) => !["closed", "archived", "approved", "denied"].includes(caseData.status));
-  const paid = related.payments.reduce((sum, payment) => sum + (payment.amountPaid || payment.paidAmount || 0), 0);
-  const outstanding = related.payments.reduce((sum, payment) => sum + (payment.remainingAmount || 0), 0);
+  // payment figures come from the cases' GoHighLevel figures (Value / QB Amount Paid), US dollars - not from the Payment collection
+  const withFinance = related.cases.filter((caseData) => ["ghl", "crm"].includes(caseData.finance?.source));
+  const paid = withFinance.reduce((sum, caseData) => sum + (Number(caseData.finance.amountPaid) || 0), 0);
+  const outstanding = withFinance.reduce((sum, caseData) => sum + Math.max((Number(caseData.finance.totalAmount) || 0) - (Number(caseData.finance.amountPaid) || 0), 0), 0);
   return {
     company: related.company,
     stats: {
@@ -256,7 +258,7 @@ async function getDashboard(id, user) {
       openCases: openCases.length,
       documents: related.documents.length,
       appointments: related.appointments.length,
-      payments: related.payments.length,
+      payments: withFinance.length,
       paidAmount: paid,
       outstandingAmount: outstanding,
       unreadNotifications: related.notifications.filter((item) => !item.read && !item.isRead).length,

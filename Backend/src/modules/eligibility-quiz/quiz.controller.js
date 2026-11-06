@@ -43,6 +43,7 @@ async function listLeads(req, res, next) {
   try {
     const result = await quizService.listLeads(req.query);
     res.json({ success: true, ...result });
+    try { require("../../integrations/ghl/ghlLeadPipeline").reconcileSoon(); } catch (_error) { /* never affects the list */ }
   } catch (error) {
     next(error);
   }
@@ -63,6 +64,17 @@ async function markLeadSeen(req, res, next) {
     const data = await quizService.markLeadSeen(req.params.id, req.user);
     res.json({ success: true, data });
   } catch (error) {
+    next(error);
+  }
+}
+
+// DELETE /leads/:id - removes the lead and, if it has one, its card in the GoHighLevel Immiglance Pipeline (lead-delete.service.js).
+async function deleteLead(req, res, next) {
+  try {
+    const data = await require("../leads/lead-delete.service").deleteLead(req.params.id, req.user);
+    res.json({ success: true, data });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, code: error.code, message: error.message });
     next(error);
   }
 }
@@ -131,6 +143,6 @@ async function rejectLead(req, res, next) {
 }
 
 module.exports = {
-  getDefinition, getVisas, submit, saveDraft, listLeads, getLead, markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
+  getDefinition, getVisas, submit, saveDraft, listLeads, getLead, markLeadSeen, deleteLead, updateLeadStatus, assignLead, addLeadNote,
   confirmConsultation, completeConsultation, approveLead, rejectLead,
 };

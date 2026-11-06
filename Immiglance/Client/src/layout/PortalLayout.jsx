@@ -11,6 +11,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import BrandMark from "../components/BrandMark";
 import EnablePushButton from "../components/EnablePushButton";
 import { useBranding } from "../utils/branding";
+import useNotificationClickNavigation from "../hooks/useNotificationClickNavigation";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
@@ -40,6 +41,7 @@ export default function PortalLayout() {
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  useNotificationClickNavigation();
   const { multiCase, activeCaseId } = useActiveCase();
   const { data: rawCase } = useMyCase();
   const { data: profileData = {} } = useMyProfile();

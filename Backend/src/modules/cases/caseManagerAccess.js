@@ -24,6 +24,20 @@ function caseManagerMatch(userId) {
   return { $or: [{ assignedCaseManager: userId }, { additionalCaseManagers: userId }] };
 }
 
+// Team leads on the Case Managers page (2026-11-06): the cases of a team lead are the ones they are the assigned team lead of, plus any they hold as a
+// case manager. Case managers keep using caseManagerMatch above, so their figures never change.
+function teamLeadMatch(userId) {
+  return { $or: [{ assignedTeamLead: userId }, { assignedCaseManager: userId }, { additionalCaseManagers: userId }] };
+}
+
+// "Completed" / "closed" (Case Managers page AND the dashboard cards) = the case's GoHighLevel pipeline stage is Submitted (FedEx), Receipt Tracking, Approved, Disapproved or Feedback (RFE is still active).
+// "On hold" = the On Hold stage (after Feedback in both pipelines). Both are read live from each case's stage; nothing is stored or hard-coded per person.
+const COMPLETED_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "status_approved", "status_disapproved", "feedback"]; // RFE stays active
+const ON_HOLD_STAGE_PATTERN = "hold"; // matches the stage key / name "on_hold"
+const completedCaseMatch = () => ({ "integrations.ghl.unifiedStageKey": { $in: COMPLETED_STAGE_KEYS } });
+const onHoldCaseMatch = () => ({ "integrations.ghl.unifiedStageKey": { $regex: ON_HOLD_STAGE_PATTERN, $options: "i" } });
+const isCompletedCase = (caseData) => COMPLETED_STAGE_KEYS.includes(caseData?.integrations?.ghl?.unifiedStageKey);
+
 // Same fragment for several manager ids ($in).
 function caseManagersMatch(userIds) {
   return { $or: [{ assignedCaseManager: { $in: userIds } }, { additionalCaseManagers: { $in: userIds } }] };
@@ -92,6 +106,6 @@ async function scopedChildIdsFor(principal, user) {
 }
 
 module.exports = {
-  idOf, allCaseManagerIds, isCaseManagerOfCase, caseManagerMatch, caseManagersMatch, additionalCaseRecordIds, CASE_MANAGER_SELECT,
+  idOf, allCaseManagerIds, isCaseManagerOfCase, caseManagerMatch, teamLeadMatch, COMPLETED_STAGE_KEYS, completedCaseMatch, onHoldCaseMatch, isCompletedCase, caseManagersMatch, additionalCaseRecordIds, CASE_MANAGER_SELECT,
   isChildScopedCaseManager, syncPrincipalChildManagers, healChildScope, scopedChildIdsFor,
 };

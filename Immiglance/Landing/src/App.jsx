@@ -99,6 +99,9 @@ export default function App() {
         <Route path="/dashboard"       element={<CrossAppRedirect />} />
         <Route path="/onboarding/*"    element={<CrossAppRedirect />} />
 
+        {/* Last resort (lowest priority): an address this site does not have goes to the home page instead of rendering nothing. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+
       </Routes>
       </Suspense>
     </BrowserRouter>

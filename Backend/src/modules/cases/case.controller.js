@@ -150,10 +150,10 @@ function resolveChildCaseCount(caseStructure, input) {
 
 function resolveDataEntryMode(caseStructure, input) {
   if (caseStructure === "single") return "not_required";
+  // Employer matters: the EMPLOYER FILLS by default. An employee is invited only when someone exclusively elects to invite (an explicit "invite" here, or the
+  // Invite action on that employee later); typing an employee's name and email never invites them. No case-wide choice to wait for.
+  if (caseStructure === "employer_employee") return input === "invite" ? "invite" : "fill_self";
   if (["fill_self", "invite", "not_set"].includes(input)) return input;
-  // Employer matters decide fill-myself vs invite PER EMPLOYEE (when each employee is added, changeable later), so
-  // there is no case-wide choice to wait for: the employer fills in until an employee is invited.
-  if (caseStructure === "employer_employee") return "fill_self";
   return "not_set";
 }
 

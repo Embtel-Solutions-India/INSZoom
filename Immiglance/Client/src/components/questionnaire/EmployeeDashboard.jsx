@@ -102,19 +102,22 @@ function statusPillFor(child, dataEntryMode, progress) {
 }
 
 function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw, onGrantAccess }) {
-  // Each employee has their own workflow; an employee without an individual choice follows the case-wide default.
-  const dataEntryMode = child.employeeDataEntryMode || caseDefaultMode;
+  // The employer fills by default. An employee is invited ONLY when invited for real (the server says so: they have their own login, inviteStatus) or when
+  // that employee was exclusively set to "invite". Typing a name and email on the card never means "invited".
+  const invitedByServer = child.inviteStatus !== undefined ? child.inviteStatus !== "none" : false;
+  const dataEntryMode = child.employeeDataEntryMode || (invitedByServer ? "invite" : "fill_self");
   // The employee's name and email, whoever typed them (the case team in Admin, or the employer here) - the case holds them once for both portals.
   const contact = child.employeeContact || { name: child.clientName || "", email: child.clientEmail || "" };
   const displayName = child.clientName || contact.name;
   const identified = Boolean(displayName) || dataEntryMode === "fill_self";
-  const invited = dataEntryMode === "invite" && Boolean(child.clientEmail);
+  const invited = child.inviteStatus !== undefined ? invitedByServer : dataEntryMode === "invite" && Boolean(child.clientEmail);
   // Once an employee is invited, ownership of their checklist/answers transfers to their own account (inviteEmployee pulls the child
   // case off the employer's caseIds): the employer cannot EDIT it any more, but may READ it (backend employer-view-access.js) - so the
   // card shows the employee's real, live progress and offers a read-only view of what they have filled in.
   const { progress, loading } = useChildProgress(child._id, targetRole, true, invited ? 30000 : 0);
   // an employee who had access before and whose information the employer took back: access can be given again in one step
-  const returning = !invited && Boolean(child.clientEmail) && Boolean(child.clientName) && dataEntryMode !== "invite";
+  // "Grant access again" is only for an employee whose information the employer took back (explicitly set to fill_self), never for a slot that just has a name and email typed on it
+  const returning = !invited && child.employeeDataEntryMode === "fill_self" && Boolean(child.clientEmail) && Boolean(child.clientName);
   const [inviting, setInviting] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [name, setName] = useState(contact.name || "");
@@ -132,7 +135,8 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   // fills it in, instead of silently assuming "employer fills".
   // Until the employee's name and email are known the card asks for them (before anything else, whichever way the employer chooses to proceed).
   const identityMissing = !invited && pillLabel !== "Withdrawn" && (!contact.name || !contact.email);
-  const undecided = !child.employeeDataEntryMode && !child.clientName && caseDefaultMode !== "invite" && !(progress?.progress?.percent > 0) && pillLabel !== "Withdrawn";
+  // No "who fills?" question any more: the employer fills until an employee is invited.
+  const undecided = false;
 
   const handleSaveIdentity = async () => {
     if (!idName.trim() && !idEmail.trim()) { setError("Enter the employee's name and email."); return; }

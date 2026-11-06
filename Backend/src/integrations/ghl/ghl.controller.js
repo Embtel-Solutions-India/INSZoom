@@ -42,7 +42,10 @@ exports.webhook = async (req, res) => {
 // decide whether to show the Pipeline page); it never 503s.
 exports.status = async (req, res, next) => {
   try {
-    res.json({ success: true, ...(await boardService.getStatus(req.user)) });
+    const status = await boardService.getStatus(req.user);
+    // the separate Immiglance (leads) pipeline's own health, as an extra key: the two case pipelines' status is untouched
+    const leadPipeline = await require("./ghlLeadPipeline").summary().catch(() => null);
+    res.json({ success: true, ...status, ...(leadPipeline ? { leadPipeline } : {}) });
   } catch (error) {
     next(error);
   }
@@ -137,6 +140,15 @@ exports.saveVisaMapping = guard(async (req, res) => {
 
 exports.setupPreview = guard(async (req, res) => {
   res.json({ success: true, ...(await sync.previewSetup()) });
+});
+
+// A stage added in GoHighLevel (e.g. "On Hold") becomes a board column; nothing already mapped changes (refused if anything was renamed or removed).
+exports.addStages = guard(async (req, res) => {
+  try {
+    res.json({ success: true, ...(await sync.adoptAddedStages({ user: req.user })) });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.message });
+  }
 });
 
 exports.confirmMappings = guard(async (req, res) => {

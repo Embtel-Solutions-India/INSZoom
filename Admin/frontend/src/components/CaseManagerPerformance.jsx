@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Star, CalendarDays, MessageSquare } from 'lucide-react'
 import api from '../services/api'
+import { useOptionalSocket } from '../contexts/SocketContext'
 
 // Weekly performance of one case manager: "Performance this week" (highlighted, with the rating form for admins / team leads), and the past weeks
 // below it as a log with a few figures. managerId = a user id, or 'me' for the signed-in case manager's own ratings.
@@ -34,21 +35,38 @@ export default function CaseManagerPerformance({ managerId }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const load = useCallback(async () => {
+  const socket = useOptionalSocket()
+  const subscribe = socket?.subscribe
+  const connected = Boolean(socket?.connected)
+
+  // keepForm: a background refresh (live update / timer) must never wipe what the reviewer is typing
+  const load = useCallback(async ({ keepForm = false } = {}) => {
     try {
       const response = await api.get(`/case-managers/${managerId}/ratings`)
       const next = response.data?.data
       setData(next)
       setError('')
-      const mine = next?.currentWeek?.ratings?.find((item) => item.mine)
-      setRating(mine?.rating || 0)
-      setReview(mine?.review || '')
+      if (!keepForm) {
+        const mine = next?.currentWeek?.ratings?.find((item) => item.mine)
+        setRating(mine?.rating || 0)
+        setReview(mine?.review || '')
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load the performance ratings.')
     }
   }, [managerId])
 
   useEffect(() => { load() }, [load])
+
+  // Real time: the overall average moves the moment anyone adds or changes a review (the case manager is told live; everyone else gets a quick refresh).
+  useEffect(() => {
+    if (!connected || !subscribe) return undefined
+    return subscribe('rating:updated', () => load({ keepForm: true }))
+  }, [connected, subscribe, load])
+  useEffect(() => {
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load({ keepForm: true }) }, 30000)
+    return () => clearInterval(timer)
+  }, [load])
 
   const save = async () => {
     if (!rating) return
@@ -69,8 +87,20 @@ export default function CaseManagerPerformance({ managerId }) {
   if (!data) return <p className="p-6 text-sm text-muted-foreground">Loading performance…</p>
 
   const week = data.currentWeek
+  const overall = data.overall
   return (
     <div className="space-y-6 p-6">
+      <section className="rounded-xl border border-border bg-card p-5" aria-label="Overall performance">
+        <h3 className="text-lg font-bold text-foreground">Overall performance</h3>
+        {overall?.average != null ? (
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Stars value={overall.average} size="w-7 h-7" />
+            <span className="text-3xl font-bold text-foreground">{overall.average.toFixed(1)}<span className="text-lg font-medium text-muted-foreground"> / 5</span></span>
+            <span className="text-sm text-muted-foreground">average of {overall.count} review{overall.count === 1 ? '' : 's'}</span>
+          </div>
+        ) : <p className="mt-1 text-sm text-muted-foreground">No reviews yet.</p>}
+      </section>
+
       <section className="rounded-xl border-2 border-primary/50 bg-primary/5 p-5" aria-label="Performance this week">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -107,7 +137,7 @@ export default function CaseManagerPerformance({ managerId }) {
           </div>
         ) : null}
 
-        <ReviewList ratings={week.ratings} showRater={week.ratings.some((item) => item.ratedByName)} />
+        <ReviewList ratings={week.ratings} />
         <WeekFigures analytics={week.analytics} />
       </section>
 
@@ -126,7 +156,7 @@ export default function CaseManagerPerformance({ managerId }) {
                   </span>
                 </div>
                 <WeekFigures analytics={past.analytics} />
-                <ReviewList ratings={past.ratings} showRater={past.ratings.some((item) => item.ratedByName)} />
+                <ReviewList ratings={past.ratings} />
               </li>
             ))}
           </ul>
@@ -145,17 +175,23 @@ function WeekFigures({ analytics }) {
   )
 }
 
-function ReviewList({ ratings = [], showRater }) {
-  const withText = ratings.filter((item) => item.review)
-  if (!withText.length) return null
+const ROLE_LABELS = { super_admin: 'Super Admin', admin: 'Admin', team_lead: 'Team Lead' }
+
+// Every review on its own line, by who gave it: "Admin · Name  3/5" and the paragraph, if there is one.
+function ReviewList({ ratings = [] }) {
+  if (!ratings.length) return null
   return (
     <ul className="mt-3 space-y-2">
-      {withText.map((item) => (
+      {ratings.map((item) => (
         <li key={item._id} className="flex gap-2 rounded-lg bg-muted/60 p-3 text-sm">
           <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2"><Stars value={item.rating} size="w-3.5 h-3.5" />{showRater && item.ratedByName ? <span className="text-xs font-medium text-foreground">{item.ratedByName}</span> : null}<span className="text-xs text-muted-foreground capitalize">{String(item.ratedByRole || '').replace('_', ' ')}</span></div>
-            <p className="mt-1 whitespace-pre-wrap text-foreground">{item.review}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">{ROLE_LABELS[item.ratedByRole] || 'Reviewer'}{item.ratedByName ? ` · ${item.ratedByName}` : ''}</span>
+              <Stars value={item.rating} size="w-3.5 h-3.5" />
+              <span className="text-xs font-semibold text-foreground">{item.rating}/5</span>
+            </div>
+            {item.review ? <p className="mt-1 whitespace-pre-wrap text-foreground">{item.review}</p> : null}
           </div>
         </li>
       ))}

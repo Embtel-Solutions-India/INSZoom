@@ -46,6 +46,7 @@ const staffRoles = ["super_admin", "admin"];
 router.get("/leads", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.listLeads);
 router.get("/leads/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.getLead);
 router.post("/leads/:id/seen", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.markLeadSeen);
+router.delete("/leads/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.deleteLead);
 router.patch("/leads/:id/status", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.updateLeadStatus);
 router.patch("/leads/:id/assign", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.assignLead);
 router.post("/leads/:id/notes", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.addLeadNote);

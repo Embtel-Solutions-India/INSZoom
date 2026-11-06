@@ -128,6 +128,14 @@ export default function GhlStatusPanel({ onChanged }) {
             <>
               <p className="mb-1 font-medium text-red-700">The stage setup needs attention:</p>
               <ul className="list-disc pl-5 text-muted-foreground">{[...(preview.problems || []), ...(preview.drift || []).map((d) => `${d.type}: ${d.name || d.from || d.ghlStageId || d.ghlPipelineId}`)].map((p, i) => <li key={i}>{p}</li>)}</ul>
+              {(preview.drift || []).length > 0 && preview.drift.every((d) => d.type === 'stage_added') ? (
+                <>
+                  <p className="mt-2 text-muted-foreground">Only new stages were added in GoHighLevel. They can join the boards as new columns; nothing already mapped changes.</p>
+                  <button type="button" className="btn-primary mt-2" disabled={Boolean(busy)} onClick={() => run('addStages', async () => { await ghlApi.addNewStages(); setPreview(null); onChanged?.() })}>
+                    {busy === 'addStages' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add the new stages'}
+                  </button>
+                </>
+              ) : null}
             </>
           )}
         </div>
