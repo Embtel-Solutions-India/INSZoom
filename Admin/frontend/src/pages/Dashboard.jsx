@@ -23,7 +23,7 @@ import {
   MessageSquare,
   Bell
 } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import CaseManagerAnalyticsPanel from '../components/CaseManagerAnalyticsPanel'
 import { FINANCE_COLORS } from '../utils/financeColors'
 import Card from '../components/ui/Card'
@@ -207,9 +207,8 @@ const AdminPanel = ({
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-              {/* dashed grid, horizontal and vertical, in large cells: 4 horizontal bands instead of one line per category; the counts along the bottom are whole numbers */}
-              <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
-              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+              {/* no grid lines: the bars, a line along the bottom and the whole-number counts under it */}
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#9ca3af' }} tickLine={{ stroke: '#9ca3af' }} tickSize={4} />
               <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
               <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={10} />
@@ -489,8 +488,7 @@ const TeamLeadPanel = ({
           {casesByVisaTypeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={Math.max(200, Math.min(casesByVisaTypeData.length, 10) * 26 + 24)}>
               <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#9ca3af' }} tickLine={{ stroke: '#9ca3af' }} tickSize={4} />
                 <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
                 <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                 <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={10} />

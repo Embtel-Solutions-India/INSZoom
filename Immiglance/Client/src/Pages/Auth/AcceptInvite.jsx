@@ -18,7 +18,6 @@ export default function AcceptInvite() {
 
   const [status, setStatus] = useState("checking"); // checking | valid | invalid
   const [invite, setInvite] = useState(null);
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -45,7 +44,7 @@ export default function AcceptInvite() {
 
     setSubmitting(true);
     try {
-      const result = await authApi.acceptInvite(token, password, confirmPassword, username.trim() || undefined);
+      const result = await authApi.acceptInvite(token, password, confirmPassword);
       navigate("/login", { replace: true, state: { notice: "Your password has been set. Please log in to continue.", email: result?.email || invite?.email || "" } });
     } catch (err) {
       setError(err.message || "Unable to activate your account. The link may have expired.");
@@ -103,20 +102,6 @@ export default function AcceptInvite() {
             )}
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            <div className="mb-5">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                Username <span className="text-muted-foreground font-normal">(optional — defaults to your email prefix)</span>
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. john.doe"
-                autoComplete="username"
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/15"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">You can log in with your Case ID, email, or username + password.</p>
-            </div>
             <PasswordField icon={<LockIcon />} name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             <PasswordField icon={<LockIcon />} name="confirmPassword" placeholder="Confirm Password"

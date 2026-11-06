@@ -151,6 +151,31 @@ function syncCaseFields(caseData, tracking) {
   else if (!["withdrawn", "closed"].includes(tracking.status)) caseData.uscisDecision = "pending";
 }
 
+// ---- the FedEx tracking number of the filed petition ------------------------------------------------------------------------------------------------------------------------------------------
+// Entered by the internal team when a case moves to Submitted (FedEx) - and edited / copied afterwards in the USCIS Tracking tab. This sets ONLY the carrier ("fedex") and the number of
+// the case's filing record: it never touches the USCIS status, timeline, e-mails or notifications (save() above does all of those), and it keeps every other filing field as it is.
+const FEDEX_NUMBER = /^[A-Za-z0-9]{8,34}$/;
+
+/** Pure. The number without spaces / dashes, or null when it is not a plausible tracking number. */
+function cleanFedexNumber(value) {
+  const compact = String(value ?? "").replace(/[\s-]+/g, "");
+  return FEDEX_NUMBER.test(compact) ? compact : null;
+}
+
+async function setFedexNumber(caseData, trackingNumber, user, req) {
+  const number = cleanFedexNumber(trackingNumber);
+  if (!number) throw Object.assign(new Error("Enter a valid FedEx tracking number (8 to 34 letters or digits)."), { status: 400, code: "INVALID_FEDEX_NUMBER" });
+  const Case = require("../../../models/Case");
+  const previous = caseData.immigrationLifecycle?.tracking?.filing?.trackingNumber || "";
+  await Case.updateOne(
+    { _id: caseData._id },
+    { $set: { "immigrationLifecycle.tracking.filing.carrier": "fedex", "immigrationLifecycle.tracking.filing.trackingNumber": number } }
+  );
+  try { await ImmigrationTimelineService.writeAudit("FEDEX_TRACKING_SET", caseData, user, { previous, trackingNumber: number }, req); } catch (_error) { /* bookkeeping only */ }
+  try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "fedex_tracking_set" }); } catch (_error) { /* live update only */ }
+  return { carrier: "fedex", trackingNumber: number };
+}
+
 async function save(caseData, payload, user, req) {
   validatePayload(payload);
   const lifecycle = ImmigrationTimelineService.ensure(caseData);
@@ -239,4 +264,4 @@ async function get(caseData) {
   };
 }
 
-module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload };
+module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber };

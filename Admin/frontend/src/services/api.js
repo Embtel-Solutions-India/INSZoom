@@ -346,6 +346,8 @@ export const messagesApi = {
 export const lifecycleApi = {
   tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
   saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),
+  // the FedEx number of the filed petition (asked when a case moves to Submitted (FedEx)): sets only the carrier and the number
+  saveFedexNumber: (caseId, trackingNumber) => api.put(`/lifecycle/cases/${caseId}/tracking/fedex`, { trackingNumber }),
 }
 
 // Generic staff "Request information" flow (recipient selector + per-person checklist row).
