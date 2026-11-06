@@ -8,6 +8,7 @@ const reportRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const adminRoles = ["super_admin", "admin", "team_lead"];
 const eodStaffRoles = ["team_lead", "case_manager", "admin", "super_admin"];
 
+router.use("/everyday", require("./everyday.routes"));
 router.get("/cases", authenticate, authorizeRoles(...reportRoles), authorizePermissions("reports:read"), ctrl.cases);
 router.get("/financial", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("reports:read"), ctrl.financial);
 router.get("/users", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("reports:read"), ctrl.users);

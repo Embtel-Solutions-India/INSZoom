@@ -591,6 +591,7 @@ async function sendMessage({ conversation, body, files: multipartFiles, user, re
     }
     throw error;
   }
+  if (!internal) require("../reports/staffActivity").record(user, "message", body.receiverId || conversation.receiverId || conversation.caseId || conversation._id); // EOD "messages": one per PERSON chatted with, not per message
   if (stagedIds.length) chunkedUploads.discard(stagedIds); // the bytes now live in permanent storage
   addAuditEntry(message, "send", user, { conversationId: conversation._id }, req);
   await message.save();

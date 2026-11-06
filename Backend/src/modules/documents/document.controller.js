@@ -384,6 +384,7 @@ exports.downloadDocument = async (req, res, next) => {
   try {
     const document = await findAccessibleDocument(req.params.id || req.params.docId, req.user);
     const buffer = await documentService.readDocumentBuffer(document);
+    require("../reports/staffActivity").record(req.user, "document", document._id); // EOD "docs reviewed"
     sendFile(res, { buffer, fileName: documentFileName(document), mimeType: document.mimeType || document.fileType, disposition: "attachment" });
   } catch (error) {
     next(error);
@@ -394,6 +395,7 @@ exports.previewDocument = async (req, res, next) => {
   try {
     const document = await findAccessibleDocument(req.params.id || req.params.docId, req.user);
     const buffer = await documentService.readDocumentBuffer(document);
+    require("../reports/staffActivity").record(req.user, "document", document._id); // EOD "docs reviewed": the file itself, not its text
     sendFile(res, { buffer, fileName: documentFileName(document), mimeType: document.mimeType || document.fileType, disposition: "inline" });
   } catch (error) {
     next(error);

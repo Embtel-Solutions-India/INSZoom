@@ -1008,6 +1008,7 @@ exports.getCase = async (req, res, next) => {
       serialized.scopedChildView = true;
     }
     await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
+    require("../reports/staffActivity").record(req.user, "case", caseData._id); // EOD "cases worked": opening a case counts once per day
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
   } catch (error) {
     handleError(error, next);

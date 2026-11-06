@@ -66,6 +66,8 @@ const TYPE_RULES = {
   filing_deadline_approaching: { priority: "urgent", channels: ["in_app", "push"] },
   team_case_created: { priority: "medium", channels: ["in_app"] },
   weekly_review_reminder: { priority: "medium", channels: ["in_app", "push"] },
+  everyday_plan_reminder: { priority: "medium", channels: ["in_app", "push"] },
+  everyday_report_reminder: { priority: "medium", channels: ["in_app", "push"] },
   performance_review_received: { priority: "medium", channels: ["in_app", "push"] },
   case_reassigned: { priority: "medium", channels: ["in_app"] },
   new_user_registered: { priority: "medium", channels: ["in_app"] },
