@@ -25,13 +25,13 @@ describe('EmployerPaymentSummary', () => {
   it("an employee's Invoices button opens that employee's invoices", async () => {
     render(<MemoryRouter><EmployerPaymentSummary caseId="p1" /></MemoryRouter>)
     await screen.findAllByTestId('employee-payment-row')
-    fireEvent.click(screen.getAllByText('Invoices')[2])
+    fireEvent.click(screen.getAllByText('Invoices')[1])
     expect((await screen.findByTestId('invoices-open')).textContent).toBe('e2')
   })
   it("the principal's own Invoices button opens only the principal's invoices", async () => {
     render(<MemoryRouter><EmployerPaymentSummary caseId="p1" /></MemoryRouter>)
     await screen.findAllByTestId('employee-payment-row')
-    fireEvent.click(screen.getAllByText('Invoices')[0])
+    fireEvent.click(screen.getAllByText('Invoices')[2])
     expect((await screen.findByTestId('invoices-open')).textContent).toBe('p1')
   })
 })

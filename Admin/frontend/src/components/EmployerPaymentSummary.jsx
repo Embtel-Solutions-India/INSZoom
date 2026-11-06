@@ -38,7 +38,6 @@ export default function EmployerPaymentSummary({ caseId, title }) {
         <h3 className="text-lg font-semibold text-foreground">Payment Summary</h3>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted-foreground">All employees combined{data ? ` · ${data.employees.length} ${data.employees.length === 1 ? 'employee' : 'employees'}` : ''}</span>
-          <button type="button" onClick={() => setInvoiceFor({ _id: caseId, caseNumber: title || '', name: '' })} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Invoices</button>
         </div>
       </div>
       {error ? <p className="mb-3 text-sm text-red-700">{error}</p> : null}
@@ -82,6 +81,9 @@ export default function EmployerPaymentSummary({ caseId, title }) {
       ) : data ? (
         <p className="mt-4 text-sm text-muted-foreground">No employees on this matter yet.</p>
       ) : null}
+      <div className="mt-4 flex justify-end">
+        <button type="button" onClick={() => setInvoiceFor({ _id: caseId, caseNumber: title || '', name: '' })} className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"><Receipt className="h-4 w-4" />Invoices</button>
+      </div>
       {invoiceFor ? <CaseInvoices caseId={invoiceFor._id} title={`${invoiceFor.caseNumber}${invoiceFor.name ? ` · ${invoiceFor.name}` : ''}`} onClose={() => setInvoiceFor(null)} /> : null}
     </div>
   )

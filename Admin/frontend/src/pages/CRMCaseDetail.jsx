@@ -2781,8 +2781,6 @@ const CRMCaseDetail = () => {
                           {f.pendingPush ? 'Updating GoHighLevel…' : f.source === 'crm' ? 'Kept in Immiglance (no GoHighLevel card)' : f.source ? 'Synced with GoHighLevel' : 'No figures yet'}
                           {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString()}` : ''}
                         </span>
-                        <button type="button" onClick={() => setInvoicesOpen(true)} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Invoices</button>
-                        <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Edit</button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -2801,6 +2799,10 @@ const CRMCaseDetail = () => {
                     {f.invoiceNo ? <p className="mt-3 text-xs text-muted-foreground">QuickBooks invoice {f.invoiceNo}</p> : null}
                     {financeNote ? <p className="mt-2 text-xs font-medium text-foreground" role="status">{financeNote}</p> : null}
                     {f.pushError ? <p className="mt-2 text-xs text-red-700">GoHighLevel could not be updated: {f.pushError}. The figures are saved here.</p> : null}
+                    <div className="mt-4 flex flex-wrap justify-end gap-3">
+                      <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-4 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">Edit</button>
+                      <button type="button" onClick={() => setInvoicesOpen(true)} className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"><Receipt className="h-4 w-4" />Invoices</button>
+                    </div>
                   </div>
                 )
               })()}
