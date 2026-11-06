@@ -12,6 +12,7 @@ const { inferRules } = require("./FieldRuleInferenceService");
 const { PARTY_FORM_SPECS, SUPPLEMENT_HEADER_GROUPS } = require("../config/partyFormSpecs");
 const { inferRulesForParties } = require("./PartRuleInferenceService");
 const UnlockedMirrorService = require("./UnlockedMirrorService");
+const { isExternalFormCode } = require("../../uscis-form-import/config/externalForms");
 
 const SKIP_TYPES = new Set(["checkbox", "radio", "signature", "button"]);
 const indexOf = (pdfField) => { const match = /\[(\d+)\]$/.exec(String(pdfField || "")); return match ? Number(match[1]) : 0; };
@@ -182,7 +183,18 @@ function plan(template, graph, options = {}) {
       const replacesGuess = Boolean(rule.decided) && existing.status !== "active";
       const nextTransform = isBox ? boxTransformOf(rule) : (rule.transform || (replacesGuess ? null : remapTransform(existing.transform, rule)) || defaultTransform(target.type));
       const nextCondition = isBox || replacesGuess ? undefined : remapCondition(existing.condition, rule);
-      if (existing.sourcePath === sourcePath && JSON.stringify(existing.transform) === JSON.stringify(nextTransform) && JSON.stringify(existing.condition) === JSON.stringify(nextCondition)) { report.unchanged += 1; continue; }
+      if (existing.sourcePath === sourcePath && JSON.stringify(existing.transform) === JSON.stringify(nextTransform) && JSON.stringify(existing.condition) === JSON.stringify(nextCondition)) {
+        // A box the importer's guess ALREADY pointed at the very same canonical path as a verified rule (a low-confidence guess left in review, e.g. "Address 2 apartment suite floor and number"
+        // or "SOC Code" of the DOL ETA-9089 forms) is "unchanged" - but it is still a review-status edge, and one such edge keeps the whole mapping from activating. A verified rule IS the
+        // verification, so the edge is promoted exactly as a rewired one is below (same condition: an exclusive form, a decided or an inferred rule, or a form published outside uscis.gov).
+        if (existing.status !== "active" && (EXCLUSIVE_FORMS.has(formCode) || rule.decided || rule.inferred || isExternalFormCode(formCode))) {
+          const at = outIndex.get(target.targetFieldId);
+          out[at] = { ...existing, status: "active", confidence: 90, origin: rule.inferred ? "inferred" : "authored", note: `Verified ${formCode} rule: ${rule.to}`, partyRule: rule.to, profileOwner: rule.to.startsWith("petitioner") ? "employer" : "employee" };
+          report.rewired += 1;
+          report.promoted = (report.promoted || 0) + 1;
+        } else report.unchanged += 1;
+        continue;
+      }
       const index = outIndex.get(target.targetFieldId);
       out[index] = {
         ...existing,

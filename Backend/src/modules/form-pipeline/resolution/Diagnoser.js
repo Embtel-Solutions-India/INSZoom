@@ -62,7 +62,7 @@ function causeOf({ error, stage, message, code, status }) {
   if ((error instanceof TypeError || error instanceof ReferenceError || error instanceof SyntaxError || ["TypeError", "ReferenceError", "SyntaxError"].includes(name)) && !code && !/fetch failed|network|socket|terminated/i.test(message)) return "programming_error";
   if (code === "QPDF_NOT_FOUND" || /qpdf binary not found/i.test(message) || (code === "ENOENT" && (error?.syscall === "spawn" || /\bspawn\b/i.test(message))) || /spawn .* ENOENT/i.test(message)) return "tool_unavailable";
   if (code === "ENOENT") return "tool_unavailable"; // ambiguous: the evidence says whether the path / temp file exists
-  if (status === 404 || /\b404\b/.test(message) || ["USCIS_PDF_UNRESOLVED", "USCIS_FORM_NOT_STANDALONE", "NO_OFFICIAL_SOURCE"].includes(code) || /could not locate a current pdf|no official (?:source|pdf)/i.test(message)) return "source_not_found";
+  if (status === 404 || /\b404\b/.test(message) || ["USCIS_PDF_UNRESOLVED", "USCIS_FORM_NOT_STANDALONE", "NO_OFFICIAL_SOURCE", "EXTERNAL_SOURCE_BLOCKED", "EXTERNAL_SOURCE_UNRESOLVED"].includes(code) || /could not locate a current pdf|no official (?:source|pdf)/i.test(message)) return "source_not_found";
   if (code === "NORMALIZE_INPUT_NOT_PDF" || /expects a pdf buffer|not a pdf|html instead of|invalid pdf header/i.test(message)) return "not_a_pdf";
   if (code === "PDF_ENCRYPTED" || /\b(user password|owner password|encrypted)\b/i.test(message)) return "pdf_encrypted";
   if (code === "NORMALIZED_SCAN_EMPTY_FIELDS" || /no form fields|zero fields|no fillable|xfa/i.test(message)) return "xfa_or_no_fields";

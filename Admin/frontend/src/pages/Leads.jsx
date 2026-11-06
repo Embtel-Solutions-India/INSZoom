@@ -56,6 +56,39 @@ const STATUS_DOTS = {
   rejected: 'bg-red-500',
 }
 
+// Where a lead came from, worked out from the `source` stored on every lead (so it covers leads created before this existed):
+//   "intake"                       -> Client portal (the quiz/intake inside the Client portal)
+//   anything mentioning GHL        -> GHL
+//   every other known source       -> Immiglance website (the eligibility quiz, the marketing-page forms, the booking page)
+// An unrecognised source is shown as stored.
+function leadSource(lead) {
+  const raw = String(lead?.source || '').trim()
+  if (!raw) return 'Unknown'
+  if (/ghl|gohighlevel|go high level/i.test(raw)) return 'GHL'
+  if (/^intake$/i.test(raw)) return 'Client portal'
+  if (/quiz|home page|offers page|contact request|consultation|appointment form|immiglance/i.test(raw)) return 'Immiglance website'
+  return raw
+}
+
+// A stored answer as readable text. Nothing stored -> "No answers yet"; the signed declaration (an object) -> who signed and when.
+function answerText(value) {
+  if (value === undefined || value === null || value === '') return 'No answers yet'
+  if (typeof value !== 'object') return String(value)
+  if (Array.isArray(value)) return value.length ? value.map(answerText).join(', ') : 'No answers yet'
+  const name = String(value.signedName || '').trim()
+  const when = value.signedAt && !Number.isNaN(new Date(value.signedAt).getTime())
+    ? new Date(value.signedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : ''
+  if (name) return `Signed by ${name}${when ? ` on ${when}` : ''}`
+  if (value.signatureDataUrl) return when ? `Signed on ${when}` : 'Signed'
+  return Object.keys(value).length ? 'Answered' : 'No answers yet'
+}
+
+// Basic details shown in the Profile section, in this order; every other stored answer goes to the Questionnaire section.
+const PROFILE_KEYS = ['salutation', 'firstName', 'lastName', 'countryOfBirth', 'countryOfCitizenship', 'location', 'phone', 'visaType']
+
+const humanKey = (k) => (k === 'name' ? 'Name' : k.replace(/([A-Z])/g, ' $1'))
+
 function initials(name) {
   if (!name) return '?'
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
@@ -420,6 +453,13 @@ function LeadDrawer({
     ? lead.scoreResult.evidenceStrength
     : (lead.criteriaAnswers || []).map((c) => ({ key: c.key, value: c.value, label: c.met ? 'Strong' : c.developable ? 'Developing' : 'None' }))
 
+  // Profile = who the person is (basic details) + where the lead came from. Questionnaire (bottom of the drawer) = every other stored answer,
+  // with the signed declaration last.
+  const answers = lead.profileAnswers || {}
+  const profileRows = PROFILE_KEYS.filter((key) => answers[key] !== undefined && answers[key] !== null && answers[key] !== '').map((key) => [key, answers[key]])
+  if (!answers.firstName && !answers.lastName && lead.fullName) profileRows.unshift(['name', lead.fullName])
+  const questionnaireRows = Object.entries(answers).filter(([key]) => !PROFILE_KEYS.includes(key) && key !== 'declaration')
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -569,20 +609,22 @@ function LeadDrawer({
             </div>
           </div>
 
-          {/* Profile answers (from the quiz) */}
-          {lead.profileAnswers && Object.keys(lead.profileAnswers).length > 0 && (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Profile</p>
-              <div className="rounded-lg border border-border divide-y divide-border">
-                {Object.entries(lead.profileAnswers).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-muted-foreground capitalize">{k.replace(/([A-Z])/g, ' $1')}</span>
-                    <span className="font-semibold text-foreground">{String(v)}</span>
-                  </div>
-                ))}
+          {/* Profile: basic details + where the lead came from */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Profile</p>
+            <div className="rounded-lg border border-border divide-y divide-border">
+              {profileRows.map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                  <span className="text-muted-foreground capitalize">{humanKey(k)}</span>
+                  <span className="font-semibold text-foreground text-right">{answerText(v)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-2.5 text-sm" title={lead.source || ''}>
+                <span className="text-muted-foreground">Source</span>
+                <span className="font-semibold text-foreground">{leadSource(lead)}</span>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Evidence strength */}
           {evidence.length > 0 && (
@@ -631,6 +673,23 @@ function LeadDrawer({
               >
                 Add
               </button>
+            </div>
+          </div>
+
+          {/* Questionnaire: the answers the person gave, signed declaration last */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Questionnaire</p>
+            <div className="rounded-lg border border-border divide-y divide-border">
+              {questionnaireRows.map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+                  <span className="text-muted-foreground capitalize">{humanKey(k)}</span>
+                  <span className="font-semibold text-foreground text-right">{answerText(v)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
+                <span className="text-muted-foreground">Declaration</span>
+                <span className="font-semibold text-foreground text-right">{answerText(answers.declaration)}</span>
+              </div>
             </div>
           </div>
         </div>

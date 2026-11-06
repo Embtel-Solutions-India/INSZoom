@@ -616,6 +616,15 @@ async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
 }
 
 async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
+  // A form published outside uscis.gov (the two DOL ETA-9089 forms, config/externalForms.js) has its own source + version detection and then runs through the SAME pipeline below this
+  // function (activateOrPromote and everything it calls). Every other form code is not external and continues exactly as before.
+  const external = require("../config/externalForms").externalFormFor(formCode);
+  if (external) {
+    return require("./ExternalFormAcquisitionService").ensureCurrentExternalForm({
+      formCode: external.formCode, entry: external, user, req, options,
+      helpers: { importer: USCISFormImporterService, findLatestActiveTemplate: (code) => uscisFormService.findLatestActiveTemplate(code), activateOrPromote, recordEdition, registerBrandNewFormUnlinked, compactActivationReport, enterpriseError, retryUntilSuccess },
+    });
+  }
   // a code USCIS publishes only as lettered forms (I-854 -> I-854A / I-854B) is not a form: say so and point at the real ones, never store the first lettered file under the parent's name
   const lettered = require("../config/formSourceAliases").parentOnlyChildren(formCode);
   if (lettered) throw enterpriseError(`"${formCode}" is not a form of its own - USCIS publishes it as ${lettered.join(" and ")}. Import those instead.`, 422, "USCIS_FORM_PARENT_ONLY");

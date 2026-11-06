@@ -13,7 +13,12 @@ function startUSCISCatalogSyncJob(withJobLock) {
     const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
     // Phase 5: the run is recorded for the governance overview AFTER it finishes; recording is fail-safe and never changes the run or its result
     const task = async () => {
+      // the two DOL ETA-9089 forms are checked FIRST and on their own (ExternalFormsSyncService; EXTERNAL_FORMS_SYNC=false switches it off; it never throws), so neither a USCIS-side
+      // failure below can skip them nor can they hold up a USCIS form: a DOL download is bounded by its own timeouts
+      const externalForms = await require("../../uscis-form-import/services/ExternalFormsSyncService").runExternalFormsSync({ user: actor || { role: "super_admin" } }).catch(() => null);
       const synced = await runCatalogSync({ user: actor || { role: "super_admin" } });
+      // the DOL outcomes ride along on the result so the governance run summary (summarizeCatalogSync) covers them too; additive, never changes the sync's own fields
+      if (synced && externalForms?.results?.length) synced.externalForms = externalForms.results;
       // leftover non-live copies of forms that are now live are cleared away - only after the open cases have moved onto the live edition and only when nothing references them
       // (StaleEditionCleanupService; USCIS_STALE_CLEANUP=false switches it off; it never throws)
       if (String(process.env.USCIS_STALE_CLEANUP || "true").toLowerCase() !== "false") await require("../../uscis-form-import/services/StaleEditionCleanupService").cleanupAll().catch(() => null);

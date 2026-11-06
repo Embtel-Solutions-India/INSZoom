@@ -37,8 +37,10 @@ function normalizeVersion(value) {
 // Which date is THE edition of the file being imported. The edition printed on the PDF itself describes the stored file, so it wins; the date USCIS shows on the
 // form page is kept separately (publishedEditionDate) because the catalog sync compares the page against the page. Never silently "today": if neither source
 // has a date the import date is used and marked as such so nothing downstream mistakes it for a real edition.
-function resolveEdition({ printed, page, inputVersion, now = new Date() }) {
-  const editionDate = printed || page || undefined;
+// `detected` (only the external-source forms pass it - DOL ETA-9089, which print no edition date): the day this version was first detected. It is the edition ONLY when nothing printed or
+// published exists, and is marked "import_date" so nothing downstream mistakes it for a real printed edition.
+function resolveEdition({ printed, page, detected, inputVersion, now = new Date() }) {
+  const editionDate = printed || page || detected || undefined;
   const source = printed ? "pdf" : page ? "uscis_page" : "import_date";
   const version = normalizeVersion(inputVersion) || isoDate(editionDate || now);
   return { editionDate, publishedEditionDate: page || undefined, editionDateSource: source, version };
@@ -163,6 +165,7 @@ class FormMetadataService {
     const { editionDate, publishedEditionDate, editionDateSource, version } = resolveEdition({
       printed: extractEditionDate(parsedText),
       page: input.editionDate ? parseEditionDate(input.editionDate) : undefined,
+      detected: input.detectedEditionAt ? new Date(input.detectedEditionAt) : undefined,
       inputVersion: input.version,
     });
     const revisionDate = input.revisionDate ? parseEditionDate(input.revisionDate) : editionDate;

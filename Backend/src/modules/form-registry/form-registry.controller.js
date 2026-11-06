@@ -2,6 +2,7 @@ const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
 const VisaFormMapping = require("../../models/VisaFormMapping");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
+const { externalFormFor, externalFormCodes } = require("../uscis-form-import/config/externalForms");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
 const visaFormMappingService = require("./visaFormMapping.service");
@@ -224,7 +225,12 @@ async function buildFormCatalog(onlyFormCode) {
       // A retired edition that no registry row points at is a superseded duplicate (e.g. an old auto-fetch stored
       // under a name the registry cannot resolve) - not a form operators need to see or fetch.
       if (templateByCode.get(code)?.status === "retired") continue;
-      grouped.set(code, { formCode: code, formNumber: code, agency: "USCIS", associations: [] });
+      grouped.set(code, { formCode: code, formNumber: code, agency: externalFormFor(code) ? String(externalFormFor(code).provider).toUpperCase() : "USCIS", associations: [] });
+    }
+    // The two DOL ETA-9089 forms the pipeline fetches from dol.gov (uscis-form-import/config/externalForms.js) are listed even before their first import, so they can be fetched from this page.
+    for (const code of externalFormCodes()) {
+      if (only && code !== only.toUpperCase()) continue;
+      if (!grouped.has(code)) grouped.set(code, { formCode: code, formNumber: code, agency: String(externalFormFor(code).provider).toUpperCase(), associations: [] });
     }
 
     const standaloneCatalog = [...grouped.values()].map((entry) => {
@@ -232,14 +238,14 @@ async function buildFormCatalog(onlyFormCode) {
       const pending = pendingByCode.get(entry.formCode);
       const artifactStatus = template?.artifacts?.form?.status;
       let fetchStatus;
-      if (!template) fetchStatus = entry.agency === "USCIS" ? "not_fetched" : "not_fetchable";
+      if (!template) fetchStatus = entry.agency === "USCIS" || externalFormFor(entry.formCode) ? "not_fetched" : "not_fetchable";
       else if (["failed", "corrupted", "missing"].includes(artifactStatus)) fetchStatus = "fetch_failed";
       else fetchStatus = "fetched";
       return {
         formCode: entry.formCode,
         formNumber: entry.formNumber,
         agency: entry.agency,
-        title: template?.title || template?.formName || entry.formNumber,
+        title: template?.title || template?.formName || externalFormFor(entry.formCode)?.title || entry.formNumber,
         templateId: template?._id || null,
         templateVersion: template?.version || null,
         fetchStatus,
@@ -361,7 +367,9 @@ exports.getFormCatalogEntry = async (req, res, next) => {
 exports.fetchFormFromUSCIS = async (req, res, next) => {
   try {
     const formCode = String(req.params.formCode || "").trim();
-    const mapping = await VisaFormMapping.findOne({ formTemplateFormCode: formCode.toLowerCase(), active: true }).select("agency").lean();
+    // a DOL ETA-9089 form (uscis-form-import/config/externalForms.js) has no registry row by design: its source is the entry in that data file
+    const external = externalFormFor(formCode);
+    const mapping = external ? { agency: "USCIS" } : await VisaFormMapping.findOne({ formTemplateFormCode: formCode.toLowerCase(), active: true }).select("agency").lean();
     if (!mapping) throw Object.assign(new Error(`No active registry mapping references form code "${formCode}"`), { status: 404 });
     if (mapping.agency !== "USCIS") {
       throw Object.assign(new Error(`${formCode.toUpperCase()} is a ${mapping.agency} form, not a downloadable USCIS PDF - it can't be fetched from uscis.gov.`), { status: 422, code: "USCIS_FORM_WRONG_AGENCY" });

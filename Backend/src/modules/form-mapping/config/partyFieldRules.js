@@ -277,6 +277,9 @@ RULES["I-9"] = [
   R("beneficiary.primaryPhone", "Telephone Number", { pages: [1], transform: { type: "phone" } }),
 ];
 // every rule above is the product owner's decision, complete for its form: EXCLUSIVE, so no guessed value can reach a box no rule covers
-const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751", "EOIR-29", "I-193", "I-956F", "I-956G", "I-956", "N-644", "I-9"]);
+// the two DOL ETA-9089 forms (etaFieldRules.js): authored and EXCLUSIVE like the I-9
+RULES["ETA-9089A"] = require("./etaFieldRules").ETA9089A_RULES;
+RULES["ETA-9089FD"] = require("./etaFieldRules").ETA9089FD_RULES;
+const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751", "EOIR-29", "I-193", "I-956F", "I-956G", "I-956", "N-644", "I-9", "ETA-9089A", "ETA-9089FD"]);
 
 module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

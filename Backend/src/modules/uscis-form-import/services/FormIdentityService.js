@@ -87,9 +87,23 @@ async function footerEdition(buffer) {
   }
 }
 
+/**
+ * Pure. Identity of a form published outside uscis.gov (config/externalForms.js). The two DOL forms print the SAME number in their footers ("Form ETA-9089 - Appendix A" /
+ * "Form ETA-9089 - Final Determination"), so the number alone cannot tell them apart: the form's own title decides. Refuses ONLY a clear contradiction - the other form's title and not
+ * this one's; anything else is inconclusive (import proceeds), like the USCIS check.
+ */
+function judgeExternal(texts, entry) {
+  const joined = (texts || []).join(" ");
+  if (entry.identity.is.test(joined)) return { ok: true };
+  if (entry.identity.isNot.test(joined)) return { ok: false, found: "another ETA-9089 form", requested: entry.formCode };
+  return { ok: true, inconclusive: true };
+}
+
 /** { ok, found?, requested?, inconclusive? } for a PDF buffer. Never throws. */
 async function check(buffer, requestedFormCode) {
   try {
+    const external = require("../config/externalForms").externalFormFor(requestedFormCode);
+    if (external) return judgeExternal(await footerTexts(buffer), external);
     return judge(footerNumbers(await footerTexts(buffer)), requestedFormCode);
   } catch (_error) {
     return { ok: true, inconclusive: true };
@@ -109,4 +123,4 @@ async function assertMatches(buffer, requestedFormCode) {
   return result;
 }
 
-module.exports = { check, assertMatches, judge, footerNumbers, normalizeFormNumber, footerEdition, footerEditionOf };
+module.exports = { check, assertMatches, judge, judgeExternal, footerNumbers, normalizeFormNumber, footerEdition, footerEditionOf };

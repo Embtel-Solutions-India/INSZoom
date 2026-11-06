@@ -10,6 +10,7 @@
 
 const gate = require("./EditionPolicyGate");
 const { GATE_REASONS, OWNER_FOOTER_EDITION_FORMS, OWNER_APPROVED_EDITIONS, familyOf } = require("./editionPolicy.constants");
+const { isExternalFormCode } = require("../uscis-form-import/config/externalForms");
 
 class EditionPolicyHeldError extends Error {
   constructor({ formCode, editionIdentifier, reasons, entryPoint, decision }) {
@@ -60,9 +61,21 @@ async function ownerApprovedEditionAllowed(edition, gateResult) {
   return { allowed: true, decision: "accepted", status: "owner_policy", reasons: [], ownerPolicy: "approved_edition", approvedEdition: approved, decisionVersion: null };
 }
 
-// both owner policies, one question: is this edition allowed by the owner's standing decision? (null = no)
+/**
+ * OWNER POLICY for a form published outside uscis.gov (the two DOL ETA-9089 forms, uscis-form-import/config/externalForms.js): the version the pipeline fetched from the official DOL source IS
+ * the accepted one (the same standing decision the owner made for the edition USCIS publishes). There is no USCIS page to ask, so no evidence is requested for it. A recorded decision
+ * (not accepted / held / stale / conflicting) always wins, and the rule only ever applies to a form on that list whose edition label is the detection day ("import_date").
+ */
+async function ownerExternalSourceAllowed(edition, gateResult, template) {
+  if (!isExternalFormCode(edition.formCode)) return null;
+  if (template?.importMetadata?.editionDateSource !== "import_date") return null;
+  if (gateResult?.allowed || !(gateResult?.reasons || []).length || gateResult.reasons.some((reason) => reason !== GATE_REASONS.NO_POLICY)) return null;
+  return { allowed: true, decision: "accepted", status: "owner_policy", reasons: [], ownerPolicy: "official_external_source", decisionVersion: null };
+}
+
+// the owner policies, one question: is this edition allowed by the owner's standing decision? (null = no)
 async function ownerPolicyAllowed(edition, gateResult, template, deps) {
-  return (await ownerApprovedEditionAllowed(edition, gateResult)) || (await ownerFooterEditionAllowed(edition, gateResult, template, deps));
+  return (await ownerApprovedEditionAllowed(edition, gateResult)) || (await ownerFooterEditionAllowed(edition, gateResult, template, deps)) || (await ownerExternalSourceAllowed(edition, gateResult, template));
 }
 
 async function ownerFooterEditionAllowed(edition, gateResult, template, deps) {
@@ -95,7 +108,7 @@ async function requireAcceptedEdition(template, { entryPoint, actor } = {}) {
     edition = editionOf(template);
     if (!edition.editionIdentifier) throw new EditionPolicyHeldError({ formCode: edition.formCode, editionIdentifier: null, reasons: [edition.why], entryPoint });
 
-    if (deps.autoEvidence) {
+    if (deps.autoEvidence && !isExternalFormCode(edition.formCode)) { // a DOL form has no USCIS page to ask
       try {
         await deps.service.runAutomaticCheck(edition.formCode, edition.editionIdentifier, { trigger: entryPoint });
       } catch (error) {

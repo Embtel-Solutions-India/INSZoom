@@ -23,7 +23,7 @@ const { createPerfTimer } = require("../../utils/perfTimer");
 const { isUscisUseOnly } = require("../uscis-form-import/services/FieldLabelEnrichmentService");
 const { isDatabaseUnavailableError } = require("../../middleware/errorHandler");
 const logger = require("../../utils/logger");
-const { hasNoForms } = require("../../config/visaCategories");
+const { hasNoForms, allowsManualForms } = require("../../config/visaCategories");
 
 const ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS = Number(process.env.ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS || 3000);
 // Server-side execution budget for renderCaseForm's CaseForm read. Same
@@ -591,7 +591,8 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
 }
 
 async function ensureAssignedForms(caseData, user, req, options = {}) {
-  if (hasNoForms(caseData?.visaType)) return []; // PERM: no form is ever assigned
+  // PERM: no form is ever assigned AUTOMATICALLY. A Case Manager's own selection (the caller passes the chosen templates) is the one exception for a case type that allows manual forms.
+  if (hasNoForms(caseData?.visaType) && !(allowsManualForms(caseData?.visaType) && Array.isArray(options.templates) && options.templates.length)) return [];
   // metadataOnly: skip all DB writes - used by listCaseForms (GET path) so a
   // simple tab-open does not mutate CaseForm documents. Moved to the very
   // first line: this used to sit AFTER latestTemplatesByAssignmentRules()/
@@ -1253,7 +1254,8 @@ async function listCaseForms(caseId, user, req) {
   // out-of-date case-assignment data - see getAccessibleCase's own comment.
   const caseData = await getAccessibleCase(caseId, user, { allowStaleFallback: true, requestId: req?.requestId });
   // A PERM case has no forms at all (no USCIS form, no mapping) - never list any, whatever is left in the database.
-  if (hasNoForms(caseData.visaType)) return [];
+  // (a case type that allows manual forms lists the forms its Case Manager added; every other no-forms type stays empty)
+  if (hasNoForms(caseData.visaType) && !allowsManualForms(caseData.visaType)) return [];
   const tAssign = Date.now();
   await ensureAssignedForms(caseData, user, req, { metadataOnly: true });
   logger.info("uscis_forms_list_ensureAssignedForms_ok", { requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tAssign });

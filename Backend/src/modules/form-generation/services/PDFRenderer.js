@@ -1,6 +1,7 @@
 const storageService = require("../../uploads/storage.service");
 const { fitTextValue, fitChoiceValue } = require("./FieldValueFitter");
 const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("./FullTextFieldGuard");
+const { applyAutoFontSize } = require("./AutoFontSizeGuard");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
@@ -182,6 +183,8 @@ class PDFRenderer {
     });
     // Text longer than a box normally holds is written in full (limits lifted above); shrink its font
     // so the whole entry is visible in the box instead of clipped. Must run before flatten()/save().
+    // the two DOL ETA-9089 forms: their auto-size boxes get the same ~12 pt a viewer uses for typed text (a no-op for every other form; AutoFontSizeGuard.js)
+    applyAutoFontSize(form, template.formCode);
     const shrunkTextFields = await shrinkLongTextToFit(pdf, form);
     // ISSUE-003 follow-up: must run BEFORE the flatten()/NeedAppearances
     // decision below - see BarcodeAppearanceGuard.js for the full root
