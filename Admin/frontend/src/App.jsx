@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { FedexPromptProvider } from './contexts/FedexPromptContext'
 import { SocketProvider } from './contexts/SocketContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import ThemeSync from './contexts/ThemeSync'
@@ -50,6 +51,7 @@ function App() {
         <ThemeSync />
         <SocketProvider>
         <NotificationProvider>
+         <FedexPromptProvider>
           <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -341,6 +343,7 @@ function App() {
             </Route>
           </Routes>
           </Suspense>
+         </FedexPromptProvider>
         </NotificationProvider>
         </SocketProvider>
       </AuthProvider>

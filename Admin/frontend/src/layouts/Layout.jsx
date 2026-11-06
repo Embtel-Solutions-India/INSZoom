@@ -1,3 +1,4 @@
+import EverydayPrompt from '../components/EverydayPrompt'
 import { useNavigate, useLocation } from 'react-router-dom'
 import KeepAliveOutlet from '../components/KeepAliveOutlet'
 import { useState, useRef, useEffect } from 'react'
@@ -374,6 +375,7 @@ const Layout = () => {
         </main>
       </div>
       <EnablePushButton />
+      <EverydayPrompt />
     </div>
   )
 }

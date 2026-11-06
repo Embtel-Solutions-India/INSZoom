@@ -60,6 +60,9 @@ const NOTIFICATION_TYPES = [
   "form_pipeline_update",
   // Weekly case manager reviews (2026-11-06)
   "weekly_review_reminder",
+  // Everyday plan / report reminders (22:45 and 06:45 IST; in-app + push only)
+  "everyday_plan_reminder",
+  "everyday_report_reminder",
   "performance_review_received",
   "escalated_task_overdue",
   "critical_task_overdue",

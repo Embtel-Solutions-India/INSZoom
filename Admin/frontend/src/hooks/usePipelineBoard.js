@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ghlApi, casesApi } from '../services/api'
 import { useSocket } from '../contexts/SocketContext'
+import { useFedexPrompt } from '../contexts/FedexPromptContext'
 
 // State for the GoHighLevel pipeline board.
 //
@@ -25,6 +26,10 @@ const errorMessage = (error) =>
 // The two pipelines are separate boards and are never merged.
 export default function usePipelineBoard(category = 'immigrant') {
   const { subscribe, connected } = useSocket()
+  // a card moved to Submitted (FedEx) asks the internal team for that case's FedEx number (FedexPromptContext; a no-op without its provider)
+  const { ask: askFedex } = useFedexPrompt()
+  const askFedexRef = useRef(askFedex)
+  askFedexRef.current = askFedex
   const [columns, setColumns] = useState([])
   const [pipelines, setPipelines] = useState([]) // tab summary: [{ category, name, total }]
   const [activeCategory, setActiveCategory] = useState(category)
@@ -166,6 +171,13 @@ export default function usePipelineBoard(category = 'immigrant') {
         confirmedRef.current.set(cardId, toKey)
         const syncStatus = res.data?.card?.syncStatus
         if (syncStatus) patchCard(cardId, { syncStatus })
+        if (toKey === 'submitted_fedex' && latestRef.current.get(cardId)?.seq === seq) {
+          try {
+            const card = columnsRef.current.flatMap((col) => col.cards).find((item) => item._id === cardId)
+            const who = card?.employeeIdentified === false ? 'Employee' : card?.clientName || ''
+            askFedexRef.current({ caseId: cardId, caseNumber: card?.caseNumber || '', label: [who, card?.employerName].filter(Boolean).join(' · ') })
+          } catch { /* the prompt is an addition: it can never fail the move */ }
+        }
       } catch (error) {
         // Our own backend refused or was unreachable. (GHL problems never land here:
         // the backend accepts the move and retries GHL by itself.)

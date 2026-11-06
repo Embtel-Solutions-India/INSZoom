@@ -845,6 +845,55 @@ function populateCaseQuery(query) {
 // only what the client portal actually reads: user, clientProfile,
 // beneficiary, createdBy, timeline.createdBy. Staff-facing call sites must
 // keep using populateCaseQuery unchanged.
+// What the client portal may know about the petition's courier shipment: the carrier, the tracking number the internal team entered and the filing date - nothing else (no fee, receipt number,
+// lockbox or attorney). Only a FedEx shipment with a plausible tracking number is shared, since the portal links it to FedEx's own tracking page. The USCIS Tracking tab's filing record wins;
+// the petition package's filing record (Petition tab) is the fallback. Pure. Returns null when there is nothing to show.
+const CLIENT_TRACKING_NUMBER = /^[A-Za-z0-9]{8,34}$/;
+function clientFilingShipment({ lifecycleFiling, packageFiling } = {}) {
+  const pick = (carrier, number, at) => {
+    const trackingNumber = String(number || "").replace(/[\s-]+/g, "");
+    if (String(carrier || "").toLowerCase() !== "fedex" || !CLIENT_TRACKING_NUMBER.test(trackingNumber)) return null;
+    const date = at ? new Date(at) : null;
+    return { carrier: "fedex", trackingNumber, shippedAt: date && !Number.isNaN(date.getTime()) ? date.toISOString() : null };
+  };
+  return pick(lifecycleFiling?.carrier, lifecycleFiling?.trackingNumber, lifecycleFiling?.filingDate)
+    || pick(packageFiling?.method, packageFiling?.trackingNumber, packageFiling?.shippedAt)
+    || null;
+}
+
+/**
+ * The courier shipments the client portal shows for a case: { filingShipment, filingShipments }.
+ *   filingShipment   this case's own FedEx shipment (or null) - what a single / family case or an employee with their own login sees;
+ *   filingShipments  every shipment to show on this dashboard: this case's own plus, for an employer matter (the principal), the shipment of EACH employee case - the number is entered on the
+ *                    employee's case, but it is the employer who is logged in - each labelled with the employee's name and case number.
+ * Carrier + number + date only (see clientFilingShipment). Never throws: on any problem the dashboard simply shows none.
+ */
+async function clientFilingShipmentsFor(caseData) {
+  try {
+    const PetitionPackage = require("../../models/PetitionPackage");
+    const packageFiling = async (caseIds) => {
+      const rows = await PetitionPackage.find({ caseId: { $in: caseIds }, isCurrent: true }).select("caseId filing").lean();
+      return new Map(rows.map((row) => [String(row.caseId), row.filing]));
+    };
+    const own = clientFilingShipment({ lifecycleFiling: caseData.immigrationLifecycle?.tracking?.filing })
+      || clientFilingShipment({ packageFiling: (await packageFiling([caseData._id])).get(String(caseData._id)) });
+    const list = own ? [{ ...own, caseNumber: caseData.caseNumber || "", employeeName: "" }] : [];
+    const isEmployerMatter = caseData.caseRole === "principal" && caseData.caseStructure === "employer_employee" && (caseData.childCases || []).length;
+    if (isEmployerMatter) {
+      const children = await Case.find({ parentCase: caseData._id, status: { $nin: ["removed", "archived"] } })
+        .select("caseNumber caseRole clientName clientEmail employeeIdentity pendingEmployee immigrationLifecycle.tracking.filing").sort({ createdAt: 1 }).lean();
+      const packages = await packageFiling(children.map((child) => child._id));
+      for (const child of children) {
+        const shipment = clientFilingShipment({ lifecycleFiling: child.immigrationLifecycle?.tracking?.filing }) || clientFilingShipment({ packageFiling: packages.get(String(child._id)) });
+        if (shipment) list.push({ ...shipment, caseNumber: child.caseNumber || "", employeeName: employeeContact({ ...child, caseRole: "employee" })?.name || "" });
+      }
+    }
+    return { filingShipment: own, filingShipments: list };
+  } catch (_error) {
+    return { filingShipment: null, filingShipments: [] };
+  }
+}
+
 function populateCaseQueryForClient(query) {
   return query.populate([
     { path: "user", select: "email displayName name role" },
@@ -1186,6 +1235,8 @@ module.exports = {
   populateCaseListDocs,
   populateCaseQuery,
   populateCaseQueryForClient,
+  clientFilingShipment,
+  clientFilingShipmentsFor,
   reopenCase,
   resolveTeamLeadForCase,
   saveCaseWithVersionRetry,

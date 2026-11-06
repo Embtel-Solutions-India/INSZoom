@@ -214,7 +214,8 @@ async function ensureLinked(caseId, { client } = {}) {
 // An employer matter's stage control picks ONE employee: each employee has their own card, and only that card moves.
 async function employeeCardsOf(principalId) {
   return Case.find({ parentCase: principalId, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } })
-    .select("_id caseNumber clientName clientEmail user employeeContact.name employeeContact.email integrations.ghl.pipelineId integrations.ghl.unifiedStageKey").sort({ createdAt: 1 }).lean();
+    // employeeIdentity / pendingEmployee are where a typed-in employee is stored (employee-identity.js employeeContact() reads them); there is no stored `employeeContact` field
+    .select("_id caseNumber caseRole clientName clientEmail user employeeIdentity.name employeeIdentity.email pendingEmployee.name pendingEmployee.email integrations.ghl.pipelineId integrations.ghl.unifiedStageKey").sort({ createdAt: 1 }).lean();
 }
 
 /** Moves ONE employee's card of an employer matter. The employee must belong to that matter. */
@@ -225,6 +226,15 @@ async function moveEmployerEmployee({ caseId, employeeCaseId, unifiedStageKey, m
     throw Object.assign(new Error("Choose an employee of this matter."), { status: 400, code: "EMPLOYEE_REQUIRED" });
   }
   return moveCaseStage({ caseId: employeeCaseId, unifiedStageKey, moveId, user });
+}
+
+/** Pure. The employees offered in the Update Stage dialog of an employer matter: every employee card, with the name / email the Employees panel shows (see stagesForCase). */
+function employeeOptions(cards) {
+  const { employeeContact } = require("../../modules/cases/employee-identity");
+  return (cards || []).map((card) => {
+    const contact = employeeContact({ ...card, caseRole: "employee" }) || {};
+    return { caseId: String(card._id), caseNumber: card.caseNumber, name: clean(contact.name), email: clean(contact.email), currentKey: card.integrations?.ghl?.unifiedStageKey || null };
+  });
 }
 
 async function stagesForCase(caseId, user) {
@@ -250,16 +260,9 @@ async function stagesForCase(caseId, user) {
   if (!pipeline) throw Object.assign(new Error("This case's GHL pipeline is not configured"), { status: 409, code: "PIPELINE_NOT_CONFIGURED" });
   const stages = [...pipeline.stages].sort((a, b) => a.order - b.order).map((s) => ({ key: s.key, name: s.name }));
   if (cards) {
-    // only the employee's own name and email (never the employer's); a slot not filled in yet is not offered
-    const employees = cards
-      .map((card) => ({
-        caseId: String(card._id),
-        caseNumber: card.caseNumber,
-        name: clean(card.clientName) || clean(card.employeeContact?.name),
-        email: clean(card.clientEmail) || clean(card.employeeContact?.email),
-        currentKey: card.integrations?.ghl?.unifiedStageKey || null,
-      }))
-      .filter((employee) => employee.name || employee.email);
+    // only the employee's own name and email (never the employer's), read the same way the Employees panel reads them. EVERY employee card of the matter is offered - identified or not,
+    // invited or not, password set or not (a card with no name yet is listed by its case number): whoever has a card on the Pipeline can be moved from here.
+    const employees = employeeOptions(cards);
     return { category: pipeline.category, currentKey: null, stages, employees };
   }
   return { category: pipeline.category, currentKey: ghl.unifiedStageKey || stages[0]?.key || null, stages };
@@ -342,4 +345,4 @@ async function isDeletionPending(opportunityId) {
   return Boolean(await GHLSyncJob.exists(deletionPendingFilter(opportunityId)));
 }
 
-module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, moveEmployerEmployee, isEmployerMatter, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+module.exports = { employeeOptions, queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, moveEmployerEmployee, isEmployerMatter, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };

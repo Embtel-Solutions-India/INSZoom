@@ -58,7 +58,8 @@ test("a returning person's 'case created' e-mail button opens THAT case after si
   assert.match(read(SRC, "modules", "cases", "clientAccount.service.js"), /\(user\.caseIds \|\| \[\]\)\.length > 1 \? `\?case=\$\{caseDoc\._id\}`/);
   const login2 = read(ROOT, "Immiglance", "Client", "src", "Pages", "Auth", "Login.jsx");
   assert.match(login2, /\/\^\[a-f0-9\]\{24\}\$\/i\.test\(searchParams\.get\("case"\)/, "only a well-formed id is used");
-  assert.match(login2, /afterLogin = caseParam \? `\/dashboard\?case=\$\{caseParam\}` : "\/dashboard"/);
+  // the e-mail's ?case= link wins; otherwise the page the person asked for before signing in (a notification link, a bookmark); otherwise the dashboard
+  assert.match(login2, /afterLogin = caseParam \? `\/dashboard\?case=\$\{caseParam\}` : \(requestedPath \|\| "\/dashboard"\)/);
   assert.ok((login2.match(/afterLogin/g) || []).length >= 4, "every post-sign-in redirect (Google, already signed in) uses it");
   assert.doesNotMatch(login2, /navigate\("\/dashboard", \{ replace: true \}\)|<Navigate to="\/dashboard" replace \/>/, "no redirect still goes to the bare dashboard");
 });

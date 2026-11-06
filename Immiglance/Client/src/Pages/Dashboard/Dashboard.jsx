@@ -12,6 +12,7 @@ import { splitHeadline } from "../../utils/headline";
 import { PLAN_LABELS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
 import { effectiveMilestones } from "../../utils/milestones";
+import PetitionShipmentCard from "../../components/PetitionShipmentCard";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const fmtDate = (iso) =>
@@ -797,6 +798,9 @@ export default function Dashboard() {
             <CaseStatusStepper caseData={activeCaseData} profileData={profileData} user={user} displayName={displayName} pipeline={pipeline} milestones={milestones} />
           )}
         </div>
+
+        {/* the FedEx tracking number of the filed petition, once our team has entered it (renders nothing otherwise) */}
+        <PetitionShipmentCard shipment={activeCaseData.filingShipment} shipments={activeCaseData.filingShipments} />
 
         {/* ── KPI tiles ── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

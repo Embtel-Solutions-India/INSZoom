@@ -3,7 +3,8 @@ import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import { useNavigate } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { Search, Receipt } from 'lucide-react'
+import CaseInvoices from '../components/CaseInvoices'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import RevenueTrendChart from '../components/RevenueTrendChart'
 import StatusDot from '../components/ui/StatusDot'
@@ -75,6 +76,7 @@ const PaymentsOverview = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [invoiceCase, setInvoiceCase] = useState(null) // the row whose Invoices popup is open
   const normalizedRole = String(user?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
   const canViewAnalytics = ['super_admin', 'admin', 'team_lead'].includes(normalizedRole)
   const hasLoadedOnce = useRef(false)
@@ -258,11 +260,11 @@ const PaymentsOverview = () => {
           <div className="overflow-x-hidden overflow-y-auto rounded-lg border border-border" style={{ maxHeight: 570 }}>
             <table className="w-full table-fixed text-[13px]">
               <colgroup>
-                <col style={{ width: '24%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '11%' }} /><col style={{ width: '9%' }} /><col style={{ width: '11%' }} /><col style={{ width: '11%' }} /><col style={{ width: '9%' }} />
+                <col style={{ width: '21%' }} /><col style={{ width: '12%' }} /><col style={{ width: '11%' }} /><col style={{ width: '10%' }} /><col style={{ width: '8%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '9%' }} /><col style={{ width: '9%' }} />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-muted">
                 <tr>
-                  {['Client', 'Case type', 'Case', 'Total fees', 'USCIS', 'Paid', 'Outstanding', 'Status'].map((heading) => (
+                  {['Client', 'Case type', 'Case', 'Total fees', 'USCIS', 'Paid', 'Outstanding', 'Status', 'Invoices'].map((heading) => (
                     <th key={heading} className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{heading}</th>
                   ))}
                 </tr>
@@ -287,10 +289,13 @@ const PaymentsOverview = () => {
                       <td className="px-3 py-2 font-medium tabular-nums text-foreground">{usd(row.amountPaid)}</td>
                       <td className="px-3 py-2 font-medium tabular-nums text-foreground">{usd(row.outstanding)}</td>
                       <td className="px-3 py-2"><StatusDot color={status.color}>{status.label}</StatusDot></td>
+                      <td className="px-3 py-2">
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setInvoiceCase(row) }} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-secondary"><Receipt className="h-3.5 w-3.5" />Invoices</button>
+                      </td>
                     </tr>
                   )
                 }) : (
-                  <tr><td colSpan={8} className="px-6 py-10 text-center text-muted-foreground">No payments found</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-10 text-center text-muted-foreground">No payments found</td></tr>
                 )}
               </tbody>
             </table>
@@ -306,6 +311,7 @@ const PaymentsOverview = () => {
           </div>
         ) : null}
       </div>
+      {invoiceCase ? <CaseInvoices caseId={invoiceCase._id} title={`${invoiceCase.caseNumber || ''}${invoiceCase.clientName ? ` · ${invoiceCase.clientName}` : ''}`} onClose={() => setInvoiceCase(null)} /> : null}
     </div>
   )
 }

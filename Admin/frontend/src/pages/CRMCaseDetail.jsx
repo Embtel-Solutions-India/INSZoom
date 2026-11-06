@@ -11,6 +11,10 @@ import { useCaseOrigin } from '../utils/caseOrigin'
 import { useRouteRevisit, useKeepAlivePin } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { formVersionLabel } from '../utils/formVersion'
+import FedexTrackingTools from '../components/FedexTrackingTools'
+import { useFedexPrompt } from '../contexts/FedexPromptContext'
+import { hasFedexNumber } from '../utils/fedexTracking'
+import { isFiledByStage, shownTrackingStatus } from '../utils/filedStages'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
@@ -29,6 +33,8 @@ import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
 import CaseNotesPanel from '../components/CaseNotesPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import CaseInvoices from '../components/CaseInvoices'
+import EmployerPaymentSummary from '../components/EmployerPaymentSummary'
 import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
@@ -61,7 +67,8 @@ import {
   Copy,
   Check,
   Scale,
-  Zap
+  Zap,
+  Truck
 } from 'lucide-react'
 
 // Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`, minus the types that allow forms added by hand - PERM: `manualForms`).
@@ -718,6 +725,7 @@ const CRMCaseDetail = () => {
   const [showAddEmployee, setShowAddEmployee] = useState(false)
   // Payment Summary editing (US dollars; saved here at once and sent to the case's GoHighLevel card)
   const [showFinanceEdit, setShowFinanceEdit] = useState(false)
+  const [invoicesOpen, setInvoicesOpen] = useState(false) // the case's Invoices popup (internal only)
   const [financeForm, setFinanceForm] = useState({ totalAmount: '', uscisFee: '', amountPaid: '', invoiceNo: '' })
   const [financeSaving, setFinanceSaving] = useState(false)
   const [financeError, setFinanceError] = useState('')
@@ -882,6 +890,7 @@ const CRMCaseDetail = () => {
   const [ghlStagesError, setGhlStagesError] = useState('')
   const [ghlUnavailable, setGhlUnavailable] = useState('') // the case cannot be staged on the Pipeline (reason shown instead of the old CRM list)
   const [ghlStageTick, setGhlStageTick] = useState(0) // bumped by a Pipeline / GoHighLevel move so the open dropdown reloads
+  const { ask: askFedex } = useFedexPrompt()
   const [ghlEmployees, setGhlEmployees] = useState(null) // null = a single card (family / single person); a list (maybe empty) = employer matter: its employees (each has their own card); the move goes to the chosen one only
   const [stageEmployeeId, setStageEmployeeId] = useState('')
   const stageEmployeeIdRef = useRef('')
@@ -1598,6 +1607,7 @@ const CRMCaseDetail = () => {
           assignedTo: value.rfe?.assignedTo?._id || value.rfe?.assignedTo || '',
         },
       })
+      setStatusTouched(false)
       setTrackingDocuments(response.data.governmentDocuments || [])
       setTrackingTimeline(response.data.timeline || [])
       setFetched(prev => ({ ...prev, tracking: true }))
@@ -1607,6 +1617,20 @@ const CRMCaseDetail = () => {
       setTabLoading(prev => ({ ...prev, tracking: false }))
     }
   }, [id, fetched.tracking])
+
+  // the FedEx popup (asked when a case moves to Submitted (FedEx)) just saved a number for this case: show it in the Tracking tab without a reload
+  useEffect(() => {
+    const refresh = (event) => { if (String(event.detail?.caseId) === String(id)) fetchTracking(true) }
+    window.addEventListener('fedex-number-saved', refresh)
+    return () => window.removeEventListener('fedex-number-saved', refresh)
+  }, [id, fetchTracking])
+
+  // A case at Submitted (FedEx) or any later stage (except On Hold) has been filed: the tab shows Filed even though the recorded status may still say Draft. Only what the person picks is
+  // saved, so opening / saving this tab never changes the recorded status (and so never sends a status e-mail) on its own.
+  const [statusTouched, setStatusTouched] = useState(false)
+  const stageKey = caseData?.integrations?.ghl?.unifiedStageKey
+  const filedByStage = isFiledByStage(stageKey)
+  const shownStatus = statusTouched ? tracking.status : shownTrackingStatus(tracking.status, stageKey)
 
   const updateTracking = (section, field, value) => {
     setTracking(current => section
@@ -1764,7 +1788,13 @@ const CRMCaseDetail = () => {
     return subscribe('ghl:pipeline:updated', () => setGhlStageTick((n) => n + 1))
   }, [connected, showStageUpdateModal, subscribe])
 
+  // true from the click until the server has answered: the Update button turns grey with "Updating…" so the team can see the click was taken, and a second click does nothing
+  const [stageUpdating, setStageUpdating] = useState(false)
   const handleStageUpdate = async () => {
+    if (stageUpdating) return
+    setStageUpdating(true)
+    const movedTo = newStage
+    const movedEmployee = ghlEmployees ? ghlEmployees.find((employee) => employee.caseId === stageEmployeeId) : null
     try {
       if (useGhlStages) {
         await ghlApi.moveStage(id, { unifiedStageKey: newStage, ...(ghlEmployees ? { employeeCaseId: stageEmployeeId } : {}), moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
@@ -1774,9 +1804,15 @@ const CRMCaseDetail = () => {
       setShowStageUpdateModal(false)
       setNewStage('')
       fetchCaseDetail()
+      // moved to Submitted (FedEx): ask for that case's FedEx number (for an employer matter, that employee's case)
+      if (useGhlStages && movedTo === 'submitted_fedex') {
+        askFedex({ caseId: movedEmployee ? movedEmployee.caseId : id, caseNumber: movedEmployee?.caseNumber || caseData?.caseNumber || '', label: movedEmployee?.name || caseData?.clientName || '' })
+      }
     } catch (error) {
       console.error('Error updating stage:', error)
       if (useGhlStages) setGhlStagesError(error.response?.data?.message || 'Could not move the case to that stage.')
+    } finally {
+      setStageUpdating(false)
     }
   }
 
@@ -2745,7 +2781,6 @@ const CRMCaseDetail = () => {
                           {f.pendingPush ? 'Updating GoHighLevel…' : f.source === 'crm' ? 'Kept in Immiglance (no GoHighLevel card)' : f.source ? 'Synced with GoHighLevel' : 'No figures yet'}
                           {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString()}` : ''}
                         </span>
-                        <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Edit</button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -2764,9 +2799,16 @@ const CRMCaseDetail = () => {
                     {f.invoiceNo ? <p className="mt-3 text-xs text-muted-foreground">QuickBooks invoice {f.invoiceNo}</p> : null}
                     {financeNote ? <p className="mt-2 text-xs font-medium text-foreground" role="status">{financeNote}</p> : null}
                     {f.pushError ? <p className="mt-2 text-xs text-red-700">GoHighLevel could not be updated: {f.pushError}. The figures are saved here.</p> : null}
+                    <div className="mt-4 flex flex-wrap justify-end gap-3">
+                      <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-4 py-1.5 text-sm font-semibold text-foreground hover:bg-secondary">Edit</button>
+                      <button type="button" onClick={() => setInvoicesOpen(true)} className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm"><Receipt className="h-4 w-4" />Invoices</button>
+                    </div>
                   </div>
                 )
               })()}
+
+              {/* An employer (principal) case: the accumulated Payment Summary of all its employees, with a row per employee */}
+              {caseData.caseRole === 'principal' && caseData.caseStructure === 'employer_employee' && <EmployerPaymentSummary caseId={caseData._id} title={`${caseData.caseNumber || ''}${caseData.clientName ? ` · ${caseData.clientName}` : ''}`} />}
 
               {/* Notes for the life of the case: every internal note (who and when) plus the notes typed at creation; any internal staff member adds one at any time */}
               <CaseNotesPanel caseData={caseData} user={user} onChanged={() => fetchCaseDetail(true)} />
@@ -2947,9 +2989,12 @@ const CRMCaseDetail = () => {
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <TrackingField label="Current USCIS Status">
-                  <select value={tracking.status} onChange={event => updateTracking(null, 'status', event.target.value)} className="input-field min-w-60">
+                  <select value={shownStatus} onChange={event => { setStatusTouched(true); updateTracking(null, 'status', event.target.value) }} className="input-field min-w-60">
                     {USCIS_STATUSES.map(status => <option key={status} value={status}>{displayStatus(status)}</option>)}
                   </select>
+                  {filedByStage && !statusTouched && shownStatus === 'filed' && tracking.status !== 'filed' && (
+                    <p className="mt-1.5 text-xs text-muted-foreground" data-testid="filed-by-stage-note">Shown as Filed because the case is at {caseData?.pipelineStage || 'Submitted (FedEx)'}.</p>
+                  )}
                 </TrackingField>
                 <button type="button" onClick={saveTracking} disabled={savingTracking || tabLoading.tracking}
                   className="btn-primary inline-flex items-center gap-2 disabled:opacity-50">
@@ -2963,7 +3008,7 @@ const CRMCaseDetail = () => {
                 trackingMessage.includes('successfully') ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-800'
               }`}>{trackingMessage}</div>
             )}
-            {tracking.status === 'draft' && (
+            {shownStatus === 'draft' && (
               <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                 This case has not been filed yet. You can prepare tracking details now; government-processing fields become primary after filing.
               </div>
@@ -2974,6 +3019,18 @@ const CRMCaseDetail = () => {
             <div className="card py-12 text-center text-muted-foreground">Loading USCIS tracking…</div>
           ) : (
             <>
+              {caseData?.integrations?.ghl?.unifiedStageKey === 'submitted_fedex' && !hasFedexNumber(tracking.filing) && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" data-testid="fedex-awaiting-notice">
+                  <div className="flex items-start gap-3">
+                    <Truck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold">Waiting for the FedEx tracking number</p>
+                      <p className="mt-0.5">This case is at Submitted (FedEx) but no FedEx tracking number has been added yet. The client cannot track the shipment until you add it.</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => askFedex({ caseId: id, caseNumber: caseData?.caseNumber || '', label: caseData?.clientName || '' })} className="btn-primary shrink-0">Add FedEx number</button>
+                </div>
+              )}
               <div className="card">
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-lg bg-blue-100 p-2 text-blue-700"><Receipt className="h-5 w-5" /></div>
@@ -3013,6 +3070,7 @@ const CRMCaseDetail = () => {
                   </TrackingField>
                   <TrackingField label="Shipment Tracking Number">
                     <input type="text" value={tracking.filing.trackingNumber} onChange={event => updateTracking('filing', 'trackingNumber', event.target.value)} className="input-field" />
+                    <FedexTrackingTools carrier={tracking.filing.carrier} number={tracking.filing.trackingNumber} />
                   </TrackingField>
                   <TrackingField label="Delivery Confirmation">
                     <input type="date" value={tracking.filing.deliveryConfirmationDate} onChange={event => updateTracking('filing', 'deliveryConfirmationDate', event.target.value)} className="input-field" />
@@ -4051,6 +4109,8 @@ const CRMCaseDetail = () => {
         </div>
       )}
 
+      {invoicesOpen && caseData?._id && <CaseInvoices caseId={caseData._id} title={`${caseData.caseNumber || ''}${caseData.clientName ? ` · ${caseData.clientName}` : ''}`} onClose={() => setInvoicesOpen(false)} />}
+
       {/* Stage Update Modal */}
       {showFinanceEdit && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto" onMouseDown={(event) => { if (event.target === event.currentTarget && !financeSaving) setShowFinanceEdit(false) }}>
@@ -4127,11 +4187,24 @@ const CRMCaseDetail = () => {
                 {useGhlStages ? <p className="mt-1 text-xs text-muted-foreground">{ghlEmployees ? 'Moves only the chosen employee card on the Pipeline board and updates GoHighLevel.' : 'Moves the card on the Pipeline board and updates GoHighLevel.'}</p> : null}
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setShowStageUpdateModal(false)} className="btn-secondary flex-1">
+                <button onClick={() => setShowStageUpdateModal(false)} className="btn-secondary flex-1 disabled:opacity-50" disabled={stageUpdating}>
                   Cancel
                 </button>
-                <button onClick={handleStageUpdate} className="btn-primary flex-1" disabled={!newStage || (Boolean(ghlEmployees) && !stageEmployeeId)}>
-                  Update
+                <button
+                  onClick={handleStageUpdate}
+                  className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
+                  disabled={stageUpdating || !newStage || (Boolean(ghlEmployees) && !stageEmployeeId)}
+                  aria-busy={stageUpdating}
+                  style={stageUpdating ? { backgroundColor: '#9ca3af', color: '#ffffff', cursor: 'wait' } : undefined}
+                  data-testid="stage-update-button"
+                >
+                  {stageUpdating && (
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  )}
+                  {stageUpdating ? 'Updating…' : 'Update'}
                 </button>
               </div>
             </div>

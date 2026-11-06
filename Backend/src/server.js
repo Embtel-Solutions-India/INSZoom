@@ -185,6 +185,18 @@ function startWeeklyReviewReminder() {
   return setInterval(run, intervalMs);
 }
 
+// "Everyday plan / report" reminders: 22:45 IST (goals) and 06:45 IST (achievements), bell + browser push only, once per person and only if not written yet.
+function startEverydayReminders() {
+  const intervalMs = Number(process.env.EVERYDAY_REMINDER_CHECK_INTERVAL_MS || 2 * 60 * 1000);
+  const run = () =>
+    withJobLock("everyday-reminders", intervalMs * 3, async () => {
+      const result = await require("./modules/reports/everyday.service").sendDueReminders();
+      if (result.plan || result.report || result.failures) logger.info("everyday_reminders_sent", result);
+    }).catch((error) => logger.error("everyday_reminders_failed", { error }));
+  scheduleInitialRun(run, 75 * 1000);
+  return setInterval(run, intervalMs);
+}
+
 // The "Immiglance Pipeline" lead sync's safety net: leads that were marked for sending but did not reach GoHighLevel (it was down, the process stopped) are
 // retried. Does nothing unless GHL_IMMIGLANCE_PIPELINE_ID is set.
 function startGhlLeadPipelineSweep() {
@@ -296,6 +308,7 @@ connectDB()
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
     const weeklyReviewReminder = startWeeklyReviewReminder();
+    const everydayReminders = startEverydayReminders();
     const ghlLeadPipelineSweep = startGhlLeadPipelineSweep();
     const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
     const uscisEditionUpgrade = startUSCISEditionUpgradeJob(withJobLock);
@@ -354,6 +367,7 @@ connectDB()
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       clearInterval(weeklyReviewReminder);
+      clearInterval(everydayReminders);
       clearInterval(ghlLeadPipelineSweep);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
       if (uscisEditionUpgrade) clearInterval(uscisEditionUpgrade);

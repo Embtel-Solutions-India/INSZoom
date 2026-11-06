@@ -106,6 +106,16 @@ exports.dashboard = async (req, res) => {
   }
 };
 
+// PUT /cases/:caseId/tracking/fedex { trackingNumber } - the FedEx number of the filed petition (asked when the case moves to Submitted (FedEx)); sets only the carrier and the number.
+exports.fedexTracking = async (req, res) => {
+  try {
+    const caseData = await loadCase(req.params.caseId, req.user);
+    return respond(res, 200, { filing: await TrackingService.setFedexNumber(caseData, req.body?.trackingNumber, req.user, req) });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
 exports.tracking = async (req, res) => {
   try {
     const caseData = await loadCase(req.params.caseId, req.user);
