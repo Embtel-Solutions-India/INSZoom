@@ -207,8 +207,8 @@ const AdminPanel = ({
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-              {/* dashed grid lines, horizontal and vertical, with the case counts along the bottom (whole numbers) */}
-              <CartesianGrid strokeDasharray="3 3" />
+              {/* dashed grid, horizontal and vertical, in large cells: 4 horizontal bands instead of one line per category; the counts along the bottom are whole numbers */}
+              <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
               <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
@@ -489,7 +489,7 @@ const TeamLeadPanel = ({
           {casesByVisaTypeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={Math.max(200, Math.min(casesByVisaTypeData.length, 10) * 26 + 24)}>
               <BarChart data={casesByVisaTypeData.slice(0, 10)} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" horizontalCoordinatesGenerator={({ height, offset }) => Array.from({ length: 5 }, (_, index) => offset.top + ((height - offset.top - offset.bottom) * index) / 4)} />
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
                 <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
                 <Tooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
