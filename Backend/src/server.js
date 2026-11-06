@@ -172,8 +172,8 @@ function startAIMaintenance() {
   return setInterval(run, intervalMs);
 }
 
-// Every Friday 5:30 AM IST: one review-your-case-managers e-mail to team leads and admins (modules/cases/weekly-review-reminder.service.js). Checked every
-// 5 minutes; the week record in the database makes it send once. WEEKLY_REVIEW_EMAILS=false turns it off.
+// Every Saturday 5:30 AM IST: one review-your-case-managers e-mail to team leads and admins (modules/cases/weekly-review-reminder.service.js). Checked every
+// 5 minutes; each person is marked on the week's record before they are notified, so nobody gets it twice. WEEKLY_REVIEW_EMAILS=false turns it off.
 function startWeeklyReviewReminder() {
   const intervalMs = Number(process.env.WEEKLY_REVIEW_CHECK_INTERVAL_MS || 5 * 60 * 1000);
   const run = () =>

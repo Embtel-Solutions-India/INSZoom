@@ -9,10 +9,11 @@ const field = (id, value) => ({ id, fieldValueString: value });
 
 test("amounts are read as plain US dollars, in any common typing", () => {
   assert.equal(fin.parseMoney("50"), 50);
-  assert.equal(fin.parseMoney(" $1,200.50 "), 1200.5);
+  assert.equal(fin.parseMoney(" $1,200.50 "), 1201, "whole dollars: cents are rounded");
   assert.equal(fin.parseMoney("1 200"), 1200);
   assert.equal(fin.parseMoney(10000), 10000, "the card's Value is already dollars: never divided or multiplied by 100");
-  assert.equal(fin.parseMoney("12.345"), 12.35);
+  assert.equal(fin.parseMoney("12.345"), 12);
+  assert.equal(fin.parseMoney("0.4"), 0);
   for (const bad of ["", "abc", "-5", "1e3", null, undefined, NaN]) assert.equal(fin.parseMoney(bad), null, String(bad));
 });
 
@@ -64,4 +65,92 @@ test("the finance figures are never part of a client-side case response", () => 
     assert.equal("finance" in out, false, role);
   }
   assert.equal(caseService.serializeCaseForUser({ _id: "c1", finance: { totalAmount: 100 } }, { role: "admin" }).finance.totalAmount, 100);
+});
+
+// ---- editing from Immiglance (two-way) ----
+const findByIdOf = (doc) => () => ({ select: () => ({ lean: async () => doc }) });
+
+test("an edit in Immiglance is validated, keeps the figures it did not touch, and is queued for GoHighLevel while the card's older figures are held back", async (t) => {
+  const env = require("../../../config/env");
+  const aux = require("../ghlAuxOutbound");
+  const finance = require("../../../modules/finance/caseFinance.service");
+  const writes = [];
+  t.mock.method(Case, "updateOne", async (filter, update) => { writes.push(update); return { modifiedCount: 1, matchedCount: 1 }; });
+  const original = { enabled: env.ghl.enabled, token: env.ghl.token };
+  Object.assign(env.ghl, { enabled: true, token: "t" });
+  t.after(() => Object.assign(env.ghl, original));
+  const queued = [];
+  t.mock.method(aux, "queueJob", async (caseId, type) => { queued.push([String(caseId), type]); return null; });
+
+  const card = { _id: "c1", caseNumber: "B1", finance: { totalAmount: 100, uscisFee: 50, amountPaid: 90, invoiceNo: "INV-1", source: "ghl" }, integrations: { ghl: { opportunityId: "o1" } } };
+  t.mock.method(Case, "findById", findByIdOf(card));
+  await assert.rejects(() => finance.editCaseFinance("c1", { amountPaid: "-5" }, { _id: "u" }), /Amount paid must be an amount/);
+  await assert.rejects(() => finance.editCaseFinance("c1", { totalAmount: "abc" }, { _id: "u" }), /Total fees/);
+  await assert.rejects(() => finance.editCaseFinance("c1", { totalAmount: 1e12 }, { _id: "u" }), /too large/);
+
+  const result = await finance.editCaseFinance("c1", { amountPaid: "$1,000.50" }, { _id: "u" });
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.after, { totalAmount: 100, uscisFee: 50, amountPaid: 1001, invoiceNo: "INV-1" }, "only the amount paid changed (rounded to whole dollars)");
+  assert.equal(writes[0].$set["finance.pendingPush"], true, "held back from GoHighLevel's older figures until sent");
+  assert.equal(writes[0].$set["finance.source"], "ghl");
+  assert.equal(writes[0].$push["finance.history"].$each[0].paidDelta, 911, "the history records the signed change");
+  assert.deepEqual(queued, [["c1", "push_finance"]]);
+  assert.equal(result.ghl.queued, true);
+
+  const same = await finance.editCaseFinance("c1", { amountPaid: 90 }, { _id: "u" });
+  assert.equal(same.changed, false, "nothing changed: nothing written, nothing sent");
+});
+
+test("a case with no GoHighLevel card is edited and counted locally (source crm) and nothing is queued; an employer matter is refused", async (t) => {
+  const aux = require("../ghlAuxOutbound");
+  const finance = require("../../../modules/finance/caseFinance.service");
+  const writes = [];
+  t.mock.method(Case, "updateOne", async (filter, update) => { writes.push(update); return { modifiedCount: 1 }; });
+  const queued = [];
+  t.mock.method(aux, "queueJob", async (...args) => { queued.push(args); return null; });
+  t.mock.method(Case, "findById", findByIdOf({ _id: "c2", caseNumber: "B2", integrations: {} }));
+  const result = await finance.editCaseFinance("c2", { totalAmount: 500, uscisFee: 0, amountPaid: 100 }, { _id: "u" });
+  assert.equal(result.changed, true);
+  assert.equal(writes[0].$set["finance.source"], "crm");
+  assert.equal(writes[0].$set["finance.pendingPush"], false);
+  assert.equal(queued.length, 0);
+
+  Case.findById.mock.mockImplementation(findByIdOf({ _id: "c3", caseRole: "principal", caseStructure: "employer_employee" }));
+  await assert.rejects(() => finance.editCaseFinance("c3", { totalAmount: 5 }, { _id: "u" }), /employer matter/);
+});
+
+test("GoHighLevel's older figures never overwrite an edit that is still on its way", async () => {
+  const result = await fin.syncCaseFinance({ _id: "c1", finance: { totalAmount: 500, pendingPush: true } }, { id: "o1", monetaryValue: 100, customFields: [] }, { client: { async get() { throw new Error("must not even be asked"); } } });
+  assert.deepEqual(result, { changed: false, skipped: "push_pending" });
+});
+
+test("the push sends the case's CURRENT figures to the card as Value + fields, clears the marker, and sends again if edited while sending", async (t) => {
+  const opportunities = require("../ghlOpportunityService");
+  fin._resetFieldCache();
+  const sent = [];
+  t.mock.method(opportunities, "updateOpportunity", async (id, body) => { sent.push({ id, body }); });
+  const docs = [
+    { finance: { totalAmount: 100, uscisFee: 50, amountPaid: 90, invoiceNo: "INV-1", updatedAt: new Date("2026-11-06T10:00:00Z") }, integrations: { ghl: { opportunityId: "o1" } } },
+    { finance: { totalAmount: 100, uscisFee: 50, amountPaid: 95, invoiceNo: "INV-1", updatedAt: new Date("2026-11-06T10:00:05Z") }, integrations: { ghl: { opportunityId: "o1" } } },
+  ];
+  let read = 0;
+  t.mock.method(Case, "findById", () => ({ select: () => ({ lean: async () => docs[Math.min(read++, docs.length - 1)] }) }));
+  const updates = [];
+  // the first marker-clear finds the case edited again (no match), the second succeeds
+  t.mock.method(Case, "updateOne", async (filter, update) => { updates.push(update); return updates.filter((u) => u.$set && u.$set["finance.pendingPush"] === false).length === 1 ? { modifiedCount: 0, matchedCount: 0 } : { modifiedCount: 1, matchedCount: 1 }; });
+  const client = { async get() { return { customFields: [{ fieldKey: "opportunity.uscis_fee", id: "f-uscis" }, { fieldKey: "opportunity.qb_amount_paid", id: "f-paid" }, { fieldKey: "opportunity.qb_invoice_no", id: "f-inv" }] }; } };
+  const outcome = await fin.runPushFinance({ caseId: "c1" }, client);
+  assert.equal(outcome, "done");
+  assert.equal(sent.length, 2, "sent again because the figures changed while sending");
+  assert.deepEqual(sent[0].body, { monetaryValue: 100, customFields: [{ id: "f-uscis", field_value: "50" }, { id: "f-paid", field_value: "90" }, { id: "f-inv", field_value: "INV-1" }] });
+  assert.equal(sent[1].body.customFields[1].field_value, "95", "the second send carries the newest amount");
+  assert.equal(sent[1].id, "o1");
+});
+
+test("a case that has no card (any more) is skipped and stops holding anything back", async (t) => {
+  t.mock.method(Case, "findById", findByIdOf({ finance: { totalAmount: 5 }, integrations: {} }));
+  const updates = [];
+  t.mock.method(Case, "updateOne", async (filter, update) => { updates.push(update); return { modifiedCount: 1 }; });
+  assert.equal(await fin.runPushFinance({ caseId: "c9" }, {}), "skipped");
+  assert.equal(updates[0].$set["finance.pendingPush"], false);
 });

@@ -41,7 +41,7 @@ async function loadColumn(scope, column, user, { limit, skip }) {
   const filter = { $and: [scope, { "integrations.ghl.unifiedStageKey": column.key }] };
   const [total, docs] = await Promise.all([
     Case.countDocuments(filter),
-    Case.find(filter).select(CARD_FIELDS).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    Case.find(filter).select(CARD_FIELDS).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
   ]);
   const [assignees, employers] = await Promise.all([loadAssignees(docs), loadEmployers(docs)]);
   const isAdmin = ADMIN_ROLES.has(normalizeRole(user.role));

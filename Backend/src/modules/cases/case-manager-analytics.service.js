@@ -52,7 +52,7 @@ function openRfeDeadlineFilter({ dueSoonOnly = false } = {}) {
 async function caseIdsWithBalanceDue(caseIds) {
   const rows = await Case.find({
     _id: { $in: caseIds },
-    "finance.source": "ghl",
+    "finance.source": { $in: ["ghl", "crm"] },
     $expr: { $gt: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] },
   }).select("_id").lean();
   return new Set(rows.map((row) => String(row._id)));
@@ -141,7 +141,7 @@ async function byStageBreakdown(caseManagerFilter) {
 async function paymentsSection(caseIds) {
   // collected = QB Amount Paid, outstanding = Value - QB Amount Paid (never below 0), per case, from each case's GoHighLevel figures. US dollars.
   const [row] = await Case.aggregate([
-    { $match: { _id: { $in: caseIds }, "finance.source": "ghl" } },
+    { $match: { _id: { $in: caseIds }, "finance.source": { $in: ["ghl", "crm"] } } },
     { $project: { paid: { $ifNull: ["$finance.amountPaid", 0] }, total: { $ifNull: ["$finance.totalAmount", 0] }, uscis: { $ifNull: ["$finance.uscisFee", 0] } } },
     { $addFields: { owed: { $max: [{ $subtract: ["$total", "$paid"] }, 0] } } },
     { $group: { _id: null, collected: { $sum: "$paid" }, outstanding: { $sum: "$owed" }, total: { $sum: "$total" }, uscisFees: { $sum: "$uscis" }, casesWithBalance: { $sum: { $cond: [{ $gt: ["$owed", 0] }, 1, 0] } } } },

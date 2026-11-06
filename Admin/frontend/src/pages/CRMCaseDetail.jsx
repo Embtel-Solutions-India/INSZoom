@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { pipelineCategoryLabel } from '../utils/visaOptions'
 import AddEmployeeModal from '../components/AddEmployeeModal'
+import { FINANCE_COLORS } from '../utils/financeColors'
 import { stageToneStyle, rowToneStyle } from '../utils/stageTone'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import GoogleDriveExport from '../components/GoogleDriveExport'
@@ -141,11 +142,13 @@ const TrackingField = ({ label, children }) => (
 
 const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: String(currency || 'USD').toUpperCase()
+  currency: String(currency || 'USD').toUpperCase(),
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 }).format((Number(amount) || 0) / 100)
 
 // US dollars (the payment figures from GoHighLevel are dollars, never cents)
-const formatUsd = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount) || 0)
+const formatUsd = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(amount) || 0)
 
 const formatOptionalDate = (...values) => {
   for (const value of values) {
@@ -712,6 +715,12 @@ const CRMCaseDetail = () => {
   const [employeeActionMessage, setEmployeeActionMessage] = useState('')
   const [inviteDraft, setInviteDraft] = useState(null) // { childId, name, email }
   const [showAddEmployee, setShowAddEmployee] = useState(false)
+  // Payment Summary editing (US dollars; saved here at once and sent to the case's GoHighLevel card)
+  const [showFinanceEdit, setShowFinanceEdit] = useState(false)
+  const [financeForm, setFinanceForm] = useState({ totalAmount: '', uscisFee: '', amountPaid: '', invoiceNo: '' })
+  const [financeSaving, setFinanceSaving] = useState(false)
+  const [financeError, setFinanceError] = useState('')
+  const [financeNote, setFinanceNote] = useState('')
   // Themed, centred confirmation (replaces the browser's own confirm box): { title, message, confirmLabel, tone, onConfirm }
   const [confirmRequest, setConfirmRequest] = useState(null)
 
@@ -1058,6 +1067,28 @@ const CRMCaseDetail = () => {
   }
 
   const handleAddEmployee = () => setShowAddEmployee(true)
+
+  const openFinanceEdit = () => {
+    const f = caseData?.finance || {}
+    setFinanceForm({ totalAmount: String(Math.round(f.totalAmount ?? 0)), uscisFee: String(Math.round(f.uscisFee ?? 0)), amountPaid: String(Math.round(f.amountPaid ?? 0)), invoiceNo: f.invoiceNo || '' })
+    setFinanceError('')
+    setShowFinanceEdit(true)
+  }
+  const saveFinance = async () => {
+    setFinanceSaving(true)
+    setFinanceError('')
+    try {
+      const response = await casesApi.updateFinance(id, financeForm)
+      setShowFinanceEdit(false)
+      setFinanceNote(response.data?.changed === false ? 'Nothing changed.' : response.data?.ghl?.queued ? 'Saved. Updating GoHighLevel…' : 'Saved.')
+      await fetchCaseDetail(true)
+      window.setTimeout(() => setFinanceNote(''), 6000)
+    } catch (error) {
+      setFinanceError(error.response?.data?.message || 'Could not save the payment figures.')
+    } finally {
+      setFinanceSaving(false)
+    }
+  }
   // Copies a fresh one-time setup link (it replaces any earlier one) so the Case Manager can hand it over when the email did not arrive
   const handleCopySetupLink = (child) => runEmployeeAction(`link:${child._id}`, async () => {
     const response = await casesApi.createEmployeeSetupLink(id, child._id)
@@ -1155,6 +1186,13 @@ const CRMCaseDetail = () => {
       setTabLoading(prev => ({ ...prev, payments: false }))
     }
   }, [id, fetched.payments])
+
+  // the Payment Summary follows the database live: when this case's figures change (in GoHighLevel, here, or by someone else) it is re-read at once
+  useEffect(() => {
+    if (!connected) return undefined
+    return subscribe('payment:updated', (payload) => { if (!payload?.caseId || String(payload.caseId) === String(id)) fetchCaseDetail(true) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, subscribe, id])
 
   useEffect(() => {
     if (activeTab !== 'payments') return undefined
@@ -2017,7 +2055,7 @@ const CRMCaseDetail = () => {
   const formatCurrency = (value) => {
     const amount = Number(value || 0)
     if (!amount) return 'Not set'
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
   }
 
   const renderInformationRequestsPanel = () => (
@@ -2691,29 +2729,43 @@ const CRMCaseDetail = () => {
                 </div>
               </div>
 
-              {/* Payment summary: read live from the case's GoHighLevel card - Value (total fees, USCIS fees not included), USCIS Fee, QB Amount Paid. US dollars. */}
-              {caseData.finance && (
-                <div className="card">
-                  <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 className="text-lg font-semibold text-foreground">Payment Summary</h3>
-                    <span className="text-xs text-muted-foreground">From GoHighLevel{caseData.finance.updatedAt ? ` · updated ${new Date(caseData.finance.updatedAt).toLocaleString()}` : ''}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    {[
-                      ['Total Fees', formatUsd(caseData.finance.totalAmount), 'text-foreground'],
-                      ['USCIS Fee', formatUsd(caseData.finance.uscisFee), 'text-foreground'],
-                      ['Amount Paid', formatUsd(caseData.finance.amountPaid), 'text-green-600'],
-                      ['Outstanding', formatUsd(Math.max((Number(caseData.finance.totalAmount) || 0) - (Number(caseData.finance.amountPaid) || 0), 0)), 'text-amber-600'],
-                    ].map(([label, value, tone]) => (
-                      <div key={label}>
-                        <p className="text-sm text-muted-foreground">{label}</p>
-                        <p className={`text-lg font-semibold ${tone}`}>{value}</p>
+              {/* Payment summary: Total Fees = the GoHighLevel Value (USCIS fees not included), USCIS Fee, Amount Paid = QB Amount Paid. US dollars. Editable here: saved at once and
+                  sent to the GoHighLevel card; a change made in GoHighLevel comes back here. Every analytics screen reads these figures. */}
+              {!(caseData.caseRole === 'principal' && caseData.caseStructure === 'employer_employee') && (() => {
+                const f = caseData.finance || {}
+                const total = Number(f.totalAmount) || 0
+                const paid = Number(f.amountPaid) || 0
+                return (
+                  <div className="card">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-lg font-semibold text-foreground">Payment Summary</h3>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-xs text-muted-foreground">
+                          {f.pendingPush ? 'Updating GoHighLevel…' : f.source === 'crm' ? 'Kept in Immiglance (no GoHighLevel card)' : f.source ? 'Synced with GoHighLevel' : 'No figures yet'}
+                          {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString()}` : ''}
+                        </span>
+                        <button type="button" onClick={openFinanceEdit} className="rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground hover:bg-secondary">Edit</button>
                       </div>
-                    ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                      {[
+                        ['Total Fees', formatUsd(total), FINANCE_COLORS.total],
+                        ['USCIS Fee', formatUsd(f.uscisFee), FINANCE_COLORS.uscis],
+                        ['Amount Paid', formatUsd(paid), FINANCE_COLORS.paid],
+                        ['Outstanding', formatUsd(Math.max(total - paid, 0)), FINANCE_COLORS.outstanding],
+                      ].map(([label, value, dot]) => (
+                        <div key={label}>
+                          <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}</p>
+                          <p className="text-lg font-semibold tabular-nums text-foreground">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {f.invoiceNo ? <p className="mt-3 text-xs text-muted-foreground">QuickBooks invoice {f.invoiceNo}</p> : null}
+                    {financeNote ? <p className="mt-2 text-xs font-medium text-foreground" role="status">{financeNote}</p> : null}
+                    {f.pushError ? <p className="mt-2 text-xs text-red-700">GoHighLevel could not be updated: {f.pushError}. The figures are saved here.</p> : null}
                   </div>
-                  {caseData.finance.invoiceNo ? <p className="mt-3 text-xs text-muted-foreground">QuickBooks invoice {caseData.finance.invoiceNo}</p> : null}
-                </div>
-              )}
+                )
+              })()}
 
               {/* Notes for the life of the case: every internal note (who and when) plus the notes typed at creation; any internal staff member adds one at any time */}
               <CaseNotesPanel caseData={caseData} user={user} onChanged={() => fetchCaseDetail(true)} />
@@ -3999,6 +4051,40 @@ const CRMCaseDetail = () => {
       )}
 
       {/* Stage Update Modal */}
+      {showFinanceEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto" onMouseDown={(event) => { if (event.target === event.currentTarget && !financeSaving) setShowFinanceEdit(false) }}>
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md" role="dialog" aria-modal="true" aria-label="Edit payment summary">
+            <h3 className="text-xl font-bold text-foreground">Edit Payment Summary</h3>
+            <p className="mb-4 mt-1 text-xs text-muted-foreground">Whole US dollars (any cents are rounded). Saved here at once, sent to the GoHighLevel card, and used by every payment analytics screen.</p>
+            <div className="space-y-3">
+              {[
+                ['totalAmount', 'Total fees (the GoHighLevel Value; USCIS fees not included)'],
+                ['uscisFee', 'USCIS fee'],
+                ['amountPaid', 'Amount paid (QB Amount Paid)'],
+              ].map(([key, label]) => (
+                <label key={key} className="block text-sm">
+                  <span className="mb-1 block font-medium text-muted-foreground">{label}</span>
+                  <div className="flex items-center rounded-lg border border-border bg-card focus-within:ring-2 focus-within:ring-blue-500">
+                    <span className="pl-3 text-muted-foreground">$</span>
+                    <input type="number" min="0" step="1" inputMode="numeric" value={financeForm[key]} onChange={(event) => setFinanceForm((prev) => ({ ...prev, [key]: event.target.value }))} className="w-full bg-transparent px-2 py-2 outline-none tabular-nums" disabled={financeSaving} />
+                  </div>
+                </label>
+              ))}
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-muted-foreground">QuickBooks invoice no. (optional)</span>
+                <input type="text" maxLength={60} value={financeForm.invoiceNo} onChange={(event) => setFinanceForm((prev) => ({ ...prev, invoiceNo: event.target.value }))} className="input-field" disabled={financeSaving} />
+              </label>
+              <p className="text-xs text-muted-foreground">Outstanding = total fees − amount paid: {formatUsd(Math.max((Number(financeForm.totalAmount) || 0) - (Number(financeForm.amountPaid) || 0), 0))}</p>
+              {financeError ? <p className="text-sm text-red-700" role="alert">{financeError}</p> : null}
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button type="button" onClick={() => setShowFinanceEdit(false)} disabled={financeSaving} className="btn-secondary flex-1">Cancel</button>
+              <button type="button" onClick={saveFinance} disabled={financeSaving} className="btn-primary flex-1">{financeSaving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showStageUpdateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">

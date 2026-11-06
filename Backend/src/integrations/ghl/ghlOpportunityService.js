@@ -83,4 +83,9 @@ async function updateOpportunityName(opportunityId, name, client = getClient()) 
   return client.put(`/opportunities/${opportunityId}`, { name });
 }
 
-module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, deleteOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };
+// PUT /opportunities/{id} with any of its fields (monetaryValue, customFields ...). Used to push a case's payment figures edited in Immiglance.
+async function updateOpportunity(opportunityId, body, client = getClient()) {
+  return client.put(`/opportunities/${opportunityId}`, body);
+}
+
+module.exports = { updateOpportunity, fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, deleteOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };

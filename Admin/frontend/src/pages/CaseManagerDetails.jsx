@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import CaseManagerPerformance from '../components/CaseManagerPerformance'
+import StatusDot from '../components/ui/StatusDot'
+import { FINANCE_COLORS, FINANCE_STATUS } from '../utils/financeColors'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import {
   Area,
@@ -51,7 +53,9 @@ import {
 
 const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: String(currency || 'USD').toUpperCase()
+  currency: String(currency || 'USD').toUpperCase(),
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 }).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 const CHART_COLORS = ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#eab308', '#db2777']
@@ -232,25 +236,8 @@ const CaseManagerDetails = () => {
   }
 
   const getPaymentStatusBadge = (status) => {
-    const badges = {
-      paid: 'bg-green-100 text-green-800',
-      partially_paid: 'bg-yellow-100 text-yellow-800',
-      not_started: 'bg-secondary text-foreground',
-      overdue: 'bg-red-100 text-red-800',
-      refunded: 'bg-purple-100 text-purple-800'
-    }
-    const labels = {
-      paid: 'Paid',
-      partially_paid: 'Partially Paid',
-      not_started: 'Pending',
-      overdue: 'Overdue',
-      refunded: 'Refunded'
-    }
-    return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badges[status] || badges.not_started}`}>
-        {labels[status] || status}
-      </span>
-    )
+    const entry = FINANCE_STATUS[status] || FINANCE_STATUS.no_fee
+    return <StatusDot color={entry.color}>{entry.label}</StatusDot>
   }
 
   if (loading) {
@@ -391,7 +378,7 @@ const CaseManagerDetails = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold text-foreground">${(stats.totalRevenue || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">${Math.round(stats.totalRevenue || 0).toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-blue-500" />
             </div>
@@ -400,7 +387,7 @@ const CaseManagerDetails = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Collected</p>
-                <p className="text-2xl font-bold text-foreground">${(stats.collectedRevenue || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">${Math.round(stats.collectedRevenue || 0).toLocaleString()}</p>
               </div>
               <TrendingUp className="w-8 h-8 text-purple-500" />
             </div>
@@ -679,22 +666,17 @@ const CaseManagerDetails = () => {
           <div className="p-6">
             {paymentSummary && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Total Assigned</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueAssigned)}</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Collected</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueCollected)}</p>
-                </div>
-                <div className="bg-orange-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Outstanding</p>
-                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.outstandingRevenue)}</p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">Collection Rate</p>
-                  <p className="text-xl font-bold text-foreground">{paymentSummary.collectionRate}%</p>
-                </div>
+                {[
+                  ['Total Assigned', formatPaymentAmount(paymentSummary.totalRevenueAssigned), FINANCE_COLORS.total],
+                  ['Collected', formatPaymentAmount(paymentSummary.totalRevenueCollected), FINANCE_COLORS.paid],
+                  ['Outstanding', formatPaymentAmount(paymentSummary.outstandingRevenue), FINANCE_COLORS.outstanding],
+                  ['Collection Rate', `${paymentSummary.collectionRate}%`, FINANCE_COLORS.partial],
+                ].map(([label, value, dot]) => (
+                  <div key={label} className="rounded-lg border border-border bg-card p-4">
+                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />{label}</p>
+                    <p className="text-xl font-semibold tabular-nums text-foreground">{value}</p>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -807,7 +789,7 @@ const CaseManagerDetails = () => {
                             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                             <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} />
                             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} hide />
-                            <Tooltip formatter={(value, name) => [name === 'payments' ? `$${Number(value || 0).toLocaleString()}` : value, formatLabel(name)]} />
+                            <Tooltip formatter={(value, name) => [name === 'payments' ? `$${Math.round(Number(value || 0)).toLocaleString()}` : value, formatLabel(name)]} />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
                             <Line yAxisId="left" type="monotone" dataKey="active" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
                             <Line yAxisId="left" type="monotone" dataKey="attention" stroke="#f97316" strokeWidth={2} dot={{ r: 2 }} />

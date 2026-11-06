@@ -12,6 +12,8 @@ router.get("/dashboard", authenticate, authorizeRoles(...analyticsRoles), author
 router.get("/processing-time", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getProcessingTime);
 router.get("/rfe-trends", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getRfeTrends);
 router.get("/revenue", authenticate, authorizeRoles(...managerRoles), authorizePermissions("analytics:read"), ctrl.getRevenueAnalytics);
+router.get("/payments/breakdown", authenticate, authorizeRoles(...managerRoles), authorizePermissions("analytics:read"), ctrl.getPaymentBreakdown);
+router.get("/payments/trend", authenticate, authorizeRoles(...managerRoles), authorizePermissions("analytics:read"), ctrl.getPaymentTrend);
 router.get("/payments/cases", authenticate, authorizeRoles(...managerRoles, "case_manager"), authorizePermissions("analytics:read"), ctrl.getPaymentCases);
 router.get("/payments", authenticate, authorizeRoles(...managerRoles), authorizePermissions("analytics:read"), ctrl.getPaymentAnalytics);
 router.get("/cases", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getCaseAnalytics);

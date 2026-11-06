@@ -236,6 +236,8 @@ async function handleAuxFailure(job, error) {
     return { status: "retry" };
   }
   await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "failed", completedAt: new Date(), lockedUntil: null, lastError: message } });
+  // an edited payment amount that could not be sent: stop holding back GoHighLevel's own figures and say why (the edit itself stays here)
+  if (job.type === "push_finance") await Case.updateOne({ _id: job.caseId }, { $set: { "finance.pendingPush": false, "finance.pushError": message } }).catch(() => null);
   await Case.updateOne(
     { _id: job.caseId },
     { $set: { "integrations.ghl.flags.needsAttention": true, "integrations.ghl.sync.state": "failed", "integrations.ghl.sync.lastError": message, ...(error.status === 404 ? { "integrations.ghl.flags.deletedInGhl": true } : {}) } }

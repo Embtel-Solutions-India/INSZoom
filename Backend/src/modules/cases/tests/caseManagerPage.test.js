@@ -21,11 +21,13 @@ test("a team lead's cases include the ones they lead; a case manager's match is 
   assert.ok(teamLeadMatch("x").$or.some((clause) => clause.assignedTeamLead === "x"));
 });
 
-test("the Friday review e-mail is due from 5:30 AM IST on Friday, and only then", () => {
-  assert.equal(dueWeekKey(new Date("2026-11-06T00:00:00Z")), "2026-11-06"); // Friday 05:30 IST
-  assert.equal(dueWeekKey(new Date("2026-11-05T23:59:00Z")), ""); // 05:29 IST
-  assert.equal(dueWeekKey(new Date("2026-11-05T12:00:00Z")), ""); // Thursday
-  assert.equal(dueWeekKey(new Date("2026-11-07T00:10:00Z")), ""); // Saturday IST
+test("the weekly review e-mail is due from 5:30 AM IST on Saturday, and only then", () => {
+  assert.equal(dueWeekKey(new Date("2026-11-07T00:00:00Z")), "2026-11-07"); // Saturday 05:30 IST
+  assert.equal(dueWeekKey(new Date("2026-11-06T23:59:00Z")), ""); // Saturday 05:29 IST
+  assert.equal(dueWeekKey(new Date("2026-11-06T12:00:00Z")), ""); // Friday
+  assert.equal(dueWeekKey(new Date("2026-11-08T00:10:00Z")), ""); // Sunday IST
+  assert.equal(dueWeekKey(new Date("2026-11-07T18:00:00Z")), "2026-11-07"); // still Saturday evening IST? 23:30 IST: yes
+  assert.equal(dueWeekKey(new Date("2026-11-07T19:00:00Z")), ""); // 00:30 IST Sunday
 });
 
 test("the details endpoint answers for a case manager and for a team lead, with live payment figures (regression: a missing variable once broke the page)", async (t) => {
@@ -55,4 +57,40 @@ test("the details endpoint answers for a case manager and for a team lead, with 
     assert.equal(body.stats.uscisFees, 50);
     assert.equal(body.stats.avgProcessingTime, 10, "average days from creation to the last update of the completed cases");
   }
+});
+
+test("the weekly reminder reaches each person ONCE, however many times the job runs (restarts, repeated ticks)", async (t) => {
+  const WeeklyReviewRun = require("../../../models/WeeklyReviewRun");
+  const User = require("../../../models/User");
+  const notificationService = require("../../notifications/notification.service");
+  const reminder = require("../weekly-review-reminder.service");
+  reminder._markGuardReady();
+  // an in-memory stand-in for the week's single record: updateOne with { notified: { $ne: id } } + $addToSet / $pull, like MongoDB
+  const week = { notified: new Set(), recipients: 0 };
+  t.mock.method(WeeklyReviewRun, "updateOne", async (filter, update) => {
+    if (update.$setOnInsert) return { modifiedCount: 0 };
+    if (update.$addToSet) {
+      const id = String(update.$addToSet.notified);
+      if (week.notified.has(id)) return { modifiedCount: 0 };
+      week.notified.add(id);
+      return { modifiedCount: 1 };
+    }
+    if (update.$pull) { week.notified.delete(String(update.$pull.notified)); return { modifiedCount: 1 }; }
+    return { modifiedCount: 0 };
+  });
+  t.mock.method(User, "find", () => ({ select: () => ({ lean: async () => [{ _id: "u1", email: "a@x.com", name: "A" }, { _id: "u2", email: "b@x.com", name: "B" }] }) }));
+  const sent = [];
+  t.mock.method(notificationService, "createNotification", async (payload) => { sent.push(String(payload.userId)); });
+  const saturday = new Date("2026-11-07T01:00:00Z");
+  for (let run = 0; run < 4; run += 1) await reminder.sendWeeklyReviewReminders(saturday);
+  assert.deepEqual(sent.sort(), ["u1", "u2"], "two people, one notification each, after four runs");
+  assert.equal((await reminder.sendWeeklyReviewReminders(new Date("2026-11-06T09:00:00Z"))).skipped, "not_due", "nothing on a Friday");
+
+  // a failed send takes the mark back so that person is retried (and only that person)
+  week.notified.clear(); sent.length = 0;
+  let first = true;
+  notificationService.createNotification.mock.mockImplementation(async (payload) => { if (first && payload.userId === "u1") { first = false; throw new Error("boom"); } sent.push(String(payload.userId)); });
+  await reminder.sendWeeklyReviewReminders(saturday);
+  await reminder.sendWeeklyReviewReminders(saturday);
+  assert.deepEqual(sent.sort(), ["u1", "u2"]);
 });

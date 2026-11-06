@@ -105,7 +105,7 @@ async function queueJob(caseId, type) {
   if (await GHLSyncJob.exists({ caseId, type, status: { $in: ["pending", "processing"] } })) return null;
   // A job that just failed for good is not retried by every sweep (that only hammers GHL and re-alerts admins); try again after an hour.
   // A case that never made it to GHL is retried much sooner (every sweep after 10 minutes): it must always end up there.
-  const cooldownMs = type === "create_case_opportunity" || type === "link_employer" ? 10 * 60 * 1000 : 60 * 60 * 1000;
+  const cooldownMs = type === "push_finance" ? 0 : type === "create_case_opportunity" || type === "link_employer" ? 10 * 60 * 1000 : 60 * 60 * 1000; // an edited amount is always sent
   if (await GHLSyncJob.exists({ caseId, type, status: "failed", updatedAt: { $gte: new Date(Date.now() - cooldownMs) } })) return null;
   return GHLSyncJob.create({ type, caseId, operationId: crypto.randomUUID(), status: "pending", nextAttemptAt: new Date() });
 }
@@ -320,6 +320,7 @@ async function runAuxJob(job, { client } = {}) {
   if (job.type === "create_case_opportunity") return require("./ghlCaseOutbound").runCreateCaseOpportunity(job, client);
   if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
   if (job.type === "delete_opportunity") return require("./ghlCaseOutbound").runDeleteOpportunity(job, client);
+  if (job.type === "push_finance") return require("./ghlFinance").runPushFinance(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }
 

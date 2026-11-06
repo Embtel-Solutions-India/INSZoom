@@ -21,7 +21,9 @@ const PRIORITY_COLORS = { urgent: '#ef4444', high: '#f97316', 'Premium Processin
 
 const formatUsd = (amount) => new Intl.NumberFormat('en-US', {
   style: 'currency',
-  currency: 'USD'
+  currency: 'USD',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 }).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
 export const PERIODS = [

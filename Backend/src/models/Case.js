@@ -1200,7 +1200,14 @@ const caseSchema = new mongoose.Schema(
       invoiceNo: { type: String, default: "" },
       lastPaymentAt: Date,
       updatedAt: Date,
-      source: { type: String },
+      source: { type: String }, // "ghl" (read from the card) or "crm" (typed in Immiglance, a case with no card)
+      pendingPush: { type: Boolean, default: false }, // an edit made in Immiglance that is still being sent to GoHighLevel: its older value must not overwrite it meanwhile
+      pushedAt: Date,
+      pushError: String,
+      editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      // Every change of the figures, as signed amounts (US dollars), so the graphs can show fees and payments by day / week / month and the
+      // sum of all entries always equals the current figures. Capped at the last 200 entries.
+      history: [{ _id: false, at: Date, totalDelta: { type: Number, default: 0 }, uscisDelta: { type: Number, default: 0 }, paidDelta: { type: Number, default: 0 } }],
     },
 
     integrations: {

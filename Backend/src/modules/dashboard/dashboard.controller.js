@@ -135,6 +135,27 @@ exports.getPaymentCases = async (req, res, next) => {
   }
 };
 
+// Paid vs total by day / week / month (India time), with this period against the previous one on the same dates. US dollars.
+exports.getPaymentTrend = async (req, res, next) => {
+  try {
+    const granularity = ["day", "week", "month"].includes(req.query.granularity) ? req.query.granularity : "day";
+    const data = await cachedDashboardCompute(cacheKeyFor("paymentTrend", req), () => require("../finance/caseFinance.service").trend({ granularity }));
+    res.json({ success: true, ...data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Payments Overview graphs: by case type, the cases with the most still to pay, and by case manager (US dollars).
+exports.getPaymentBreakdown = async (req, res, next) => {
+  try {
+    const data = await cachedDashboardCompute(cacheKeyFor("paymentBreakdown", req), () => require("../finance/caseFinance.service").breakdown({}));
+    res.json({ success: true, ...data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getProcessingTime = async (req, res, next) => {
   try {
     const cases = await cachedDashboardCompute(cacheKeyFor("caseAnalytics", req), () => dashboardService.caseAnalytics(req.query, req.user));

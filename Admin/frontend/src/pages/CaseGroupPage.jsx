@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, UserRound, Search, ChevronLeft, ChevronRight, Users, UserPlus, Calendar, Mail, ArrowUpRight, FolderOpen, List, LayoutGrid, Trash2 } from 'lucide-react'
+import { Building2, UserRound, Search, ChevronLeft, ChevronRight, Users, UserPlus, Calendar, Mail, ArrowUpRight, FolderOpen, List, LayoutGrid, Trash2, X } from 'lucide-react'
 import api, { casesApi, invalidateCachedGet } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import ConfirmModal from '../components/ConfirmModal'
@@ -205,9 +205,15 @@ export default function CaseGroupPage({ caseGroup }) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape' && search) { e.preventDefault(); setSearch('') } }}
               placeholder={group.searchPlaceholder}
-              className="w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+              className="w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-10 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
             />
+            {search ? (
+              <button type="button" onClick={() => setSearch('')} aria-label="Clear search" title="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
           <WrappingSelect
             value={visaFilter}

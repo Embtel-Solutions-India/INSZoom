@@ -214,6 +214,8 @@ export const recycleBinApi = {
 }
 
 export const casesApi = {
+  // edit a case's payment figures (US dollars); sent on to the case's GoHighLevel card
+  updateFinance: (id, payload) => api.put(`/cases/${id}/finance`, payload),
   dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
   list: (params = {}) => api.get('/cases', { params }),
   // Every creatable case type from the registry (drives the Create Case dropdown).

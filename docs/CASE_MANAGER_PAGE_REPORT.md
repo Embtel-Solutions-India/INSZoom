@@ -1,4 +1,4 @@
-# Case Managers page: team leads, completed cases, reviews, Friday e-mail (2026-11-06)
+# Case Managers page: team leads, completed cases, reviews, weekly review e-mail (2026-11-06)
 
 All additive and fail-safe. Existing endpoints keep their shape; every new job / notification logs a failure instead of throwing.
 
@@ -32,14 +32,15 @@ One rule, read live from each case's `integrations.ghl.unifiedStageKey` (constan
 - Raters, one rating per rater per week (re-rating replaces), 1-5 stars and an optional paragraph: unchanged.
 - When someone reviews / updates a review, the case manager gets an e-mail + in-app + browser notification ("You received feedback on your performance").
 
-### 5. Friday e-mail
-- Every Friday from 5:30 AM IST: **one** e-mail (plus in-app and browser notification) to each team lead, admin and super admin: "It's Friday: review your case managers' week", with one Sign-in button (login page).
-- Sent once: the first process to insert the week's record (`WeeklyReviewRun`, unique IST date) sends; every other tick, instance or restart that day does nothing. Checked every 5 minutes under the existing job lock.
-- Blocked e-mail addresses (`EMAIL_BLOCKED_RECIPIENTS`) are skipped by the e-mail service as for every e-mail.
+### 5. Weekly review e-mail (Saturday 5:30 AM IST)
+- Every **Saturday from 5:30 AM IST**: **one** e-mail (plus the bell and browser notification) to each team lead, admin and super admin: "Review your case managers' week", with one Sign-in button. Blocked addresses are skipped by the e-mail service as always.
+- **Strictly once per person per week:** the week has one record and each person is marked on it (atomically) *before* they are notified, so a backend restart, a second instance or a repeated tick never sends a second copy. If a send fails, that person's mark is taken back so the next 5-minute tick retries only them.
+- (2026-11-06 fix) The first version relied on a unique index that was never created, so each backend restart re-sent the reminder (3 times that Friday). The index is now created by the job itself, the duplicate run records were merged, and the per-person mark makes a repeat impossible even without it.
+- `WEEKLY_REVIEW_EMAILS=false` turns off the weekly reminder **and** the "you received a review" notification.
 
 ## Production
 - Restart the backend (new job, new notification types, new e-mail templates).
-- New env var (optional): `WEEKLY_REVIEW_EMAILS=false` switches off the Friday e-mail **and** the "you received a review" e-mail/notification. Default on.
+- New env var (optional): `WEEKLY_REVIEW_EMAILS=false` switches off the weekly e-mail **and** the "you received a review" e-mail/notification. Default on.
 - Rebuild and deploy **Admin**. Nothing else changes in Client, Landing or Attorney.
 - No data migration.
 

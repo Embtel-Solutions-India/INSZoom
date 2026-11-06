@@ -245,7 +245,7 @@ async function getDashboard(id, user) {
   const related = await getRelated(id, user);
   const openCases = related.cases.filter((caseData) => !["closed", "archived", "approved", "denied"].includes(caseData.status));
   // payment figures come from the cases' GoHighLevel figures (Value / QB Amount Paid), US dollars - not from the Payment collection
-  const withFinance = related.cases.filter((caseData) => caseData.finance?.source === "ghl");
+  const withFinance = related.cases.filter((caseData) => ["ghl", "crm"].includes(caseData.finance?.source));
   const paid = withFinance.reduce((sum, caseData) => sum + (Number(caseData.finance.amountPaid) || 0), 0);
   const outstanding = withFinance.reduce((sum, caseData) => sum + Math.max((Number(caseData.finance.totalAmount) || 0) - (Number(caseData.finance.amountPaid) || 0), 0), 0);
   return {
