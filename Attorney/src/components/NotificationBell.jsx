@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { notificationsApi } from '../services/api'
-import { onForegroundMessage, requestPermissionAndGetToken } from '../services/notificationService'
+import { onForegroundMessage, requestPermissionAndGetToken, showMessagePushInForeground } from '../services/notificationService'
 import { useSocket } from '../context/SocketContext'
 
 export default function NotificationBell() {
@@ -41,7 +41,11 @@ export default function NotificationBell() {
 
   useEffect(() => {
     load()
-    const detach = onForegroundMessage(() => load())
+    const detach = onForegroundMessage((payload) => {
+      load()
+      // a new message while the portal is open but not on the Messages page: the browser notification too (never affects the bell)
+      try { Promise.resolve(showMessagePushInForeground?.(payload)).catch(() => {}) } catch { /* ignore */ }
+    })
     // 60s polling stays as a fallback (same as Admin's NotificationContext) -
     // the socket subscription below is what makes the bell instant in the
     // common case instead of waiting on the next tick.

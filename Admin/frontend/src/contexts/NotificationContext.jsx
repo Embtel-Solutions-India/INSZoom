@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, u
 import { useAuth } from './AuthContext'
 import { useSocket } from './SocketContext'
 import api from '../services/api'
-import { onForegroundMessage } from '../services/notificationService';
+import { onForegroundMessage, showMessagePushInForeground } from '../services/notificationService';
 
 const NotificationContext = createContext()
 
@@ -112,6 +112,9 @@ export const NotificationProvider = ({ children }) => {
   }, [])
 
   useEffect(() => onForegroundMessage((payload) => {
+    // A new message while the app is open but NOT on the Messages page: show the browser notification too (the internal team is never e-mailed about
+    // messages). Fire and forget; it never throws and never affects the bell below.
+    try { Promise.resolve(showMessagePushInForeground?.(payload)).catch(() => {}) } catch { /* the bell below must always update */ }
     setNotifications((prev) => [{
       _id: `fcm-${Date.now()}`,
       title: payload?.notification?.title,

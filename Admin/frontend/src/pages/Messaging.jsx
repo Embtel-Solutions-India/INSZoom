@@ -5,6 +5,7 @@ import api, { messagesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useSocket } from '../contexts/SocketContext'
+import { setOpenChat } from '../services/notificationService'
 import {
   MessageSquare,
   Send,
@@ -984,6 +985,12 @@ const Messaging = () => {
 
   // Contacts are ordered like WhatsApp: whoever wrote (or was written to) most recently is on top, and a new message moves that person up at once;
   // people with no chat yet follow, A-Z (internalContacts is already A-Z, and the sort is stable).
+  // Unopened messages per tab: Clients = every case thread (and direct chat with a client) that is shown under Clients; Team members = the chats with colleagues.
+  const clientsUnread = useMemo(() => conversations.reduce((sum, group) => sum + (group.unreadCount || 0), 0), [conversations])
+  const teamUnread = useMemo(() => groups
+    .filter(group => group.type === 'user' && INTERNAL_CONTACT_ROLES.includes(group.userRole))
+    .reduce((sum, group) => sum + (group.unreadCount || 0), 0), [groups])
+
   const sortedInternalContacts = useMemo(() => {
     const latest = new Map(groups.filter(group => group.type === 'user' && group.latestAt).map(group => [group.userId, new Date(group.latestAt).getTime()]))
     return [...internalContacts].sort((left, right) => (latest.get(idOf(right._id)) || 0) - (latest.get(idOf(left._id)) || 0))
@@ -1178,6 +1185,19 @@ const Messaging = () => {
       }
     }
   }, [selectedGroup?.conversationId])
+
+  // Tell the notification layer which chat is on screen: a new message in THIS chat stays quiet (it appears live), a message in any other chat still notifies.
+  useEffect(() => {
+    const onScreen = Boolean(selectedGroup) && (showMobileThread || (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 640px)').matches))
+    setOpenChat(onScreen ? {
+      kind: 'message',
+      conversationId: selectedGroup.conversationId,
+      caseId: selectedGroup.type === 'case' ? selectedGroup.caseId : undefined,
+      userId: selectedGroup.type === 'user' ? selectedGroup.userId : undefined
+    } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGroup?.type, selectedGroup?.caseId, selectedGroup?.userId, selectedGroup?.conversationId, showMobileThread])
+  useEffect(() => () => setOpenChat(null), [])
 
   const presenceUserId = selectedGroup?.type === 'case' ? selectedGroup.clientUserId : selectedGroup?.userId
 
@@ -1565,6 +1585,11 @@ const Messaging = () => {
                         }`}
                       >
                         Clients
+                        {clientsUnread > 0 && (
+                          <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground" aria-label={`${clientsUnread} unopened`}>
+                            {clientsUnread > 99 ? '99+' : clientsUnread}
+                          </span>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -1576,6 +1601,11 @@ const Messaging = () => {
                         }`}
                       >
                         Team members
+                        {teamUnread > 0 && (
+                          <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground" aria-label={`${teamUnread} unopened`}>
+                            {teamUnread > 99 ? '99+' : teamUnread}
+                          </span>
+                        )}
                       </button>
                     </div>
                   </div>

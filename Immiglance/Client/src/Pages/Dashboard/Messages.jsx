@@ -12,6 +12,7 @@ import { copyTextToClipboard } from "../../utils/copyToClipboard";
 import AttachmentViewer from "../../components/AttachmentViewer";
 import MessageAttachment from "../../components/MessageAttachment";
 import ConfirmDialog from "../../components/questionnaire/ConfirmDialog";
+import { setOpenChat } from "../../services/notificationService";
 
 /* ─── Icons ────────────────────────────────────────────────────────────── */
 const Ic = {
@@ -800,6 +801,11 @@ export default function Messages() {
   // Keep a ref to the open thread so the socket handler below always sees
   // the latest selection without needing to resubscribe on every click.
   useEffect(() => { activeThreadRef.current = activeThread; }, [activeThread]);
+  // the open chat, for the notification layer: a new message in THIS chat stays quiet (it appears live), a message in any other chat still notifies
+  useEffect(() => {
+    setOpenChat(activeThread ? { kind: "message", conversationId: activeThread._id, caseId: activeThread.caseId?._id || activeThread.caseId } : null);
+  }, [activeThread]);
+  useEffect(() => () => setOpenChat(null), []);
 
   // Live-append incoming/outgoing messages the instant they're sent, and
   // refresh the conversation list (previews + unread badges) in real time —

@@ -17,17 +17,33 @@ firebase.initializeApp({
   appId: "1:839144138598:web:11ce1750713d8e253acaa7",
 });
 
+// A new version of this worker takes over at once (it used to wait until every tab of the app was closed), so a fix to how notifications are shown reaches
+// phones and computers that already allowed notifications without the person having to do anything.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
 const messaging = firebase.messaging();
 
 // Fires only when no Immiglance tab is focused (foreground messages are handled
 // in-app instead — see notificationService.js's onForegroundMessage, used
 // by NotificationBell.jsx — so the same notification is never shown twice).
-messaging.onBackgroundMessage((payload) => {
+messaging.onBackgroundMessage(async (payload) => {
   const link = payload.data?.link || payload.fcmOptions?.link || "/";
   const tag = payload.data?.tag;
-  self.registration.showNotification(payload.notification?.title || payload.data?.title || "New notification", {
-    body: payload.notification?.body || payload.data?.body,
-    icon: "/favicon.svg",
+  const title = payload.notification?.title || payload.data?.title || "New notification";
+  const body = payload.notification?.body || payload.data?.body;
+  // Firebase has ALREADY shown this notification itself (the push carries a "notification" part) just before it calls this handler. Showing it again with the
+  // re-alert flag would make the phone / computer alert twice for one message, so when the very same notification is already on screen nothing more is done here.
+  // A push Firebase did not show (no notification part) is still shown below.
+  try {
+    const shown = await self.registration.getNotifications();
+    if (shown.some((existing) => existing.title === title && (existing.body || "") === (body || "") && Date.now() - (existing.timestamp || 0) < 15000)) return;
+  } catch (error) {
+    /* if the check cannot be made, show it: a missed message is worse than a rare repeat */
+  }
+  await self.registration.showNotification(title, {
+    body,
+    icon: "/icon-192.png", // a PNG: phones do not reliably draw an SVG notification icon
     // Same tag as the one the server sets: the browser shows ONE notification per conversation (and re-alerts on a new
     // message) instead of two copies or a growing pile.
     ...(tag ? { tag, renotify: true } : {}),

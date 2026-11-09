@@ -42,7 +42,7 @@ function buildMessage(payload = {}) {
       notification: {
         title: payload.title,
         body: payload.body,
-        icon: "/favicon.svg",
+        icon: "/icon-192.png",
         // Same tag = the thread's notification is replaced (and re-alerts) instead of piling up.
         ...(tag ? { tag, renotify: true } : {}),
       },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BellRing } from 'lucide-react'
-import { getPushStatus, requestPermissionAndGetToken, isPushPromptDismissed, dismissPushPrompt } from '../services/notificationService'
+import { getPushStatus, requestPermissionAndGetToken, isPushPromptDismissed, dismissPushPrompt, IOS_INSTALL_HINT } from '../services/notificationService'
 
 // Sticky, theme-coloured call-to-action for browser push notifications (new case-team messages arrive as push, with the
 // sender's name on top). Shown only while push is NOT working for this account in this browser; gone the moment it is
@@ -32,6 +32,10 @@ export default function EnablePushButton() {
 
   const onClick = async () => {
     setHint('')
+    if (status === 'install_ios') {
+      setHint(IOS_INSTALL_HINT)
+      return
+    }
     if (status === 'denied') {
       setHint("Notifications are blocked for this site. Allow them in your browser's site settings, then click again.")
       return
@@ -50,23 +54,23 @@ export default function EnablePushButton() {
 
   return (
     <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-40 flex flex-col items-end gap-2 pointer-events-none">
-      {hint && <div className="pointer-events-auto max-w-xs rounded-lg border border-border bg-popover text-popover-foreground text-xs px-3 py-2 shadow-lg">{hint}</div>}
+      {hint && <div className="pointer-events-auto max-w-sm rounded-xl border border-border bg-popover text-popover-foreground text-sm px-4 py-3 shadow-lg">{hint}</div>}
       <div className="pointer-events-auto relative">
         <button
           type="button"
           onClick={onClick}
           disabled={busy}
-          className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
+          className="inline-flex items-center gap-3 rounded-full bg-primary text-primary-foreground px-7 py-4 text-base font-bold shadow-xl ring-4 ring-primary/25 hover:opacity-90 transition-opacity disabled:opacity-60"
         >
-          <BellRing className="w-4 h-4" />
-          {busy ? 'Enabling…' : 'Enable notifications'}
+          <BellRing className="w-6 h-6" />
+          {status === 'install_ios' ? 'Get notifications on iPhone' : (busy ? 'Enabling…' : 'Enable notifications')}
         </button>
         <button
           type="button"
           onClick={() => { dismissPushPrompt(); setDismissed(true); }}
           aria-label="Close"
           title="Close"
-          className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground text-xs leading-none shadow hover:bg-muted"
+          className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground text-base leading-none shadow hover:bg-muted"
         >
           ×
         </button>

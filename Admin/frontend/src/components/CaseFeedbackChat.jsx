@@ -18,6 +18,7 @@ import {
 } from '../utils/chatAttachments'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import { setOpenChat } from '../services/notificationService'
 
 // The case team's chat with the assigned attorney — backed by
 // Backend/src/models/Feedback.js (models/Message.js + Conversation.js are
@@ -466,6 +467,11 @@ export default function CaseFeedbackChat({ caseId }) {
   const { user } = useAuth()
   const { subscribe, connected } = useSocket()
   const selfId = user?._id || user?.id
+  // this case's attorney feedback chat is on screen: a new feedback message here stays quiet, every other chat still notifies
+  useEffect(() => {
+    setOpenChat({ kind: 'feedback', caseId })
+    return () => setOpenChat(null)
+  }, [caseId])
   const [items, setItems] = useState(null)
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState([])
