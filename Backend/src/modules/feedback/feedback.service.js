@@ -84,8 +84,9 @@ async function notifyRecipients({ recipients, caseDoc, author, feedback, isReply
   // directly, with no reload/re-fetch needed to see a new message land.
   recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "feedback:new", feedback));
 
-  // Push (author's name on top, then the message), the in-app alert, and an email if the recipient is offline.
-  await require("../notifications/messageAlert.service").notifyNewMessage({
+  // Push (author's name on top, then the message), the in-app alert, and an email if the recipient is offline. After the response: the message has already been
+  // delivered live above, so nobody waits for Firebase / the mail provider (and it never throws into the request).
+  Promise.resolve().then(() => require("../notifications/messageAlert.service").notifyNewMessage({
     recipientIds: recipients,
     sender: author,
     caseId: caseDoc._id,
@@ -97,7 +98,7 @@ async function notifyRecipients({ recipients, caseDoc, author, feedback, isReply
     kind: "feedback",
     conversationId: caseDoc._id,
     messageId: feedback._id,
-  });
+  })).catch((error) => require("../../utils/logger").error("feedback_notify_failed", { caseId: String(caseDoc._id), error: error.message }));
 }
 
 async function listFeedback(caseId) {

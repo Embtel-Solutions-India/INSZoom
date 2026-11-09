@@ -402,8 +402,10 @@ async function createNotification(payload, actor, req) {
   addAuditEntry(notification, "create", actor, renderedPayload, req);
   if (!notification.scheduledFor) {
     await deliverRealtime(notification);
-    await dispatchEmailChannel(notification, renderedPayload, actor);
-    await dispatchPushChannel(notification, renderedPayload, actor);
+    // push and e-mail go out at the same time (the push used to wait for the mail provider); a failure of either still reaches the caller as before
+    const dispatched = await Promise.allSettled([dispatchPushChannel(notification, renderedPayload, actor), dispatchEmailChannel(notification, renderedPayload, actor)]);
+    const failed = dispatched.find((result) => result.status === "rejected");
+    if (failed) throw failed.reason;
   }
   await notification.save();
   await writeAuditLog("create", notification, actor, renderedPayload, req);

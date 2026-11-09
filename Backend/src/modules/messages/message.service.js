@@ -642,9 +642,13 @@ async function sendMessage({ conversation, body, files: multipartFiles, user, re
   }
   if (roleOf(user) !== "client" && !conversation.caseManagerId) conversation.caseManagerId = user._id;
   await updateUnreadCounters(conversation, user);
-  await notifyRecipients(conversation, message, user, internal, req);
+  // The message reaches the other side live FIRST. The bell, browser push and e-mail (database writes, Firebase, the mail provider) and the audit record follow
+  // AFTER the response, so neither the sender (often on a mobile connection) nor the recipient waits for them. They never throw into the request.
   emitRealtime(conversation, message, user);
-  await writeAuditLog("send", "message", message, user, { conversationId: conversation._id }, req);
+  setImmediate(() => {
+    notifyRecipients(conversation, message, user, internal, req).catch((error) => require("../../utils/logger").error("message_notify_failed", { conversationId: String(conversation._id), error: error.message }));
+    writeAuditLog("send", "message", message, user, { conversationId: conversation._id }, req).catch(() => {});
+  });
   return populateMessage(message);
 }
 

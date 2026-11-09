@@ -273,7 +273,17 @@ export async function showMessagePushInForeground(payload) {
     const registration = await registerServiceWorker();
     if (!registration || typeof registration.showNotification !== "function") return false;
     if (!(await claimNotification(payload?.data?.notificationId))) return false; // another tab of this browser already showed this very message
-    const tag = payload?.data?.tag;
+    const chatTag = payload?.data?.tag;
+    const notificationId = payload?.data?.notificationId;
+    // its own tag, so it always pops up (Safari does not pop up a notification that only replaces one with the same tag); this conversation's older ones are closed
+    try {
+      const shown = typeof registration.getNotifications === "function" ? await registration.getNotifications() : [];
+      shown.forEach((existing) => {
+        const [existingChat, existingId] = String(existing.tag || "").split(":");
+        if (chatTag && existingChat === chatTag && existingId && existingId !== String(notificationId || "")) existing.close();
+      });
+    } catch { /* tidying only */ }
+    const tag = chatTag ? `${chatTag}:${notificationId || Date.now()}` : undefined;
     await registration.showNotification(payload?.notification?.title || payload?.data?.title || "New message", {
       body: payload?.notification?.body || payload?.data?.body,
       icon: "/icon-192.png",

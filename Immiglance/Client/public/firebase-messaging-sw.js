@@ -29,24 +29,30 @@ const messaging = firebase.messaging();
 // by NotificationBell.jsx — so the same notification is never shown twice).
 messaging.onBackgroundMessage(async (payload) => {
   const link = payload.data?.link || payload.fcmOptions?.link || "/";
-  const tag = payload.data?.tag;
+  const chatTag = payload.data?.tag; // one conversation = one tag
+  const notificationId = payload.data?.notificationId;
   const title = payload.notification?.title || payload.data?.title || "New notification";
   const body = payload.notification?.body || payload.data?.body;
-  // Firebase has ALREADY shown this notification itself (the push carries a "notification" part) just before it calls this handler. Showing it again with the
-  // re-alert flag would make the phone / computer alert twice for one message, so when the very same notification is already on screen nothing more is done here.
-  // A push Firebase did not show (no notification part) is still shown below.
+  let shown = [];
+  try { shown = await self.registration.getNotifications(); } catch (error) { shown = []; }
+  // Each notification carries its own tag ("<conversation>:<id>"), so it always POPS UP - Safari (Mac, iPhone, iPad) only adds a notification that replaces one with
+  // the same tag to the Notification Center without a banner. To keep one notification per conversation on screen, the older ones of THIS conversation are closed.
   try {
-    const shown = await self.registration.getNotifications();
-    if (shown.some((existing) => existing.title === title && (existing.body || "") === (body || "") && Date.now() - (existing.timestamp || 0) < 15000)) return;
+    shown.forEach((existing) => {
+      const [existingChat, existingId] = String(existing.tag || "").split(":");
+      if (chatTag && existingChat === chatTag && existingId && existingId !== String(notificationId || "")) existing.close();
+    });
   } catch (error) {
-    /* if the check cannot be made, show it: a missed message is worse than a rare repeat */
+    /* closing the older ones is tidying only */
   }
+  // Firebase has ALREADY shown this notification itself (the push carries a "notification" part) just before it calls this handler. Showing it again would make the
+  // phone / computer alert twice for one message, so when the very same notification is already on screen nothing more is done here. A push Firebase did not show
+  // (no notification part) is still shown below.
+  if (shown.some((existing) => existing.title === title && (existing.body || "") === (body || "") && Date.now() - (existing.timestamp || 0) < 15000)) return;
   await self.registration.showNotification(title, {
     body,
     icon: "/icon-192.png", // a PNG: phones do not reliably draw an SVG notification icon
-    // Same tag as the one the server sets: the browser shows ONE notification per conversation (and re-alerts on a new
-    // message) instead of two copies or a growing pile.
-    ...(tag ? { tag, renotify: true } : {}),
+    ...(chatTag ? { tag: `${chatTag}:${notificationId || Date.now()}`, renotify: true } : {}),
     // `url` = absolute address on this person's own portal (set by the server); `link` = in-app path.
     data: { link, url: payload.data?.url },
   });

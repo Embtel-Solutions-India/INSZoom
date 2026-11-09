@@ -117,8 +117,8 @@ export const NotificationProvider = ({ children }) => {
     try { Promise.resolve(showMessagePushInForeground?.(payload)).catch(() => {}) } catch { /* the bell below must always update */ }
     setNotifications((prev) => [{
       _id: `fcm-${Date.now()}`,
-      title: payload?.notification?.title,
-      message: payload?.notification?.body,
+      title: payload?.notification?.title || payload?.data?.title,
+      message: payload?.notification?.body || payload?.data?.body,
       link: payload?.data?.link,
       isRead: false,
       createdAt: new Date().toISOString(),

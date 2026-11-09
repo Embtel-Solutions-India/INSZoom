@@ -30,9 +30,9 @@ function boot(file, displayed = []) {
 
 const push = (overrides = {}) => ({
   notification: { title: 'Sarah Johnson', body: 'Please upload your passport copy.' },
-  data: { tag: 'msg-c1', link: '/messages/c1', url: 'https://app.example.com/messages/c1', ...overrides },
+  data: { tag: 'msg-c1', notificationId: 'n-2', link: '/messages/c1', url: 'https://app.example.com/messages/c1', ...overrides },
 })
-const alreadyShown = (overrides = {}) => ({ title: 'Sarah Johnson', body: 'Please upload your passport copy.', tag: 'msg-c1', timestamp: Date.now(), ...overrides })
+const alreadyShown = (overrides = {}) => ({ title: 'Sarah Johnson', body: 'Please upload your passport copy.', tag: 'msg-c1:n-2', timestamp: Date.now(), close: vi.fn(), ...overrides })
 
 describe.each(Object.entries(WORKERS))('%s service worker', (_name, file) => {
   it('does not show a message again when Firebase has already shown that very notification (one alert per message)', async () => {
@@ -47,7 +47,7 @@ describe.each(Object.entries(WORKERS))('%s service worker', (_name, file) => {
     expect(showNotification).toHaveBeenCalledTimes(1)
     const [title, options] = showNotification.mock.calls[0]
     expect(title).toBe('Sarah Johnson')
-    expect(options).toMatchObject({ body: 'Please upload your passport copy.', icon: '/icon-192.png', tag: 'msg-c1', renotify: true })
+    expect(options).toMatchObject({ body: 'Please upload your passport copy.', icon: '/icon-192.png', tag: 'msg-c1:n-2', renotify: true })
     expect(options.data).toEqual({ link: '/messages/c1', url: 'https://app.example.com/messages/c1' })
   })
 
@@ -75,6 +75,32 @@ describe.each(Object.entries(WORKERS))('%s service worker', (_name, file) => {
     await handler({ data: { title: 'Sarah Johnson', body: 'Hello', tag: 'msg-c1', link: '/messages/c1' } })
     expect(showNotification).toHaveBeenCalledTimes(1)
     expect(showNotification.mock.calls[0][0]).toBe('Sarah Johnson')
+  })
+
+  it('every message gets its OWN tag, so it pops up on Safari (Mac, iPhone, iPad) instead of only being filed away in the Notification Center', async () => {
+    const { handler, showNotification } = boot(file, [])
+    await handler(push({ notificationId: 'n-5' }))
+    await handler(push({ notificationId: 'n-6' }))
+    expect(showNotification.mock.calls[0][1].tag).toBe('msg-c1:n-5')
+    expect(showNotification.mock.calls[1][1].tag).toBe('msg-c1:n-6')
+    expect(showNotification.mock.calls[0][1].tag).not.toBe(showNotification.mock.calls[1][1].tag)
+  })
+
+  it("closes the OLDER notifications of the same conversation (one per conversation stays on screen) and never another conversation's", async () => {
+    const olderSame = alreadyShown({ tag: 'msg-c1:n-1', body: 'older message', timestamp: Date.now() - 60000 })
+    const otherChat = alreadyShown({ tag: 'msg-c9:n-3', title: 'Someone else', body: 'another chat', close: vi.fn() })
+    const { handler } = boot(file, [olderSame, otherChat])
+    await handler(push())
+    expect(olderSame.close).toHaveBeenCalledTimes(1)
+    expect(otherChat.close).not.toHaveBeenCalled()
+  })
+
+  it('keeps the notification Firebase already showed for this very message (it is not closed)', async () => {
+    const current = alreadyShown({ tag: 'msg-c1:n-2' })
+    const { handler, showNotification } = boot(file, [current])
+    await handler(push())
+    expect(current.close).not.toHaveBeenCalled()
+    expect(showNotification).not.toHaveBeenCalled()
   })
 
   it('takes over at once after an update and keeps its click handling', () => {

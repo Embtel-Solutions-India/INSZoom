@@ -38,3 +38,36 @@ test("the push to each recipient is a single send (one push per message per pers
   await dispatchPushChannel(notification(), { metadata: { conversationId: "c1" } }, null);
   assert.deepEqual(calls, ["u-1"]);
 });
+
+test("a push is DATA ONLY: no ready-made notification part, so the service worker is the only thing that shows it (once)", () => {
+  const { buildMessage } = require("../push.service");
+  const message = buildMessage({ title: "Sarah", body: "one", tag: "msg-c1", link: "/messages/c1", url: "https://admin.example.com/messages/c1", data: { notificationId: "n1", type: "message_received", conversationId: "c1" } });
+  assert.equal(message.notification, undefined, "no top-level notification: Firebase must not show its own copy");
+  assert.equal(message.webpush.notification, undefined, "no web-push notification part either");
+  // everything the service worker needs to show it is in the data
+  assert.equal(message.data.title, "Sarah");
+  assert.equal(message.data.body, "one");
+  assert.equal(message.data.tag, "msg-c1");
+  assert.equal(message.data.link, "/messages/c1");
+  assert.equal(message.data.url, "https://admin.example.com/messages/c1");
+  assert.equal(message.data.notificationId, "n1");
+  assert.equal(message.data.conversationId, "c1");
+  // delivered immediately, like a chat app
+  assert.equal(message.webpush.headers.Urgency, "high");
+  assert.equal(message.webpush.headers.TTL, "86400");
+  assert.equal(message.webpush.fcmOptions.link, "https://admin.example.com/messages/c1");
+});
+
+test("every data value is a string (FCM requires it)", () => {
+  const { buildMessage } = require("../push.service");
+  const message = buildMessage({ title: "T", body: "B", tag: "msg-c1", link: "/x", data: { notificationId: 7, flag: true, missing: undefined } });
+  for (const value of Object.values(message.data)) assert.equal(typeof value, "string");
+  assert.equal("missing" in message.data, false);
+});
+
+test("a push with no conversation tag keeps working exactly as before", () => {
+  const { buildMessage } = require("../push.service");
+  const message = buildMessage({ title: "Case update", body: "Moved to Submitted", link: "/crm-cases/1", data: { notificationId: "n9", type: "case_stage_changed" } });
+  assert.equal(message.data.title, "Case update");
+  assert.equal(message.data.tag, undefined);
+});
