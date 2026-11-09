@@ -240,7 +240,7 @@ const CaseManagers = () => {
           <div className="bg-card rounded-lg shadow p-4 border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Revenue Managed</p>
+                <p className="text-sm text-muted-foreground">Payments Collected</p>
                 <p className="text-2xl font-bold text-foreground">${Math.round(stats.totalRevenueManaged || 0).toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-blue-500" />

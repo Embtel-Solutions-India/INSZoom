@@ -175,7 +175,7 @@ export default function usePipelineBoard(category = 'immigrant') {
           try {
             const card = columnsRef.current.flatMap((col) => col.cards).find((item) => item._id === cardId)
             const who = card?.employeeIdentified === false ? 'Employee' : card?.clientName || ''
-            askFedexRef.current({ caseId: cardId, caseNumber: card?.caseNumber || '', label: [who, card?.employerName].filter(Boolean).join(' · ') })
+            askFedexRef.current({ caseId: cardId, caseNumber: card?.caseNumber || '', label: [who, card?.employerName].filter(Boolean).join(' · '), askClientEmail: true })
           } catch { /* the prompt is an addition: it can never fail the move */ }
         }
       } catch (error) {

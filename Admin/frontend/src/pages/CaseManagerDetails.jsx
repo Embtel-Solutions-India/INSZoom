@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useSocket } from '../contexts/SocketContext'
 import api from '../services/api'
 import CaseManagerPerformance from '../components/CaseManagerPerformance'
 import StatusDot from '../components/ui/StatusDot'
@@ -58,6 +59,8 @@ const formatPaymentAmount = (amount, currency = 'USD') => new Intl.NumberFormat(
   maximumFractionDigits: 0
 }).format(Number(amount) || 0) // US dollars (the payment figures come from GoHighLevel in dollars, never cents)
 
+const PRIORITY_DOT = { urgent: '#dc2626', high: '#f97316', medium: '#eab308', low: '#94A3B8' }
+
 const CHART_COLORS = ['#2563eb', '#f97316', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#eab308', '#db2777']
 
 const formatLabel = (value = '') => String(value || 'Uncategorized')
@@ -65,10 +68,36 @@ const formatLabel = (value = '') => String(value || 'Uncategorized')
   .replace(/\b\w/g, (char) => char.toUpperCase())
 
 const EmptyChart = ({ label = 'No analytics data available' }) => (
-  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-muted text-sm text-muted-foreground">
+  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
     {label}
   </div>
 )
+
+// A horizontal axis label that wraps onto a second line at its space ("Green Card / Renewal") instead of being tilted
+const WrappedTick = ({ x, y, payload }) => {
+  // fill each line up to ~12 characters, then continue on the next line
+  const lines = []
+  String(payload?.value || '').split(' ').forEach((word) => {
+    const last = lines.length - 1
+    if (last >= 0 && `${lines[last]} ${word}`.length <= 12) lines[last] = `${lines[last]} ${word}`
+    else lines.push(word)
+  })
+  return (
+    <text x={x} y={y + 12} textAnchor="middle" fontSize={10} fill="currentColor" className="text-muted-foreground">
+      {lines.map((line, index) => <tspan key={index} x={x} dy={index === 0 ? 0 : 12}>{line}</tspan>)}
+    </text>
+  )
+}
+
+const Loading = ({ label = 'Loading…', className = 'py-8' }) => (
+  <div className={`flex items-center justify-center gap-2 text-sm text-muted-foreground ${className}`}>
+    <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-primary" aria-hidden="true" />
+    {label}
+  </div>
+)
+
+// the paging footers read either `totalCount` or `total`
+const pagedTotal = (pagination) => Number(pagination?.totalCount ?? pagination?.total ?? 0)
 
 const ChartCard = ({ title, subtitle, children }) => (
   <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -126,8 +155,47 @@ const CaseManagerDetails = () => {
   const [activitiesPagination, setActivitiesPagination] = useState(null)
   const [paymentsPagination, setPaymentsPagination] = useState(null)
 
+  // Overview panels: loaded right away (in parallel with the page header), not only after another tab was opened
+  const [overview, setOverview] = useState({ activities: [], cases: [] })
+  const [overviewLoading, setOverviewLoading] = useState(true)
+  const [paymentsLoading, setPaymentsLoading] = useState(true)
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
+
+  // Online status: "Online" while this person is logged in with the app open in a browser tab (a live connection), "Offline" otherwise
+  const { subscribe, connected } = useSocket()
+  const [presence, setPresence] = useState(null) // { isOnline, lastSeenAt } once known
+  useEffect(() => {
+    setPresence(null)
+    let cancelled = false
+    api.get(`/users/presence?ids=${id}`)
+      .then((response) => { if (!cancelled) setPresence(response.data.presence?.[id] || { isOnline: false, lastSeenAt: null }) })
+      .catch(() => { if (!cancelled) setPresence({ isOnline: false, lastSeenAt: null }) })
+    return () => { cancelled = true }
+  }, [id])
+  useEffect(() => {
+    if (!subscribe) return undefined
+    return subscribe('presence:update', (payload) => {
+      if (String(payload?.userId) !== String(id)) return
+      setPresence({ isOnline: Boolean(payload.isOnline), lastSeenAt: payload.lastSeenAt || null })
+    })
+  }, [connected, id, subscribe])
+
   useEffect(() => {
     fetchCaseManagerDetails()
+    let cancelled = false
+    setOverviewLoading(true)
+    Promise.allSettled([
+      api.get(`/case-managers/${id}/activities`, { params: { page: 1, limit: 5 } }),
+      api.get(`/case-managers/${id}/cases`, { params: { page: 1, limit: 5 } })
+    ]).then(([activityRes, caseRes]) => {
+      if (cancelled) return
+      setOverview({
+        activities: activityRes.status === 'fulfilled' ? activityRes.value.data.data || [] : [],
+        cases: caseRes.status === 'fulfilled' ? caseRes.value.data.data || [] : []
+      })
+      setOverviewLoading(false)
+    })
+    return () => { cancelled = true }
   }, [id])
 
   useEffect(() => {
@@ -162,7 +230,7 @@ const CaseManagerDetails = () => {
         status: caseStatusFilter,
         search: caseSearch,
         page: casesPage,
-        limit: 10
+        limit: 25
       }
       const response = await api.get(`/case-managers/${id}/cases`, { params })
       setCases(response.data.data)
@@ -175,6 +243,7 @@ const CaseManagerDetails = () => {
   }
 
   const fetchActivities = async () => {
+    setActivitiesLoading(true)
     try {
       const params = {
         dateRange: activityDateFilter,
@@ -186,10 +255,13 @@ const CaseManagerDetails = () => {
       setActivitiesPagination(response.data.pagination)
     } catch (error) {
       console.error('Error fetching activities:', error)
+    } finally {
+      setActivitiesLoading(false)
     }
   }
 
   const fetchPayments = async () => {
+    setPaymentsLoading(true)
     try {
       const params = {
         status: paymentStatusFilter,
@@ -202,6 +274,8 @@ const CaseManagerDetails = () => {
       setPaymentsPagination(response.data.pagination)
     } catch (error) {
       console.error('Error fetching payments:', error)
+    } finally {
+      setPaymentsLoading(false)
     }
   }
 
@@ -328,8 +402,12 @@ const CaseManagerDetails = () => {
               <div className="flex items-center gap-4">
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Status</p>
-                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${caseManager.isActive ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}`}>
-                    {caseManager.isActive ? 'Active' : 'Inactive'}
+                  <span className={`inline-block rounded-md px-3 py-1 text-sm font-semibold ${
+                    !caseManager.isActive ? 'bg-red-100 text-red-800'
+                      : presence?.isOnline ? 'bg-green-100 text-green-800'
+                        : 'bg-secondary text-muted-foreground'
+                  }`}>
+                    {!caseManager.isActive ? 'Inactive' : presence === null ? '…' : presence.isOnline ? 'Online' : 'Offline'}
                   </span>
                 </div>
                 {caseManager.lastLogin && (
@@ -462,26 +540,31 @@ const CaseManagerDetails = () => {
           <div className="p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">Quick Overview</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-muted rounded-lg p-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <h4 className="font-medium text-foreground mb-3">Recent Activity</h4>
-                {activities.slice(0, 5).map((activity) => (
+                {overviewLoading && <Loading label="Loading recent activity…" />}
+                {!overviewLoading && overview.activities.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No activity yet.</p>}
+                {!overviewLoading && overview.activities.map((activity) => (
                   <div key={activity._id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
                     <Activity className="w-4 h-4 text-muted-foreground mt-0.5" />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground">{activity.action}</p>
+                      {activity.description && <p className="truncate text-xs text-muted-foreground">{activity.description}</p>}
                       <p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="bg-muted rounded-lg p-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <h4 className="font-medium text-foreground mb-3">Recent Cases</h4>
-                {cases.slice(0, 5).map((caseItem) => (
+                {overviewLoading && <Loading label="Loading recent cases…" />}
+                {!overviewLoading && overview.cases.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No cases are assigned yet.</p>}
+                {!overviewLoading && overview.cases.map((caseItem) => (
                   <div key={caseItem._id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
                     <Briefcase className="w-4 h-4 text-muted-foreground mt-0.5" />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground">{caseItem.caseNumber}</p>
-                      <p className="text-xs text-muted-foreground">{caseItem.clientName}</p>
+                      <p className="truncate text-xs text-muted-foreground">{[caseItem.listName || caseItem.clientName, caseItem.listEmail || caseItem.clientEmail].filter(Boolean).join(' · ')}</p>
                     </div>
                   </div>
                 ))}
@@ -517,62 +600,55 @@ const CaseManagerDetails = () => {
               </select>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted">
+            <div>
+              <table className="w-full table-fixed divide-y divide-border">
+                <colgroup>
+                  <col style={{ width: '17%' }} /><col style={{ width: '23%' }} /><col style={{ width: '13%' }} /><col style={{ width: '9%' }} />
+                  <col style={{ width: '14%' }} /><col style={{ width: '14%' }} /><col style={{ width: '10%' }} />
+                </colgroup>
+                <thead className="bg-muted/40">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Progress</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                    {['Name', 'Email', 'Visa', 'Case', 'Stage', 'Progress', 'Priority'].map((label) => (
+                      <th key={label} className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
                   {casesLoading && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-primary" aria-hidden="true" />Loading assigned cases…</span>
-                      </td>
+                      <td colSpan={7}><Loading label="Loading assigned cases…" className="py-10" /></td>
                     </tr>
                   )}
                   {!casesLoading && cases.length === 0 && (
-                    <tr><td colSpan={5} className="px-6 py-10 text-center text-sm text-muted-foreground">No cases are assigned yet.</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">No cases are assigned yet.</td></tr>
                   )}
-                  {!casesLoading && cases.map((caseItem) => (
-                    <tr key={caseItem._id} className="hover:bg-muted">
-                      <td className="px-6 py-4 text-sm">
-                        <p className="font-semibold text-foreground">{caseItem.listName || caseItem.clientName || '—'}</p>
-                        <p className="text-muted-foreground">{caseItem.listEmail || caseItem.clientEmail || '—'}</p>
-                        <span className="mt-1 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{resolveDisplayVisa(caseItem) || '—'}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">
-                        {caseItem.caseNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {caseItem.pipelineStage || getStageLabel(caseItem.stage)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${caseItem.completed ? 100 : getStageProgress(caseItem.stage)}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">{caseItem.completed ? 100 : Math.round(getStageProgress(caseItem.stage))}%</p>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          caseItem.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                          caseItem.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                          caseItem.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-secondary text-foreground'
-                        }`}>
-                          {caseItem.priority}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {!casesLoading && cases.map((caseItem) => {
+                    const name = caseItem.listName || caseItem.clientName || '—'
+                    const email = caseItem.listEmail || caseItem.clientEmail || '—'
+                    const visa = resolveDisplayVisa(caseItem) || '—'
+                    const stage = caseItem.pipelineStage || getStageLabel(caseItem.stage)
+                    const percent = caseItem.completed ? 100 : Math.round(getStageProgress(caseItem.stage))
+                    return (
+                      <tr key={caseItem._id} className="hover:bg-muted/40">
+                        <td className="truncate px-3 py-2 text-sm font-medium text-foreground" title={name}>{name}</td>
+                        <td className="truncate px-3 py-2 text-sm text-muted-foreground" title={email}>{email}</td>
+                        <td className="truncate px-3 py-2 text-sm text-foreground" title={visa}>{visa}</td>
+                        <td className="truncate px-3 py-2 text-xs text-muted-foreground">{caseItem.caseNumber}</td>
+                        <td className="truncate px-3 py-2 text-sm text-foreground" title={stage}>{stage}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 flex-1 rounded-full bg-muted">
+                              <div className="h-1.5 rounded-full bg-blue-600" style={{ width: `${percent}%` }}></div>
+                            </div>
+                            <span className="w-9 text-right text-xs text-muted-foreground">{percent}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusDot color={PRIORITY_DOT[caseItem.priority] || '#94A3B8'} className="capitalize">{caseItem.priority}</StatusDot>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -580,7 +656,7 @@ const CaseManagerDetails = () => {
             {casesPagination && (
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Showing {(casesPage - 1) * casesPagination.limit + 1} to {Math.min(casesPage * casesPagination.limit, casesPagination.totalCount)} of {casesPagination.totalCount}
+                  Showing {(casesPage - 1) * casesPagination.limit + 1} to {Math.min(casesPage * casesPagination.limit, pagedTotal(casesPagination))} of {pagedTotal(casesPagination)}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -591,8 +667,8 @@ const CaseManagerDetails = () => {
                     Previous
                   </button>
                   <button
-                    onClick={() => setCasesPage(Math.min(casesPagination.totalPages, casesPage + 1))}
-                    disabled={casesPage === casesPagination.totalPages}
+                    onClick={() => setCasesPage(Math.min(casesPagination.totalPages || 1, casesPage + 1))}
+                    disabled={casesPage >= (casesPagination.totalPages || 1)}
                     className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Next
@@ -619,18 +695,19 @@ const CaseManagerDetails = () => {
               </select>
             </div>
 
-            <div className="space-y-4">
-              {activities.map((activity) => (
-                <div key={activity._id} className="flex items-start gap-4 p-4 bg-muted rounded-lg">
-                  <Activity className="w-5 h-5 text-muted-foreground mt-0.5" />
-                  <div className="flex-1">
+            <div className="space-y-2">
+              {activitiesLoading && <Loading label="Loading activity…" className="py-10" />}
+              {!activitiesLoading && activities.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">No activity in this period.</p>}
+              {!activitiesLoading && activities.map((activity) => (
+                <div key={activity._id} className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+                  <Activity className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">{activity.action}</p>
-                    <p className="text-sm text-muted-foreground">{activity.description}</p>
-                    {activity.caseId && (
-                      <p className="text-xs text-muted-foreground mt-1">Case: {activity.caseId.caseNumber}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">{new Date(activity.createdAt).toLocaleString()}</p>
+                    {(activity.caseNumber || activity.clientName || activity.clientEmail) ? (
+                      <p className="text-sm text-muted-foreground">{[activity.caseNumber, activity.clientName, activity.clientEmail].filter(Boolean).join(' · ')}</p>
+                    ) : activity.description ? <p className="text-sm text-muted-foreground">{activity.description}</p> : null}
                   </div>
+                  <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
                 </div>
               ))}
             </div>
@@ -638,7 +715,7 @@ const CaseManagerDetails = () => {
             {activitiesPagination && (
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Showing {(activitiesPage - 1) * activitiesPagination.limit + 1} to {Math.min(activitiesPage * activitiesPagination.limit, activitiesPagination.totalCount)} of {activitiesPagination.totalCount}
+                  Showing {(activitiesPage - 1) * activitiesPagination.limit + 1} to {Math.min(activitiesPage * activitiesPagination.limit, pagedTotal(activitiesPagination))} of {pagedTotal(activitiesPagination)}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -664,6 +741,7 @@ const CaseManagerDetails = () => {
         {/* Payments Tab */}
         {activeTab === 'payments' && (
           <div className="p-6">
+            {paymentsLoading && !paymentSummary && <Loading label="Loading payment summary…" className="mb-6 py-6" />}
             {paymentSummary && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {[
@@ -696,7 +774,7 @@ const CaseManagerDetails = () => {
 
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted">
+                <thead className="bg-muted/40">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Invoice</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
@@ -708,16 +786,19 @@ const CaseManagerDetails = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-card divide-y divide-border">
-                  {payments.map((payment) => (
-                    <tr key={payment._id} className="hover:bg-muted">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                        {payment.invoiceNumber}
+                  {paymentsLoading && <tr><td colSpan={7}><Loading label="Loading payments…" className="py-10" /></td></tr>}
+                  {!paymentsLoading && payments.length === 0 && <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">No payments for the assigned cases.</td></tr>}
+                  {!paymentsLoading && payments.map((payment) => (
+                    <tr key={payment._id} className="hover:bg-muted/40">
+                      <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-foreground">
+                        {payment.invoiceNumber || payment.invoiceNo || '—'}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-foreground">
+                        <p>{payment.caseId?.caseNumber || 'N/A'}</p>
+                        <p className="text-xs text-muted-foreground">{[payment.caseId?.clientName, payment.caseId?.clientEmail].filter(Boolean).join(' · ')}</p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {payment.caseId?.caseNumber || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {payment.package}
+                        {payment.package || '—'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {formatPaymentAmount(payment.totalFee, payment.currency)}
@@ -740,7 +821,7 @@ const CaseManagerDetails = () => {
             {paymentsPagination && (
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Showing {(paymentsPage - 1) * paymentsPagination.limit + 1} to {Math.min(paymentsPage * paymentsPagination.limit, paymentsPagination.totalCount)} of {paymentsPagination.totalCount}
+                  Showing {(paymentsPage - 1) * paymentsPagination.limit + 1} to {Math.min(paymentsPage * paymentsPagination.limit, pagedTotal(paymentsPagination))} of {pagedTotal(paymentsPagination)}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -820,20 +901,32 @@ const CaseManagerDetails = () => {
                     ) : <EmptyChart label="No active case data" />}
                   </ChartCard>
 
-                  <ChartCard title="Attention" subtitle="Items that need follow-up">
-                    {(analytics.attention?.byReason || []).length ? (
-                      <div className="h-56 sm:h-60">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.attention.byReason.map((item) => ({ ...item, reason: formatLabel(item.reason) }))}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis dataKey="reason" tick={{ fontSize: 11 }} />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="#f97316" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : <EmptyChart label="No attention items" />}
+                  <ChartCard title="Payments" subtitle="Collected vs assigned, in US dollars">
+                    {(analytics.payments?.totalAssigned || 0) > 0 ? (
+                      <>
+                        <div className="h-48 sm:h-52">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={[
+                              { name: 'Assigned', amount: analytics.payments.totalAssigned },
+                              { name: 'Collected', amount: analytics.payments.totalCollected },
+                              { name: 'Outstanding', amount: analytics.payments.outstanding }
+                            ]} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Number(v).toLocaleString()}`} width={64} />
+                              <Tooltip formatter={(value) => [formatPaymentAmount(value), 'Amount']} />
+                              <Bar dataKey="amount" radius={[8, 8, 0, 0]} maxBarSize={72}>
+                                {['#2563eb', '#16a34a', '#f97316'].map((color) => <Cell key={color} fill={color} />)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <p className="mt-2 text-center text-xs text-muted-foreground">
+                          {formatPaymentAmount(analytics.payments.totalCollected)} of {formatPaymentAmount(analytics.payments.totalAssigned)} · {analytics.payments.collectionRate || 0}% collected
+                          {(analytics.payments.byStatus || []).length > 0 && ' · ' + analytics.payments.byStatus.map((item) => `${item.count} ${formatLabel(item.status).toLowerCase()}`).join(', ')}
+                        </p>
+                      </>
+                    ) : <EmptyChart label="No payment data" />}
                   </ChartCard>
 
                   <ChartCard title="Closed" subtitle="Closed cases compared with active workload">
@@ -857,53 +950,23 @@ const CaseManagerDetails = () => {
                     </div>
                   </ChartCard>
 
-                  <ChartCard title="Payments" subtitle="Collection status for assigned cases">
-                    {(analytics.payments?.byStatus || []).length ? (
-                      <div className="h-56 sm:h-60">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={analytics.payments.byStatus.map((item) => ({ ...item, status: formatLabel(item.status) }))} dataKey="count" nameKey="status" innerRadius={42} outerRadius={72} paddingAngle={4}>
-                              {analytics.payments.byStatus.map((_, index) => <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip />
-                            <Legend />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : <EmptyChart label="No payment data" />}
-                  </ChartCard>
-
-                  <ChartCard title="Activity Status" subtitle="Task activity status for this case manager">
-                    {(analytics.activityStatus?.byStatus || []).length ? (
-                      <div className="h-56 sm:h-60">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.activityStatus.byStatus.map((item) => ({ ...item, status: formatLabel(item.status) }))}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis dataKey="status" tick={{ fontSize: 12 }} />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="#0891b2" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : <EmptyChart label="No activity status data" />}
-                  </ChartCard>
-
-                  <ChartCard title="Category" subtitle="Case mix by visa/category">
-                    {(analytics.category?.byVisaType || []).length ? (
-                      <div className="h-56 sm:h-60">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.category.byVisaType.map((item) => ({ ...item, category: formatLabel(item.category) }))} layout="vertical" margin={{ left: 0, right: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis type="number" allowDecimals={false} />
-                            <YAxis dataKey="category" type="category" width={96} tick={{ fontSize: 11 }} />
-                            <Tooltip />
-                            <Bar dataKey="count" radius={[0, 8, 8, 0]} fill="#db2777" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : <EmptyChart label="No category data" />}
-                  </ChartCard>
+                  <div className="md:col-span-2">
+                    <ChartCard title="Category" subtitle="Case mix by visa/category">
+                      {(analytics.category?.byVisaType || []).length ? (
+                        <div className="h-[460px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={analytics.category.byVisaType.map((item) => ({ ...item, category: formatLabel(item.category) }))} margin={{ left: 0, right: 16, top: 8, bottom: 8 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                              <XAxis dataKey="category" interval={0} height={56} tick={<WrappedTick />} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="#db2777" maxBarSize={44} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : <EmptyChart label="No category data" />}
+                    </ChartCard>
+                  </div>
                 </div>
               </>
             )}

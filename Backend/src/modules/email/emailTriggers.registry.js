@@ -61,7 +61,7 @@ const TRIGGERS = [
 
   t("document-requested", "Document Requested", "Documents", "client", "A client is asked to upload a document.", { groups: ["Client", "Case", "Document"] }),
 
-  t("case-submitted-client", "Case Submitted - Congratulations", "Case Status", "client", "The client's case moved to the Submitted stage on the Pipeline: a congratulations e-mail with where the case stands and what comes next. Sent once per case.", { groups: ["Client", "Case"] }),
+  t("case-submitted-client", "Case Submitted - Congratulations", "Case Status", "client", "The client's case moved to the Submitted stage and the case manager chose to inform the client: a congratulations e-mail with where the case stands and what comes next. Sent once per case, only on the team's choice.", { groups: ["Client", "Case"] }),
   t("filing-submitted", "Filing Submitted", "Forms", "client", "A petition/application was filed with USCIS.", { groups: ["Client", "Case"] }),
 
   t("receipt-received", "Receipt Notice Received", "Case Status", "client", "A USCIS receipt notice arrived.", { groups: ["Client", "Case"] }),

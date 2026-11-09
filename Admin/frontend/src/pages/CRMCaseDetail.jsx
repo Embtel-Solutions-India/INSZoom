@@ -1806,7 +1806,7 @@ const CRMCaseDetail = () => {
       fetchCaseDetail()
       // moved to Submitted (FedEx): ask for that case's FedEx number (for an employer matter, that employee's case)
       if (useGhlStages && movedTo === 'submitted_fedex') {
-        askFedex({ caseId: movedEmployee ? movedEmployee.caseId : id, caseNumber: movedEmployee?.caseNumber || caseData?.caseNumber || '', label: movedEmployee?.name || caseData?.clientName || '' })
+        askFedex({ caseId: movedEmployee ? movedEmployee.caseId : id, caseNumber: movedEmployee?.caseNumber || caseData?.caseNumber || '', label: movedEmployee?.name || caseData?.clientName || '', askClientEmail: true })
       }
     } catch (error) {
       console.error('Error updating stage:', error)
