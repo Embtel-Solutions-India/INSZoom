@@ -711,6 +711,8 @@ const Messaging = () => {
   const isUnreadForMe = (m) => {
     const sentByMe = idOf(m.senderId) === currentUserId
     const readByMe = (m.readBy || []).some((r) => idOf(r.userId) === currentUserId)
+    // a direct chat I only oversee (not written to me, not by me) never counts as unread for me
+    if (!m.caseId && !sentByMe && idOf(m.receiverId) && idOf(m.receiverId) !== currentUserId) return false
     return !sentByMe && !readByMe
   }
 
@@ -925,17 +927,26 @@ const Messaging = () => {
       const senderRef = m.senderId
       const receiverRef = m.receiverId
       if (senderRef || receiverRef) {
-        const otherUserId = idOf(senderRef) === currentUserId ? idOf(receiverRef) : idOf(senderRef)
-        if (otherUserId && m.receiverId) { // Only group if receiverId exists (user-to-user messages)
+        // My own direct chats: the other person. A chat I only OVERSEE (a client's chat with another team member): the client's side of it, so it reads as that
+        // client's chat. A chat between two OTHER team members is never shown (the server withholds it; this is the safety net).
+        const mine = idOf(senderRef) === currentUserId || idOf(receiverRef) === currentUserId
+        const senderRole = String(m.senderRole || (senderRef && typeof senderRef === 'object' ? senderRef.role : '') || '').toLowerCase()
+        const otherUserId = mine
+          ? (idOf(senderRef) === currentUserId ? idOf(receiverRef) : idOf(senderRef))
+          : (INTERNAL_CONTACT_ROLES.includes(senderRole) ? idOf(receiverRef) : idOf(senderRef))
+        const otherUser = users.find(u => idOf(u._id) === otherUserId)
+        const otherIsTeam = Boolean(otherUser) && INTERNAL_CONTACT_ROLES.includes(otherUser.role)
+        if (otherUserId && m.receiverId && (mine || !otherIsTeam)) { // Only group if receiverId exists (user-to-user messages)
           const id = `user_${otherUserId}`
           if (!map.has(id)) {
-            const otherUser = users.find(u => idOf(u._id) === otherUserId)
+            const populated = idOf(senderRef) === otherUserId ? senderRef : receiverRef
+            const populatedName = populated && typeof populated === 'object' ? (populated.name || populated.displayName || populated.email) : ''
             map.set(id, {
               type: 'user',
               userId: otherUserId,
               conversationId: idOf(m.conversationId),
-              userName: otherUser?.name || otherUser?.displayName || otherUser?.email || 'Unknown User',
-              userRole: otherUser?.role || 'Unknown',
+              userName: otherUser?.name || otherUser?.displayName || otherUser?.email || populatedName || 'Unknown User',
+              userRole: otherUser?.role || (mine ? 'Unknown' : 'client'),
               messages: []
             })
           }

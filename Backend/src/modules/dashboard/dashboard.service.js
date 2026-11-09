@@ -296,7 +296,8 @@ async function roleDashboard(user, query = {}) {
     ? await require("../leaderboard/leaderboard.service").topCaseManagersForDashboard(query.period || "this_month", 10)
     : [];
   const assignedCaseFilter = scopedCaseFilter(user);
-  const recentMessages = await Conversation.find(role === "client" ? { "participants.user": user._id } : {}).sort({ lastMessageAt: -1 }).limit(5).lean();
+  // staff see the recent conversations of the case team and every client's direct chats, never a private chat between two team members
+  const recentMessages = await Conversation.find(role === "client" ? { "participants.user": user._id } : { $or: [{ type: { $ne: "direct" } }, { "participants.user": user._id }, require("../messages/message.service").CLIENT_DIRECT_FILTER] }).sort({ lastMessageAt: -1 }).limit(5).lean();
   const upcomingDeadlines = await Case.find({ ...assignedCaseFilter, $or: [{ filingDeadline: { $gte: new Date() } }, { rfeDeadline: { $gte: new Date() } }, { visaExpirationDate: { $gte: new Date() } }] }).sort({ filingDeadline: 1, rfeDeadline: 1, visaExpirationDate: 1 }).limit(10).lean();
   return {
     success: true,

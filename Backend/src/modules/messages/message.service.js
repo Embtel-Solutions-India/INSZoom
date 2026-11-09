@@ -73,6 +73,18 @@ function participantIds(conversation) {
   return (conversation.participants || []).map((participant) => idOf(participant.user)).filter(Boolean);
 }
 
+// Who may see which direct chat:
+//   - a direct chat BETWEEN TWO INTERNAL TEAM MEMBERS is private to those two people: not even an administrator reads it;
+//   - a direct chat that involves a client (or any non-team person) is visible to the oversight roles - super admin, admin, team lead and case manager - whoever on
+//     the team is the other side, exactly like the case conversations.
+// Case conversations and the shared inboxes keep their administrator oversight.
+const INTERNAL_TEAM_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "reviewer"];
+const OVERSIGHT_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const clientInvolved = (conversation) => (conversation?.participants || []).some((participant) => participant?.role && !INTERNAL_TEAM_ROLES.includes(String(participant.role).toLowerCase()));
+const isPrivateDirect = (conversation) => conversation?.type === "direct" && !clientInvolved(conversation);
+// the same rule as a database filter: a direct chat with at least one participant who is not on the internal team
+const CLIENT_DIRECT_FILTER = { type: "direct", participants: { $elemMatch: { role: { $exists: true, $nin: [...INTERNAL_TEAM_ROLES, ""] } } } };
+
 // A case-tied conversation's participants/caseManagerId/assignedTo fields are
 // only a SNAPSHOT, kept in sync proactively at reassignment time
 // (syncCaseMessagingAssignment) and reactively whenever someone re-opens the
@@ -91,7 +103,8 @@ function participantIds(conversation) {
 // to them.
 async function canAccessConversation(user, conversation) {
   if (!user || !conversation || conversation.deletedAt) return false;
-  if (["super_admin", "admin"].includes(roleOf(user))) return true;
+  if (OVERSIGHT_ROLES.includes(roleOf(user)) && conversation.type === "direct" && clientInvolved(conversation)) return true; // a client's direct chat is visible to the oversight roles
+  if (["super_admin", "admin"].includes(roleOf(user)) && !isPrivateDirect(conversation)) return true; // an administrator sees every conversation EXCEPT other team members' private direct chats
   if (conversation.caseId && conversation.type === "case" && isStaff(user)) {
     if (!dbIsConnected()) return false;
     const caseData = await Case.findById(idOf(conversation.caseId)).select(
@@ -107,7 +120,16 @@ async function canAccessConversation(user, conversation) {
 
 async function canAccessMessage(user, message) {
   if (!message || message.deletedAt) return false;
-  if (["super_admin", "admin"].includes(roleOf(user))) return true;
+  if (OVERSIGHT_ROLES.includes(roleOf(user))) {
+    const admin = ["super_admin", "admin"].includes(roleOf(user));
+    // administrators keep oversight of case messages and the shared inboxes; every oversight role sees a client's direct chat; a direct chat between two team
+    // members (or an old direct message with no conversation) is private
+    if (admin && message.caseId) return true;
+    if (!message.caseId && message.conversationId) {
+      const conversation = await Conversation.findById(message.conversationId).select("type participants").lean();
+      if (conversation && (admin ? !isPrivateDirect(conversation) : conversation.type === "direct" && clientInvolved(conversation))) return true;
+    }
+  }
   // A case-tied message must route through canAccessConversation's live
   // case-recheck even when this user is its own sender/receiver - otherwise
   // a staff member reassigned away from a case keeps full access to every
@@ -129,7 +151,6 @@ async function canAccessMessage(user, message) {
 
 async function buildConversationFilter(user) {
   const role = roleOf(user);
-  if (["super_admin", "admin"].includes(role)) return { deletedAt: { $exists: false } };
   const accessOr = [
     { "participants.user": user._id },
     { clientId: user._id },
@@ -138,6 +159,8 @@ async function buildConversationFilter(user) {
     { assignedTo: user._id },
     { assignedOwnerId: user._id },
   ];
+  // an administrator sees every conversation except the private direct chats between two OTHER team members (a client's direct chats stay visible)
+  if (["super_admin", "admin"].includes(role)) return { deletedAt: { $exists: false }, $or: [{ type: { $ne: "direct" } }, { type: "direct", $or: accessOr }, CLIENT_DIRECT_FILTER] };
   if (isStaff(user)) {
     // Same loophole as canAccessConversation (see its comment above): a case-
     // type conversation's participants/caseManagerId/assignedTo are only a
@@ -152,6 +175,8 @@ async function buildConversationFilter(user) {
       $or: [
         { type: { $ne: "case" }, $or: accessOr },
         { type: "case", caseId: { $in: accessibleCaseIds } },
+        // a team lead / case manager also sees every client's direct chats (never a chat between two team members)
+        ...(OVERSIGHT_ROLES.includes(role) ? [CLIENT_DIRECT_FILTER] : []),
       ],
     };
   }
@@ -867,6 +892,7 @@ function populateMessage(queryOrDoc) {
 }
 
 module.exports = {
+  CLIENT_DIRECT_FILTER,
   addAuditEntry,
   buildConversationFilter,
   buildMessageFilter,
