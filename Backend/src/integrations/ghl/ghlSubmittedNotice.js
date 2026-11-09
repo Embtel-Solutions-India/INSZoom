@@ -60,14 +60,74 @@ async function refreshClientProgress(caseDoc) {
   }
 }
 
-/** Fire-and-forget wrapper for the move sites. */
+/**
+ * Fire-and-forget wrapper for the move sites. A move into Submitted NO LONGER e-mails the client by itself: the internal team is asked (a popup in the admin app)
+ * and the e-mail goes out only if they choose to send it - see sendOnTeamChoice below. A move only refreshes the client's progress here.
+ */
 function notifySubmitted(args) {
   try {
     refreshClientProgress(args.caseDoc).catch(() => {});
-    sendSubmittedNotice(args).catch(() => {});
   } catch (_error) {
     /* never affects the move */
   }
 }
 
-module.exports = { notifySubmitted, sendSubmittedNotice, SUBMITTED_STAGE_KEY };
+// Records the team's choice on the case timeline (best effort: a failure here never changes the answer).
+async function recordChoice(caseId, user, send, outcome) {
+  try {
+    const caseService = require("../../modules/cases/case.service");
+    const doc = await Case.findById(caseId);
+    if (!doc) return;
+    caseService.addTimelineEvent(
+      doc,
+      "case",
+      send ? "Client informed of submission" : "Client not informed of submission",
+      send ? (outcome?.sent ? "The case-completion e-mail was sent to the client" : "The team chose to e-mail the client, but no e-mail was sent") : "The team chose not to e-mail the client about the submission",
+      user,
+      { source: "submitted_notice_choice", send, sent: Boolean(outcome?.sent), reason: outcome?.reason || null }
+    );
+    await doc.save();
+  } catch (error) {
+    logger.warn("ghl_submitted_choice_record_failed", { caseId: String(caseId), error: error.message });
+  }
+}
+
+/**
+ * The team's answer to "tell the client their case is complete?" for a case that now sits at Submitted (any case type: single, family, employer's employee).
+ *   send: true  -> the congratulations e-mail goes to the client (once per case; the usual client-only rules apply)
+ *   send: false -> nothing is sent, ever, for this move
+ * Never throws: the answer is { sent, reason }.
+ */
+async function sendOnTeamChoice({ caseId, send, user }) {
+  try {
+    const caseDoc = await Case.findById(caseId);
+    if (!caseDoc) return { sent: false, reason: "case_not_found" };
+    if (caseDoc.integrations?.ghl?.unifiedStageKey !== SUBMITTED_STAGE_KEY) return { sent: false, reason: "not_at_submitted" };
+    if (!send) {
+      await recordChoice(caseId, user, false, null);
+      return { sent: false, reason: "team_chose_not_to_send" };
+    }
+    if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
+    const already = await EmailLog.findOne({ templateKey: TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    if (already) return { sent: false, reason: "already_sent" };
+    const client = await recipientFor(caseDoc);
+    if (!client) return { sent: false, reason: "no_client_login" };
+    const { sendTemplateEmail } = require("../../modules/email/email.service");
+    const result = await sendTemplateEmail(TEMPLATE, {
+      to: client.email,
+      caseId: caseDoc._id,
+      userId: client._id,
+      recipientRole: client.role,
+      triggeredBy: "team_chose_send_submitted_email",
+      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber },
+    });
+    const outcome = { sent: Boolean(result?.sent), reason: result?.reason };
+    await recordChoice(caseId, user, true, outcome);
+    return outcome;
+  } catch (error) {
+    logger.warn("ghl_submitted_notice_choice_failed", { caseId: String(caseId), error: error.message });
+    return { sent: false, reason: "error" };
+  }
+}
+
+module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, SUBMITTED_STAGE_KEY };

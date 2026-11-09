@@ -63,7 +63,9 @@ const PAGE_ROLES = ["case_manager", "team_lead"];
 // Mongo case filter for one person on the page, by that person's role.
 async function casesMatchFor(personId) {
   const person = await User.findById(personId).select("role").lean().catch(() => null);
-  return normalizeRole(person?.role) === "team_lead" ? teamLeadMatch(personId) : caseManagerMatch(personId);
+  // an ObjectId, not the route's string: Case.find casts it, but the aggregations (payment totals / analytics) do not, and a string matched no case ($0 everywhere)
+  const id = mongoose.Types.ObjectId.isValid(personId) ? new mongoose.Types.ObjectId(String(personId)) : personId;
+  return normalizeRole(person?.role) === "team_lead" ? teamLeadMatch(id) : caseManagerMatch(id);
 }
 
 // One row per person: an employee case is its own row (an employer matter itself has none: countable filter), a family or single case is one row.
@@ -125,6 +127,27 @@ async function buildManagerMetrics() {
   return metrics;
 }
 
+// Active = every case still being worked: not in a completed stage (Submitted / Approved / Disapproved ...), not On Hold, not closed out.
+// Completed = the Submitted (FedEx) and later stages. Same rules as each person's own row (buildManagerMetrics), counted once over all cases.
+async function systemCaseTotals() {
+  const finance = require("../finance/caseFinance.service");
+  const stageKey = { $ifNull: ["$integrations.ghl.unifiedStageKey", ""] };
+  const isDone = { $in: [stageKey, COMPLETED_STAGE_KEYS] };
+  const isHold = { $regexMatch: { input: stageKey, regex: "hold", options: "i" } };
+  const [rows, money$] = await Promise.all([
+    Case.aggregate([
+      { $match: withCountable({}) },
+      { $group: {
+        _id: null,
+        completed: { $sum: { $cond: [isDone, 1, 0] } },
+        active: { $sum: { $cond: [{ $and: [{ $not: [isDone] }, { $not: [isHold] }, { $not: [{ $in: ["$status", NOT_ACTIVE_CASE_STATUSES] }] }] }, 1, 0] } },
+      } },
+    ]),
+    finance.totals(finance.financeMatch({})),
+  ]);
+  return { active: rows[0]?.active || 0, completed: rows[0]?.completed || 0, collected: money$.revenue || 0 };
+}
+
 async function getCaseManagers(req, res, next) {
   try {
     const { search = "", status = "", sortBy = "name", sortOrder = "asc" } = req.query;
@@ -164,15 +187,18 @@ async function getCaseManagers(req, res, next) {
       };
     });
 
-    // the headline totals stay the case managers' own (a case counted for both its case manager and its team lead must not be added twice)
-    const managersOnly = all.filter((cm) => normalizeRole(cm.role) !== "team_lead");
+    // Headline cards. People = everyone listed on the page (case managers + team leads). The case and payment figures are counted ONCE over every case
+    // in the system (per person: an employer matter is only a container; a family / single case is one), never summed per manager - a case shared by a
+    // case manager and a team lead (or several case managers) would be added twice.
+    const teamLeads = all.filter((cm) => normalizeRole(cm.role) === "team_lead").length;
+    const totals = await systemCaseTotals();
     const stats = {
-      totalCaseManagers: managersOnly.length,
-      activeCaseManagers: managersOnly.filter((cm) => cm.status === "Active").length,
-      totalTeamLeads: all.length - managersOnly.length,
-      totalActiveCases: managersOnly.reduce((sum, cm) => sum + cm.activeCasesCount, 0),
-      totalCompletedCases: managersOnly.reduce((sum, cm) => sum + cm.completedCasesCount, 0),
-      totalRevenueManaged: managersOnly.reduce((sum, cm) => sum + cm.totalRevenue, 0),
+      totalCaseManagers: all.length,
+      activeCaseManagers: all.filter((cm) => cm.status === "Active").length,
+      totalTeamLeads: teamLeads,
+      totalActiveCases: totals.active,
+      totalCompletedCases: totals.completed,
+      totalRevenueManaged: totals.collected, // payments collected (QB Amount Paid), US dollars
     };
 
     const term = String(search).trim().toLowerCase();
@@ -309,7 +335,7 @@ async function getCaseManagerPayments(req, res, next) {
     const finance = require("../finance/caseFinance.service");
     const match = await casesMatchFor(req.params.id);
     const rows = await Case.find(finance.financeMatch({}, match))
-      .select("caseNumber clientName clientEmail visaType finance createdAt updatedAt").sort({ "finance.updatedAt": -1 }).limit(500).lean();
+      .select("caseNumber clientName clientEmail visaType package caseRole pendingEmployee employeeIdentity finance createdAt updatedAt").sort({ "finance.updatedAt": -1 }).limit(500).lean();
     // payment-shaped rows (what the tab reads), every amount in US dollars from the case's GoHighLevel figures
     const payments = rows.map((row) => {
       const total = Number(row.finance?.totalAmount) || 0;
@@ -317,7 +343,8 @@ async function getCaseManagerPayments(req, res, next) {
       const status = total > 0 && paid >= total ? "paid" : paid > 0 ? "partially_paid" : total > 0 ? "pending" : "no_fee";
       return {
         _id: row._id,
-        caseId: { _id: row._id, caseNumber: row.caseNumber, clientName: row.clientName },
+        caseId: { _id: row._id, caseNumber: row.caseNumber, clientName: rowIdentity(row).listName, clientEmail: rowIdentity(row).listEmail },
+        invoiceNumber: row.finance?.invoiceNo || "", package: row.package || row.visaType || "",
         totalFee: total, totalAmount: total, amountPaid: paid, paidAmount: paid, remainingAmount: Math.max(total - paid, 0), uscisFee: Number(row.finance?.uscisFee) || 0,
         invoiceNo: row.finance?.invoiceNo || "", status, paymentStatus: status, updatedAt: row.finance?.updatedAt || row.updatedAt, createdAt: row.createdAt,
       };
