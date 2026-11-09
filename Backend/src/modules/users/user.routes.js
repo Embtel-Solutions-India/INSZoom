@@ -54,6 +54,8 @@ router.post(
 );
 router.patch("/:id/unlock", authenticate, authorizeRoles(...adminRoles), authorizePermissions("users:update"), ctrl.unlockUser);
 router.get("/assignable", authenticate, authorizeRoles(...staffRoles), authorizePermissions("users:read"), ctrl.getAssignableUsers);
+// every active internal team member: the Messages page's Contacts (staff only; only name, e-mail and role are returned)
+router.get("/internal-team", authenticate, authorizeRoles(...staffRoles), ctrl.getInternalTeam);
 router.get("/case-managers", authenticate, authorizeRoles(...staffRoles), authorizePermissions("users:read"), ctrl.getCaseManagers);
 // Online/last-seen status — not role-gated beyond being logged in, since
 // both staff and clients need to read each other's presence in a shared

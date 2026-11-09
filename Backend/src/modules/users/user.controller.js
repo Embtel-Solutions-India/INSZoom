@@ -47,6 +47,16 @@ async function getAssignableUsers(req, res, next) {
   }
 }
 
+// GET /users/internal-team: the whole active internal team (the Messages page's Contacts)
+async function getInternalTeam(req, res, next) {
+  try {
+    const users = await userService.getInternalTeam(req.user);
+    res.json({ success: true, count: users.length, users });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getCaseManagers(req, res, next) {
   try {
     // ?includeTeamLeads=true (case creation's "Assign Staff"): case managers plus every active team lead; without it, unchanged
@@ -178,6 +188,7 @@ module.exports = {
   createUser,
   deleteUser,
   getAssignableUsers,
+  getInternalTeam,
   getAttorneys,
   getCaseManagers,
   getDashboard,

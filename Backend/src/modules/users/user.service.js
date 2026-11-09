@@ -178,6 +178,15 @@ async function getAssignableUsers(currentUser, role, options = {}) {
   return deduped;
 }
 
+// The Messages page's Contacts: EVERY active internal team member (not scoped by team or assignment rules), so the whole team can chat with each other, and anyone
+// added later appears on its own because this reads the live list. Only what a contact row needs; never the person themselves.
+const INTERNAL_TEAM_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "reviewer"];
+async function getInternalTeam(currentUser) {
+  const people = await User.find({ role: { $in: INTERNAL_TEAM_ROLES }, isActive: true, _id: { $ne: currentUser._id } }).select("name displayName email role").lean();
+  const nameOf = (person) => (person.name || person.displayName || person.email || "").toLowerCase();
+  return people.sort((left, right) => nameOf(left).localeCompare(nameOf(right)));
+}
+
 // "Assign Staff" at case creation: the case managers (scoped exactly as before) plus EVERY active team lead - including the requesting team
 // lead - since some cases are handled by a team lead with no case manager. A team lead picked here takes the case manager's place on the case
 // (assignedCaseManager), so the existing assignment rules (emails, child cases, pipeline card) apply unchanged.
@@ -338,6 +347,7 @@ async function getUserPerformance(id, currentUser) {
 
 module.exports = {
   USER_SELECT,
+  getInternalTeam,
   deleteUserPermanently,
   canViewUser,
   createUser,

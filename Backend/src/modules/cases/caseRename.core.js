@@ -36,9 +36,10 @@ function splitName(fullName) {
  * Returns { error } or { name, parts } where `name` is the new display name and `parts` the person's parts (null for a company).
  */
 function validateNameInput(input = {}, { kind } = {}) {
-  if (kind === "company") {
+  if (kind === "company" || kind === "name") {
+    // one single name (a company; or a notice response whose person / company is not known): no first / middle / last
     const name = clean(input.name);
-    if (!name) return { error: "Enter the company name." };
+    if (!name) return { error: kind === "company" ? "Enter the company name." : "Enter the name." };
     if (name.length > MAX_NAME_LENGTH) return { error: `The name can be at most ${MAX_NAME_LENGTH} characters.` };
     return { name, parts: null };
   }
@@ -47,8 +48,7 @@ function validateNameInput(input = {}, { kind } = {}) {
     // only a full name was sent: split it
     Object.assign(parts, splitName(input.name));
   }
-  if (!parts.firstName) return { error: "Enter the first name." };
-  if (!parts.lastName) return { error: "Enter the last name." };
+  if (!parts.firstName) return { error: "Enter the first name." }; // the last name is optional: it may not be known
   const name = composeFullName(parts);
   if (name.length > MAX_NAME_LENGTH) return { error: `The name can be at most ${MAX_NAME_LENGTH} characters.` };
   return { name, parts };
@@ -68,13 +68,16 @@ function replaceInText(text, oldName, newName) {
 function isNamePartsObject(object, oldName) {
   const first = FIRST_KEYS.map((key) => object[key]).find((value) => typeof value === "string" && value.trim());
   const last = LAST_KEYS.map((key) => object[key]).find((value) => typeof value === "string" && value.trim());
-  if (!first || !last) return false;
+  if (!first) return false;
   const old = norm(oldName).split(" ").filter(Boolean);
-  if (old.length < 2) return false;
+  if (!old.length) return false;
   const firstWords = norm(first).split(" ").filter(Boolean);
+  if (!firstWords.length || old[0] !== firstWords[0]) return false;
+  // a person known by one name only (no last name on file) matches on the first name alone; otherwise the last name must end the old name too
+  if (!last) return old.length === 1;
   const lastWords = norm(last).split(" ").filter(Boolean);
-  if (!firstWords.length || !lastWords.length) return false;
-  return old[0] === firstWords[0] && old[old.length - 1] === lastWords[lastWords.length - 1];
+  if (!lastWords.length || old.length < 2) return false;
+  return old[old.length - 1] === lastWords[lastWords.length - 1];
 }
 
 /**
@@ -144,6 +147,11 @@ function replaceNames(tree, { oldName, newName, parts = null, textKeys = [] } = 
         }
       }
       copy[childKey] = walk(childValue, childPath, childKey, childSafe);
+    }
+    // a last name was entered and this person's data had none: add it
+    if (rewriteParts && parts.lastName && !LAST_KEYS.some((lastKey) => typeof node[lastKey] === "string" && node[lastKey].trim()) && !LAST_KEYS.some((lastKey) => lastKey in copy)) {
+      copy.lastName = parts.lastName;
+      changes.push({ path: path ? `${path}.lastName` : "lastName", from: undefined, to: parts.lastName, safe });
     }
     // a middle name was entered and this person's data has no middle-name field yet: add it (so the forms can use it)
     if (rewriteParts && parts.middleName && !MIDDLE_KEYS.some((middleKey) => middleKey in node)) {

@@ -22,6 +22,19 @@ const MAX_CANONICAL_EDITS = 300;
 
 const httpError = (status, message, code) => Object.assign(new Error(message), { status, code });
 const isEmployerMatter = (caseData) => caseData?.caseRole === "principal" && caseData?.caseStructure === "employer_employee";
+/**
+ * What kind of name the case holds, which decides what the team is asked for:
+ *   "company" - an employer matter: the company name
+ *   "name"    - an RFE / NOIR / NOID / MTR case: ONE name (it is not known whether the filer is a person or a company, so it is never split)
+ *   "person"  - single, family and employee cases: first name, optional middle name, optional last name
+ */
+function nameKind(caseData) {
+  if (isEmployerMatter(caseData)) return "company";
+  const { hasCustomChecklist } = require("../../config/visaCategories");
+  const visaType = String(caseData?.visaType || caseData?.petitionType || "").trim().toUpperCase();
+  if (visaType && hasCustomChecklist(visaType)) return "name";
+  return "person";
+}
 const currentName = (caseData) => core.clean(caseData?.clientName) || core.clean(caseData?.employeeIdentity?.name) || core.clean(caseData?.pendingEmployee?.name);
 
 /** The parts of a case that hold its name (everything except the canonical profile, which has its own writer). */
@@ -173,7 +186,19 @@ function notifyGhl(caseData, childIds) {
 }
 
 /**
- * input: { name } for an employer matter (the company), { firstName, middleName?, lastName } for a person.
+ * The Client portal, Admin and the Attorney portal listen for "something on this case changed" and re-read through their own authorized API, so a rename shows
+ * on screens that are open right now without a refresh. ("employees" is the scope the Attorney portal re-reads on.) Never throws, never carries the name itself.
+ */
+function notifyOpenSessions(caseId, childIds, actor) {
+  try {
+    require("../realtime/caseLiveUpdates").notifyCaseDataChanged([caseId, ...childIds], ["name", "answers", "employees"], { actor, reason: "case_renamed" });
+  } catch (error) {
+    logger.warn("case_rename_live_signal_failed", { caseId: String(caseId), error: error.message });
+  }
+}
+
+/**
+ * input: { name } for an employer matter (the company) or an RFE / NOIR / NOID / MTR case (one name), { firstName, middleName?, lastName? } for a person.
  * dryRun: only reports what would change.
  */
 async function renameCase({ caseId, input, actor, req, dryRun = false }) {
@@ -184,7 +209,7 @@ async function renameCase({ caseId, input, actor, req, dryRun = false }) {
   if (!first) throw httpError(404, "Case not found");
   if (!caseService.canAccessCase(actor, first)) throw httpError(403, "Not authorized to rename this case");
 
-  const kind = isEmployerMatter(first) ? "company" : "person";
+  const kind = nameKind(first);
   const oldName = currentName(first);
   if (!oldName) throw httpError(400, "This case has no name yet.", "CASE_HAS_NO_NAME");
   const checked = core.validateNameInput(input, { kind });
@@ -243,6 +268,7 @@ async function renameCase({ caseId, input, actor, req, dryRun = false }) {
   }
 
   notifyGhl(first, childIds);
+  notifyOpenSessions(first._id, childIds, actor);
   return {
     success: true,
     kind,
@@ -261,11 +287,11 @@ async function getEditInfo({ caseId, actor }) {
   const doc = await Case.findById(caseId).select(EXCLUDE_HEAVY).lean();
   if (!doc) throw httpError(404, "Case not found");
   if (!caseService.canAccessCase(actor, doc)) throw httpError(403, "Not authorized to rename this case");
-  const kind = isEmployerMatter(doc) ? "company" : "person";
+  const kind = nameKind(doc);
   const name = currentName(doc);
-  if (kind === "company") return { success: true, kind, name, parts: null };
+  if (kind !== "person") return { success: true, kind, name, parts: null };
   const parts = core.findNameParts([doc.canonicalProfile?.profile, doc.questionnaireData, doc.employeeIdentity, doc.pendingEmployee], name) || core.splitName(name);
   return { success: true, kind, name, parts };
 }
 
-module.exports = { renameCase, getEditInfo, isEmployerMatter, currentName };
+module.exports = { renameCase, getEditInfo, isEmployerMatter, nameKind, currentName };

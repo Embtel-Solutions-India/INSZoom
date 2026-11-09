@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Inbox,
   Search,
-  Plus,
   Users,
   Paperclip,
   FileText,
@@ -731,15 +730,26 @@ const Messaging = () => {
     }
   }
 
+  // Contacts: the people who can be messaged directly = the assigned clients (as before) plus the WHOLE active internal team (its own endpoint, so every team
+  // member is listed whatever the assignment rules, and a member added later shows up here on the next load with no change).
   const fetchUsers = async () => {
-    try {
-      const response = await api.get('/users/assignable', {
-        params: { includeCaseClients: true }
-      })
-      setUsers(response.data.users || [])
-    } catch (err) {
-      console.error('Error fetching users:', err)
+    const [assignable, team] = await Promise.allSettled([
+      api.get('/users/assignable', { params: { includeCaseClients: true } }),
+      api.get('/users/internal-team')
+    ])
+    if (assignable.status === 'rejected' && team.status === 'rejected') {
+      console.error('Error fetching users:', assignable.reason)
+      return
     }
+    const merged = new Map()
+    for (const result of [assignable, team]) {
+      if (result.status !== 'fulfilled') continue
+      for (const person of result.value.data.users || []) {
+        const id = idOf(person._id)
+        if (id) merged.set(id, { ...(merged.get(id) || {}), ...person })
+      }
+    }
+    setUsers([...merged.values()])
   }
 
   useEffect(() => {
@@ -948,12 +958,15 @@ const Messaging = () => {
       }
     })
 
-    arr.sort((a, b) => new Date(b.latestAt) - new Date(a.latestAt))
+    // newest activity first, like WhatsApp; a thread with no message yet counts as oldest (never an invalid comparison)
+    arr.sort((a, b) => (Date.parse(b.latestAt) || 0) - (Date.parse(a.latestAt) || 0))
     return arr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, currentUserId, users])
 
-  const conversations = useMemo(() => groups, [groups])
+  // Conversations = case threads (and direct chats with clients). A chat with an internal team member lives ONLY under Contacts, so those never appear here
+  // (a direct thread whose person is not known yet stays hidden until the contact list has loaded).
+  const conversations = useMemo(() => groups.filter((group) => !(group.type === 'user' && (INTERNAL_CONTACT_ROLES.includes(group.userRole) || group.userRole === 'Unknown'))), [groups])
 
   const contactUsers = useMemo(() => (
     users
@@ -969,9 +982,29 @@ const Messaging = () => {
     contactUsers.filter(contact => INTERNAL_CONTACT_ROLES.includes(contact.role))
   ), [contactUsers])
 
-  const clientContacts = useMemo(() => (
-    contactUsers.filter(contact => contact.role === 'client')
-  ), [contactUsers])
+  // Contacts are ordered like WhatsApp: whoever wrote (or was written to) most recently is on top, and a new message moves that person up at once;
+  // people with no chat yet follow, A-Z (internalContacts is already A-Z, and the sort is stable).
+  const sortedInternalContacts = useMemo(() => {
+    const latest = new Map(groups.filter(group => group.type === 'user' && group.latestAt).map(group => [group.userId, new Date(group.latestAt).getTime()]))
+    return [...internalContacts].sort((left, right) => (latest.get(idOf(right._id)) || 0) - (latest.get(idOf(left._id)) || 0))
+  }, [internalContacts, groups])
+
+  // Switching tabs never leaves the wrong kind of thread open: an internal-team chat belongs to Contacts only, a case thread to Conversations only.
+  // Opening Contacts also reloads the team list, so a member added since the page was opened is there.
+  const switchTab = (tab) => {
+    setActiveTab(tab)
+    if (tab === 'conversations' && selectedUserId && internalContacts.some(contact => idOf(contact._id) === selectedUserId)) setSelectedUserId(null)
+    if (tab === 'contacts') {
+      if (selectedCaseId) setSelectedCaseId(null)
+      fetchUsers()
+    }
+  }
+
+  // A link straight to an internal team member's chat (a notification, a deep link) opens it under Contacts.
+  useEffect(() => {
+    if (selectedUserId && internalContacts.some(contact => idOf(contact._id) === selectedUserId)) setActiveTab('contacts')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId, internalContacts])
 
   const selectedGroup = useMemo(() => {
     if (selectedUserId) {
@@ -1521,44 +1554,36 @@ const Messaging = () => {
                 <div>
                   <h1 className="text-base font-semibold text-foreground leading-tight mb-2.5">Messages</h1>
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setActiveTab('conversations')}
+                        onClick={() => switchTab('conversations')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'conversations'
                             ? 'bg-primary/15 text-primary'
                             : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
-                        Conversations
+                        Clients
                       </button>
                       <button
                         type="button"
-                        onClick={() => setActiveTab('contacts')}
+                        onClick={() => switchTab('contacts')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'contacts'
                             ? 'bg-primary/15 text-primary'
                             : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
-                        Contacts
+                        Team members
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('contacts')}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                      title="Start a new chat"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
                   </div>
                   <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     <input
                       type="text"
-                      placeholder={activeTab === 'contacts' ? 'Search contacts...' : 'Search conversations...'}
+                      placeholder={activeTab === 'contacts' ? 'Search team members...' : 'Search clients...'}
                       value={newChatSearch}
                       onChange={(e) => setNewChatSearch(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1572,12 +1597,12 @@ const Messaging = () => {
                 {activeTab === 'conversations' && conversations.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-6 text-center py-12">
                     <Inbox className="w-8 h-8 mb-2" />
-                    <p className="text-sm">No conversations found</p>
+                    <p className="text-sm">No client conversations found</p>
                   </div>
-                ) : activeTab === 'contacts' && internalContacts.length === 0 && clientContacts.length === 0 ? (
+                ) : activeTab === 'contacts' && internalContacts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-6 text-center py-12">
                     <Users className="w-8 h-8 mb-2" />
-                    <p className="text-sm">No contacts found</p>
+                    <p className="text-sm">No team members found</p>
                   </div>
                 ) : (
                   activeTab === 'conversations' ? conversations
@@ -1613,7 +1638,7 @@ const Messaging = () => {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-semibold text-foreground truncate">
-                            {conv.type === 'case' ? conv.caseNumber : conv.userName}
+                            {conv.type === 'case' ? (conv.clientName && conv.clientName !== '—' ? conv.clientName : conv.caseNumber) : conv.userName}
                           </span>
                           <div className="flex items-center gap-2">
                             {conv.type === 'user' && (
@@ -1628,7 +1653,7 @@ const Messaging = () => {
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <span className="text-sm text-muted-foreground truncate">
-                            {conv.type === 'case' ? conv.clientName : `${conv.userRole} • ${previewOf(conv.last)}`}
+                            {conv.type === 'case' ? conv.caseNumber : `${conv.userRole} • ${previewOf(conv.last)}`}
                           </span>
                           {conv.unreadCount > 0 && (
                             <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-semibold rounded-full bg-primary text-primary-foreground">
@@ -1645,9 +1670,9 @@ const Messaging = () => {
                       </button>
                     )) : (
                     <div className="py-2">
+                      {/* Contacts = the internal team only; clients are reached through Conversations (their cases) */}
                       {[
-                        { key: 'internal', label: 'Internal Team', items: internalContacts },
-                        { key: 'clients', label: 'Assigned Clients', items: clientContacts }
+                        { key: 'internal', label: 'Internal Team', items: sortedInternalContacts }
                       ].map(section => {
                         const filteredItems = section.items.filter(contact => {
                           const searchTerm = newChatSearch.toLowerCase()
@@ -1667,14 +1692,17 @@ const Messaging = () => {
                             <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {section.label}
                             </div>
-                            {filteredItems.map(contact => (
+                            {filteredItems.map(contact => {
+                              // the chat already held with this person (latest message, time, unread) - shown right in the contact row, like a conversation
+                              const thread = groups.find(group => group.type === 'user' && group.userId === idOf(contact._id))
+                              return (
                               <button
                                 key={idOf(contact._id)}
                                 type="button"
                                 onClick={() => {
+                                  // opens the chat right here under Contacts (no switch to the Conversations tab)
                                   setSelectedUserId(idOf(contact._id))
                                   setSelectedCaseId(null)
-                                  setActiveTab('conversations')
                                 }}
                                 className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
                                   selectedUserId === idOf(contact._id)
@@ -1686,15 +1714,11 @@ const Messaging = () => {
                                   <span className="font-semibold text-foreground truncate">
                                     {contact.name || contact.displayName || contact.email}
                                   </span>
-                                  <span className={`text-xs px-2 py-1 rounded-full ${
-                                    contact.role === 'client'
-                                      ? 'bg-slate-200 text-slate-700'
-                                      : 'bg-primary/15 text-primary'
-                                  }`}>
-                                    {contact.role}
+                                  <span className="shrink-0 text-[11px] capitalize text-muted-foreground/70">
+                                    {String(contact.role || '').replace(/_/g, ' ')}
                                   </span>
                                 </div>
-                                <p className="text-sm text-muted-foreground truncate mt-1">
+                                <p className="text-xs text-muted-foreground truncate mt-0.5">
                                   {contact.email}
                                 </p>
                                 {contact.role === 'client' && (contact.relatedCases || []).length > 0 && (
@@ -1702,8 +1726,22 @@ const Messaging = () => {
                                     {(contact.relatedCases || []).map(item => item.caseNumber).join(', ')}
                                   </p>
                                 )}
+                                {thread?.last && (
+                                  <div className="flex items-center justify-between gap-2 mt-1">
+                                    <p className="text-xs text-muted-foreground truncate">{previewOf(thread.last)}</p>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-[11px] text-muted-foreground">{thread.latestAt ? formatTime(thread.latestAt) : ''}</span>
+                                      {thread.unreadCount > 0 && (
+                                        <span className="min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-semibold rounded-full bg-primary text-primary-foreground">
+                                          {thread.unreadCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </button>
-                            ))}
+                              )
+                            })}
                           </div>
                         )
                       })}

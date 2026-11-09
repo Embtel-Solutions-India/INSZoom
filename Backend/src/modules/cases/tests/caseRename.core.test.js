@@ -8,7 +8,7 @@ test("validation: a company takes one name, a person a first and last name", () 
   assert.ok(validateNameInput({ name: "  " }, { kind: "company" }).error);
   const person = validateNameInput({ firstName: "Aditya", middleName: "K", lastName: "Nautiyal" }, { kind: "person" });
   assert.equal(person.name, "Aditya K Nautiyal");
-  assert.ok(validateNameInput({ firstName: "Aditya" }, { kind: "person" }).error, "last name is required");
+  assert.equal(validateNameInput({ firstName: "Aditya" }, { kind: "person" }).name, "Aditya", "the last name is optional (it may not be known)");
   assert.ok(validateNameInput({ lastName: "X" }, { kind: "person" }).error, "first name is required");
   assert.equal(validateNameInput({ name: "Ajay Kumar" }, { kind: "person" }).parts.lastName, "Kumar", "a full name alone is split");
   assert.ok(validateNameInput({ firstName: "A".repeat(100), lastName: "B".repeat(100) }, { kind: "person" }).error, "too long");
@@ -94,7 +94,7 @@ test("non-plain values (dates, ids) and missing input pass through untouched", (
 test("isNamePartsObject needs both parts to match the old name", () => {
   assert.equal(isNamePartsObject({ firstName: "Ajay", lastName: "Kumar" }, "Ajay Kumar"), true);
   assert.equal(isNamePartsObject({ firstName: "Ajay", lastName: "Singh" }, "Ajay Kumar"), false);
-  assert.equal(isNamePartsObject({ firstName: "Ajay" }, "Ajay Kumar"), false);
+  assert.equal(isNamePartsObject({ firstName: "Ajay" }, "Ajay Kumar"), false, "a one-name entry does not match a two-word name");
   assert.equal(isNamePartsObject({ firstName: "Ajay", lastName: "Kumar" }, "Ajay"), false);
 });
 
@@ -104,4 +104,25 @@ test("findNameParts returns the person's real parts from the case data, not a gu
   assert.deepEqual(findNameParts([null, profile], "Mary Ann Smith"), { firstName: "Mary Ann", middleName: "", lastName: "Smith" });
   assert.equal(findNameParts([{ x: 1 }], "Mary Ann Smith"), null);
   assert.equal(findNameParts([profile], "Someone Else"), null);
+});
+
+test("a single-name case (RFE / NOIR / NOID / MTR) and a company take one name, never split", () => {
+  assert.deepEqual(validateNameInput({ name: " Acme   Corp " }, { kind: "name" }), { name: "Acme Corp", parts: null });
+  assert.ok(validateNameInput({ name: "" }, { kind: "name" }).error);
+});
+
+test("a person known by one name: the last name can be added later, and a missing one is fine", () => {
+  const { value, changes } = replaceNames(
+    { person: { firstName: "ishaan", lastName: "" }, other: { firstName: "ishaan", lastName: "Sharma" } },
+    { oldName: "ishaan", newName: "Ishaan Oberoi", parts: { firstName: "Ishaan", middleName: "", lastName: "Oberoi" } }
+  );
+  assert.deepEqual(value.person, { firstName: "Ishaan", lastName: "Oberoi" });
+  assert.equal(value.other.lastName, "Sharma", "another person with the same first name is untouched");
+  assert.ok(changes.length >= 2);
+  // the last name key did not exist at all: it is added
+  const added = replaceNames({ person: { firstName: "ishaan" } }, { oldName: "ishaan", newName: "Ishaan Oberoi", parts: { firstName: "Ishaan", middleName: "", lastName: "Oberoi" } });
+  assert.equal(added.value.person.lastName, "Oberoi");
+  // and removing a known last name is allowed
+  const removed = replaceNames({ person: { firstName: "Leslie", lastName: "Anne" } }, { oldName: "Leslie Anne", newName: "Leslie", parts: { firstName: "Leslie", middleName: "", lastName: "" } });
+  assert.equal(removed.value.person.lastName, "");
 });

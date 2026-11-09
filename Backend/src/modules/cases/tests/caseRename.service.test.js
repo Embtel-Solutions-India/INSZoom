@@ -126,7 +126,7 @@ test("bad input is refused before anything is written", async () => {
   state.cases[P1] = employer();
   await assert.rejects(() => renameCase({ caseId: P1, input: { name: "   " }, actor: ADMIN }), (e) => e.status === 400);
   state.cases[C1] = person();
-  await assert.rejects(() => renameCase({ caseId: C1, input: { firstName: "Only" }, actor: ADMIN }), (e) => e.status === 400);
+  await assert.rejects(() => renameCase({ caseId: C1, input: { lastName: "Only" }, actor: ADMIN }), (e) => e.status === 400); // a first name is needed; the last name is optional
   assert.equal(calls.caseUpdates.length + calls.profileEdits.length, 0);
 });
 
@@ -158,4 +158,41 @@ test("a capitalisation-only fix is a real rename", async () => {
   const result = await renameCase({ caseId: P1, input: { name: "VINDHAM LLC" }, actor: ADMIN });
   assert.equal(result.name, "VINDHAM LLC");
   assert.equal(calls.caseUpdates.find((u) => u.filter._id === P1).update.$set.clientName, "VINDHAM LLC");
+});
+
+test("an RFE / NOIR / NOID / MTR case is asked for ONE name and never gets person-part rewrites", async () => {
+  const { getEditInfo } = require("../caseRename.service");
+  state.cases[C1] = { ...person(), visaType: "NOID", clientName: "Acme Corp", participants: [], questionnaireData: { masterData: { employer: { company: { fullName: "Acme Corp" } }, person: { firstName: "Acme", lastName: "Corp" } } }, canonicalProfile: undefined };
+  const info = await getEditInfo({ caseId: C1, actor: ADMIN });
+  assert.deepEqual([info.kind, info.parts], ["name", null]);
+  await assert.rejects(() => renameCase({ caseId: C1, input: { name: "  " }, actor: ADMIN }), (e) => e.status === 400);
+  await renameCase({ caseId: C1, input: { name: "Beta Corp", firstName: "Ignored", lastName: "Ignored" }, actor: ADMIN });
+  const set = calls.caseUpdates.find((u) => u.filter._id === C1).update.$set;
+  assert.equal(set.clientName, "Beta Corp");
+  assert.equal(set["questionnaireData.masterData.employer.company.fullName"], "Beta Corp");
+  assert.equal("questionnaireData.masterData.person.firstName" in set, false, "a single-name case is never split into first / last");
+});
+
+test("a person may have no last name; single, family and employee cases still ask first / middle / last", async () => {
+  const { getEditInfo } = require("../caseRename.service");
+  state.cases[C1] = { ...person(), visaType: "COSB1", clientName: "ishaan", participants: [], questionnaireData: { masterData: { person: { firstName: "ishaan", lastName: "" } } }, canonicalProfile: undefined };
+  assert.equal((await getEditInfo({ caseId: C1, actor: ADMIN })).kind, "person");
+  const result = await renameCase({ caseId: C1, input: { firstName: "Ishaan" }, actor: ADMIN });
+  assert.equal(result.name, "Ishaan");
+  const set = calls.caseUpdates.find((u) => u.filter._id === C1).update.$set;
+  assert.equal(set.clientName, "Ishaan");
+  assert.equal(set["questionnaireData.masterData.person.firstName"], "Ishaan");
+});
+
+test("every open portal session (Client, Admin, Attorney) is told to re-read the case", async () => {
+  const signals = [];
+  stub("../../realtime/caseLiveUpdates", { notifyCaseDataChanged: (refs, scope, options) => signals.push({ refs, scope, options }) });
+  state.cases[P1] = employer();
+  state.children = [{ _id: E1 }];
+  state.cases[E1] = { _id: E1, caseRole: "employee", parentCase: P1, participants: [], questionnaireData: {} };
+  await renameCase({ caseId: P1, input: { name: "SURUCHI INC." }, actor: ADMIN });
+  assert.equal(signals.length, 1);
+  assert.deepEqual(signals[0].refs, [P1, E1]);
+  assert.ok(signals[0].scope.includes("employees"), "the scope the Attorney portal re-reads on");
+  assert.equal(signals[0].options.reason, "case_renamed");
 });
