@@ -156,6 +156,9 @@ router.get("/:id/assignment-history", authenticate, authorizeRoles(...staffRoles
 router.patch("/:principalId/data-entry-mode", authenticate, ctrl.setDataEntryMode);
 router.post("/:principalId/invite-employee", authenticate, ctrl.inviteEmployee);
 router.patch("/:principalId/employees/:childCaseId/identity", authenticate, ctrl.setEmployeeIdentity);
+// the internal team renames a case (staff roles are checked inside the service)
+router.get("/:id/name", authenticate, ctrl.getCaseNameInfo);
+router.patch("/:id/name", authenticate, ctrl.renameCase);
 router.patch("/:principalId/employees/:childCaseId/data-entry-mode", authenticate, ctrl.setEmployeeDataEntryMode);
 router.patch("/:caseId/remove-employee", authenticate, ctrl.removeEmployee);
 router.patch("/:caseId/restore-employee", authenticate, ctrl.restoreEmployee);

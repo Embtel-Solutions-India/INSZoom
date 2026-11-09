@@ -29,6 +29,7 @@ import { FINANCE_COLORS } from '../utils/financeColors'
 import Card from '../components/ui/Card'
 import ChartCard from '../components/ui/ChartCard'
 import StatBadge from '../components/ui/StatBadge'
+import { plainActivityText } from '../utils/activityText'
 
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#64748b', '#0ea5e9']
 
@@ -322,7 +323,7 @@ const AdminPanel = ({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-foreground truncate">{a.performedBy} · {a.caseNumber}</p>
-                  <p className="text-xs text-muted-foreground truncate">{a.description || a.title}</p>
+                  <p className="text-xs text-muted-foreground truncate">{plainActivityText(a.description || a.title)}</p>
                 </div>
                 <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(a.performedAt)}</span>
               </button>
@@ -602,7 +603,7 @@ const TeamLeadPanel = ({
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">{a.performedBy} · {a.caseNumber}</p>
-                    <p className="text-xs text-muted-foreground truncate">{a.description || a.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{plainActivityText(a.description || a.title)}</p>
                   </div>
                   <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(a.performedAt)}</span>
                 </button>

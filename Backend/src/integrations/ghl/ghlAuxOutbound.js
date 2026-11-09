@@ -205,7 +205,7 @@ async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, c
   });
   const fresh = await Case.findById(child._id);
   if (fresh) {
-    caseService.addTimelineEvent(fresh, "case", "GHL opportunity created", `Opportunity ${opportunity.id} in "${pipeline.ghlPipelineName}"`, null, { source: "immiglance", ghlOpportunityId: opportunity.id, ghlPipelineId: pipeline.ghlPipelineId });
+    caseService.addTimelineEvent(fresh, "case", "Added to the pipeline", `Case added to the ${pipeline.ghlPipelineName}`, null, { source: "immiglance", ghlOpportunityId: opportunity.id, ghlPipelineId: pipeline.ghlPipelineId });
     await fresh.save().catch(() => {});
   }
   return true;
@@ -304,8 +304,15 @@ async function runRename(job, client) {
   const child = await Case.findById(job.caseId);
   const ghl = child?.integrations?.ghl;
   if (!child || !ghl?.opportunityId || child.status === "removed") return "skipped";
-  const principal = await Case.findById(child.parentCase).select("petitionerName clientName user").lean();
-  const name = desiredEmployeeName(child, principal);
+  let name;
+  if (child.caseRole === "employee") {
+    const principal = await Case.findById(child.parentCase).select("petitionerName clientName user").lean();
+    name = desiredEmployeeName(child, principal);
+  } else if (ghl.role === "individual") {
+    name = clean(child.clientName); // a single case's card carries the case's own name (renamed by the team: the card follows)
+  } else {
+    return "skipped";
+  }
   if (!name || name === ghl.displayName) return "skipped";
   await opportunityService.updateOpportunityName(ghl.opportunityId, name, client);
   await Case.updateOne({ _id: child._id }, { $set: { "integrations.ghl.displayName": name, "integrations.ghl.lastSyncedAt": new Date() } });

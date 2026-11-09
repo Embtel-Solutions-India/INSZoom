@@ -34,6 +34,7 @@ const CASE_VERBS = {
   request_documents: { kind: "document", text: "Requested documents from the client" },
   form_opened: { kind: "form", text: "Opened a form" },
   form_created: { kind: "form", text: "Added a form" },
+  case_renamed: { kind: "case", text: "Changed the case name" },
   update_stage: { kind: "case", text: "Moved the case to another stage" },
   update_plan: { kind: "case", text: "Changed the plan" },
   archive: { kind: "case", text: "Archived the case" },

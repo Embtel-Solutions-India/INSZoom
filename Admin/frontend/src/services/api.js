@@ -276,6 +276,9 @@ export const casesApi = {
   addEmployeeSlot: (principalId, payload = {}) => api.post(`/cases/${principalId}/add-employee-slot`, payload),
   // who an employee case is: { name?, email? } - the same fields the employer fills in the client portal
   setEmployeeIdentity: (principalId, childCaseId, payload) => api.patch(`/cases/${principalId}/employees/${childCaseId}/identity`, payload),
+  // the team renames a case: the new name replaces the old one everywhere (a company name for an employer matter, first / middle / last for a person)
+  getNameInfo: (id) => api.get(`/cases/${id}/name`),
+  renameCase: (id, payload) => api.patch(`/cases/${id}/name`, payload),
   employeeVisaOptions: () => api.get('/cases/employee-visa-options'),
   removeEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/remove-employee`),
   getTeamLeadDashboard: (params = {}) => api.get('/cases/dashboard/team-lead', { params }),

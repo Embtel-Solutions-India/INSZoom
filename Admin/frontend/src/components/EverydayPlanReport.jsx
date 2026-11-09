@@ -81,22 +81,22 @@ function Section({ kind, items, saving, onSave, focusSignal }) {
   const { Icon } = cfg
   return (
     <section ref={rootRef} id={`everyday-${kind}`} data-testid={`everyday-${kind}`} className={`flex min-h-[16rem] flex-col rounded-xl border ${cfg.card}`}>
-      <header className="flex items-center justify-between gap-3 border-b border-black/5 px-5 py-3 dark:border-white/10">
-        <div className="flex items-center gap-3">
-          <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${cfg.tone}`}><Icon className="h-5 w-5" /></span>
-          <div>
+      <header className="flex items-center justify-between gap-3 border-b border-black/5 px-4 py-3 sm:px-5 dark:border-white/10">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${cfg.tone}`}><Icon className="h-5 w-5" /></span>
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-foreground">{cfg.title}</h2>
             <p className="text-xs text-muted-foreground">{cfg.hint}</p>
           </div>
         </div>
         {!editing && items.length > 0 && (
-          <button type="button" onClick={startEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-secondary">
-            <Pencil className="h-3.5 w-3.5" /> Edit
+          <button type="button" onClick={startEdit} aria-label="Edit" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-secondary sm:px-3">
+            <Pencil className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>
           </button>
         )}
       </header>
 
-      <div className="flex-1 px-5 py-4">
+      <div className="min-w-0 flex-1 px-4 py-4 sm:px-5">
         {editing ? (
           <div className="space-y-2">
             {draft.map((value, index) => (

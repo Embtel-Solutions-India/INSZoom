@@ -121,11 +121,11 @@ const EODReports = () => {
         <div className="space-y-6" data-testid="eod-board">
           {board.days.filter((day) => day.rows.length).map((day) => (
             <section key={day.date} data-testid={`eod-day-${day.date}`}>
-              <div className="mb-3 flex items-center gap-3">
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <span className={`rounded-full px-3 py-1 text-sm font-semibold ${day.date === board.today ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'}`}>
                   {day.date === board.today ? `Today · ${dayLabel(day.date)}` : dayLabel(day.date)}
                 </span>
-                <span className="h-px flex-1 bg-border" />
+                <span className="hidden h-px flex-1 bg-border sm:block" />
                 <span className="text-xs text-muted-foreground">{day.rows.length} {day.rows.length === 1 ? 'person' : 'people'}</span>
               </div>
               <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -137,20 +137,20 @@ const EODReports = () => {
                     data-testid="eod-row"
                     onClick={() => setSelected(row)}
                     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(row) } }}
-                    className="grid cursor-pointer grid-cols-1 items-center gap-2 px-4 py-1.5 hover:bg-muted/60 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_auto_auto]"
+                    className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-2 hover:bg-muted/60 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(0,1.4fr)_auto_auto] md:gap-2 md:py-1.5"
                   >
-                    <div className="min-w-0">
+                    <div className="col-start-1 row-start-1 min-w-0 md:col-start-auto md:row-start-auto">
                       <p className="truncate font-medium text-foreground">{personName(row.staff)}</p>
                       <span className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground"><span className={`h-2 w-2 rounded-full ${ROLE_DOTS[row.staff.role] || 'bg-gray-400'}`} aria-hidden="true" />{ROLE_LABELS[row.staff.role] || row.staff.role}</span>
                     </div>
-                    <Preview items={row.planItems} kind="plan" />
-                    <Preview items={row.reportItems} kind="report" />
-                    <div className="flex items-center gap-3 text-xs">
+                    <div className="col-span-2 min-w-0 md:col-span-1"><Preview items={row.planItems} kind="plan" /></div>
+                    <div className="col-span-2 min-w-0 md:col-span-1"><Preview items={row.reportItems} kind="report" /></div>
+                    <div className="col-start-2 row-start-1 flex items-center gap-2.5 text-xs md:col-start-auto md:row-start-auto md:gap-3">
                       {STATS.map(({ key, label, Icon, tone }) => (
                         <span key={key} title={label} className={`inline-flex items-center gap-1 font-semibold ${tone}`}><Icon className="h-3.5 w-3.5" />{row.stats[key]}</span>
                       ))}
                     </div>
-                    <button type="button" onClick={(event) => { event.stopPropagation(); setSelected(row) }} className="inline-flex items-center gap-1.5 justify-self-start rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-primary hover:bg-secondary md:justify-self-end">
+                    <button type="button" onClick={(event) => { event.stopPropagation(); setSelected(row) }} className="col-span-2 inline-flex items-center gap-1.5 justify-self-start rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-primary hover:bg-secondary md:col-span-1 md:justify-self-end">
                       <Eye className="h-4 w-4" /> View
                     </button>
                   </div>
@@ -162,7 +162,7 @@ const EODReports = () => {
       )}
 
       {pagination.pages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
           <span>Page {pagination.page} of {pagination.pages} · 7 days per page</span>
           <div className="flex gap-2">
             <button className="btn-secondary disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button>

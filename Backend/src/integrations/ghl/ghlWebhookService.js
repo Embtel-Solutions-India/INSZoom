@@ -18,6 +18,7 @@ const { createCaseFromOpportunity, findCaseByOpportunity, syncCardName } = requi
 const visaService = require("./ghlVisaService");
 const auxOutbound = require("./ghlAuxOutbound");
 const { allCaseManagerIds } = require("../../modules/cases/caseManagerAccess");
+const { isStaleName: isStaleCaseName } = require("../../modules/cases/caseRename.core"); // a name GoHighLevel still carries from before the team renamed the case
 
 // A pending case re-checks its visa on updates, but at most once a minute so a burst of events costs nothing.
 const VISA_RECHECK_MS = 60 * 1000;
@@ -357,7 +358,7 @@ async function handleContactEvent(event) {
     // beneficiary, so they are never touched; only the petitioner's display name follows GHL.
     if (caseDoc.integrations?.ghl?.role === "family") {
       const familySet = {};
-      if (name && name !== caseDoc.petitionerName) familySet.petitionerName = name;
+      if (name && name !== caseDoc.petitionerName && !isStaleCaseName(caseDoc, name)) familySet.petitionerName = name;
       if (email && caseDoc.petitionerUser) {
         const petitioner = await User.findById(caseDoc.petitionerUser).select("email").lean();
         if (petitioner && petitioner.email !== email) familySet["integrations.ghl.flags.needsAttention"] = true; // login is tied to the original email
@@ -367,7 +368,7 @@ async function handleContactEvent(event) {
     }
     const set = {};
     // an individual case is named after its GHL CARD (see ghlCaseFactory.syncCardName), so the contact's name never renames it
-    if (name && name !== caseDoc.clientName && caseDoc.integrations?.ghl?.role !== "individual") set.clientName = name;
+    if (name && name !== caseDoc.clientName && caseDoc.integrations?.ghl?.role !== "individual" && !isStaleCaseName(caseDoc, name)) set.clientName = name; // never an EARLIER name of a case the team renamed
     if (email && email !== caseDoc.clientEmail) {
       // The client's LOGIN is tied to the original email; never rewrite a linked account from a CRM sync.
       if (caseDoc.user) set["integrations.ghl.flags.needsAttention"] = true;

@@ -17,6 +17,7 @@ import { hasFedexNumber } from '../utils/fedexTracking'
 import { isFiledByStage, shownTrackingStatus } from '../utils/filedStages'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
+import CaseNameEditModal from '../components/CaseNameEditModal'
 import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard, { isPremiumChecklist } from '../components/ChecklistApprovalCard'
 import WrappingSelect from '../components/ui/WrappingSelect'
@@ -68,7 +69,8 @@ import {
   Check,
   Scale,
   Zap,
-  Truck
+  Truck,
+  Pencil
 } from 'lucide-react'
 
 // Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`, minus the types that allow forms added by hand - PERM: `manualForms`).
@@ -882,6 +884,7 @@ const CRMCaseDetail = () => {
 
   // Modal states
   const [showStageUpdateModal, setShowStageUpdateModal] = useState(false)
+  const [showNameEdit, setShowNameEdit] = useState(false) // the small edit button beside the case name
   const [newStage, setNewStage] = useState('')
   // One Update Stage for every case, however it was created: it offers the GoHighLevel pipeline's stages, and a move shifts the card
   // on the Pipeline board and is synced to GoHighLevel. If the pipeline can't be reached (GHL off, no visa yet) the CRM stage list is used.
@@ -2217,7 +2220,22 @@ const CRMCaseDetail = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
             {/* Every case leads with who it is for - the name, then the email - and the case ID sits beside them in the ID box below. */}
-            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.clientName || caseData.employeeContact?.name || caseData.caseNumber}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-foreground break-words">{caseData.clientName || caseData.employeeContact?.name || caseData.caseNumber}</h1>
+              {/* a very small edit button right beside the name: renames THIS case only (the employer, or just this employee), the new name is used everywhere */}
+              {['super_admin', 'admin', 'team_lead', 'case_manager'].includes(user?.role) && (caseData.clientName || caseData.employeeContact?.name) && (
+                <button
+                  type="button"
+                  onClick={() => setShowNameEdit(true)}
+                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  title="Edit name"
+                  aria-label="Edit name"
+                  data-testid="edit-case-name"
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
             {(caseData.clientEmail || caseData.employeeContact?.email) && (
               <p className="text-muted-foreground mt-1 break-all">{caseData.clientEmail || caseData.employeeContact?.email}</p>
             )}
@@ -4144,6 +4162,15 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showNameEdit && (
+        <CaseNameEditModal
+          caseId={id}
+          caseNumber={caseData?.caseNumber || ''}
+          onClose={() => setShowNameEdit(false)}
+          onSaved={() => { setShowNameEdit(false); fetchCaseDetail() }}
+        />
       )}
 
       {showStageUpdateModal && (

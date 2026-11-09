@@ -101,6 +101,9 @@ async function syncCardName(existing, opportunity) {
     const name = String(opportunity?.name || "").trim();
     const ghl = existing?.integrations?.ghl;
     if (!name || !ghl || ghl.role !== "individual" || existing.caseRole === "employee" || existing.clientName === name) return false;
+    // the team renamed this case here: the card still carrying one of its EARLIER names must not rename it back (the card is renamed by a background job)
+    const edit = existing.nameEdit ?? (await Case.findById(existing._id).select("nameEdit").lean())?.nameEdit;
+    if (require("../../modules/cases/caseRename.core").isStaleName({ nameEdit: edit }, name)) return false;
     const result = await Case.updateOne({ _id: existing._id, "integrations.ghl.role": "individual", clientName: { $ne: name } }, { $set: { clientName: name } });
     return Boolean(result?.modifiedCount);
   } catch (error) {
