@@ -22,6 +22,7 @@ router.post("/reconcile", adminOnly, ctrl.reconcileNow);
 
 router.get("/cases/:caseId/stages", boardStaff, ctrl.caseStages);
 router.patch("/cases/:caseId/pipeline-stage", boardStaff, ctrl.moveStage);
+router.post("/cases/:caseId/submitted-notice", boardStaff, ctrl.submittedNotice);
 router.post("/jobs/:id/retry", adminOnly, ctrl.retryJob);
 
 module.exports = router;

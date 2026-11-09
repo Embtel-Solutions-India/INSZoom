@@ -38,7 +38,7 @@ describe('usePipelineBoard - Submitted (FedEx) asks for the FedEx number', () =>
     const hook = await mount()
     await act(async () => hook.result.current.moveCard('c1', 'submitted_fedex'))
     await waitFor(() => expect(ask).toHaveBeenCalledTimes(1))
-    expect(ask).toHaveBeenCalledWith({ caseId: 'c1', caseNumber: 'B413-A', label: 'Asha Rao · Acme Inc' })
+    expect(ask).toHaveBeenCalledWith({ caseId: 'c1', caseNumber: 'B413-A', label: 'Asha Rao · Acme Inc', askClientEmail: true })
   })
 
   it('does not ask for a move to any other stage', async () => {

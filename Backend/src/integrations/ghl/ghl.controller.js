@@ -111,6 +111,17 @@ exports.moveStage = guard(async (req, res) => {
   res.json({ success: true, ...result });
 });
 
+// POST /cases/:caseId/submitted-notice { send: boolean } - the team's answer to "tell the client their case is complete?" after a move to Submitted (FedEx).
+// Only an explicit send:true e-mails the client; send:false sends nothing. Same access as moving the case.
+exports.submittedNotice = guard(async (req, res) => {
+  const { caseId } = req.params;
+  if (!mongoose.isValidObjectId(caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
+  if (typeof req.body?.send !== "boolean") return res.status(400).json({ success: false, message: "send must be true or false" });
+  await outbound.assertCanWorkCase(req.user, caseId);
+  const result = await require("./ghlSubmittedNotice").sendOnTeamChoice({ caseId, send: req.body.send, user: req.user });
+  res.json({ success: true, ...result });
+});
+
 exports.caseStages = guard(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
   try {

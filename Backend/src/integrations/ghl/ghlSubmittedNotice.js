@@ -3,10 +3,10 @@ const User = require("../../models/User");
 const EmailLog = require("../../models/EmailLog");
 const logger = require("../../utils/logger");
 
-// The congratulations e-mail ("case-submitted-client"): sent to the client when their case card MOVES INTO the Submitted stage on the Pipeline,
-// whoever moved it (the team, Update Stage, or GoHighLevel). It is a side effect of the move: it runs after the move is saved, is never awaited by
-// the caller and never throws, so a mail problem can never fail or slow a stage change.
-//   - only on a real move into the stage (previous stage != Submitted), so a re-sync of a card that is already there sends nothing;
+// The congratulations e-mail ("case-submitted-client"): sent to the client ONLY when the internal team chooses to, in the popup that follows a move of the
+// card into the Submitted stage (Pipeline drag or Update Stage). A move itself - by the team or from GoHighLevel - never sends it. The e-mail never
+// throws, so a mail problem can never fail or slow a stage change.
+//   - sendOnTeamChoice is the only sender; sendSubmittedNotice below is the older automatic one and is no longer called;
 //   - once per case: an earlier sent / queued e-mail of this kind for the case stops a second one (a card moved out and back in);
 //   - client only: a family case goes to the petitioner; an employee case only when the employee has their own login (not an employer-filled slot).
 const SUBMITTED_STAGE_KEY = "submitted_fedex";
@@ -118,7 +118,7 @@ async function sendOnTeamChoice({ caseId, send, user }) {
       caseId: caseDoc._id,
       userId: client._id,
       recipientRole: client.role,
-      triggeredBy: "team_chose_send_submitted_email",
+      triggeredBy: user?._id, // EmailLog.triggeredBy is a User id: the case manager who chose to send it
       data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber },
     });
     const outcome = { sent: Boolean(result?.sent), reason: result?.reason };
