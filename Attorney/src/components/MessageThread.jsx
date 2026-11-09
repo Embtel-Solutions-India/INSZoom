@@ -7,6 +7,7 @@ import AttachmentViewer, { FileTypeIcon, fileKind } from './AttachmentViewer'
 import MessageAttachment from './MessageAttachments'
 import { useAuth } from '../auth/AuthContext'
 import { useSocket } from '../context/SocketContext'
+import { setOpenChat } from '../services/notificationService'
 
 // The attorney's ONLY messaging surface — a staff-only thread (attorney <->
 // case manager/team lead/admin) backed by models/Feedback.js, never the
@@ -474,6 +475,11 @@ export default function MessageThread({ caseId, fill = false }) {
   const { user } = useAuth()
   const { subscribe, connected } = useSocket()
   const selfId = user?._id || user?.id
+  // this case's chat is on screen: a new message here stays quiet, every other chat still notifies
+  useEffect(() => {
+    setOpenChat({ kind: 'feedback', caseId })
+    return () => setOpenChat(null)
+  }, [caseId])
   const [items, setItems] = useState(null)
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState([])

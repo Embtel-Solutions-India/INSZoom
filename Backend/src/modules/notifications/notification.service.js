@@ -354,7 +354,8 @@ async function dispatchPushChannel(notification, payload, actor) {
     body: notification.message,
     link: notification.link,
     tag: payload?.data?.tag,
-    data: { notificationId: notification._id?.toString(), type: notification.type, caseId: idOf(notification.caseId) },
+    // conversationId / senderId / kind (a message notification only) tell the app WHICH chat this is, so the chat the person has open stays quiet and every other chat notifies
+    data: { notificationId: notification._id?.toString(), type: notification.type, caseId: idOf(notification.caseId), conversationId: payload?.metadata?.conversationId, senderId: payload?.metadata?.senderId, kind: payload?.metadata?.kind },
   }).catch((error) => ({ successCount: 0, failureCount: 0, error: error.message }));
 
   if (result.skipped) {
@@ -673,6 +674,7 @@ module.exports = {
   createForRoles,
   createFromEvent,
   createNotification,
+  dispatchPushChannel,
   dismissCaseNotificationsForUser,
   getAnalytics,
   getPreference,

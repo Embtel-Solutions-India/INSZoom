@@ -10,6 +10,7 @@ import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
 import BrandMark from "../components/BrandMark";
 import EnablePushButton from "../components/EnablePushButton";
+import ForegroundMessagePush from "../components/ForegroundMessagePush";
 import { useBranding } from "../utils/branding";
 import useNotificationClickNavigation from "../hooks/useNotificationClickNavigation";
 
@@ -185,6 +186,7 @@ export default function PortalLayout() {
       </div>
       {/* Its floating button would sit on top of the Messages composer's Send button. */}
       {!location.pathname.startsWith("/dashboard/messages") && <EnablePushButton />}
+      <ForegroundMessagePush />
     </div>
   );
 }
