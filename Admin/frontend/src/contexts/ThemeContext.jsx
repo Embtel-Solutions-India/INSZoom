@@ -22,6 +22,15 @@ export function ThemeProvider({ children }) {
     const root = document.documentElement
     if (theme === 'dark') root.classList.add('dark')
     else root.classList.remove('dark')
+    // the installed app's title bar / the browser's address-bar tint follows the theme: white in light mode, black in dark mode
+    try {
+      const barColor = theme === 'dark' ? '#000000' : '#ffffff'
+      let meta = document.querySelector('meta[name="theme-color"]')
+      if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', 'theme-color'); document.head.appendChild(meta) }
+      meta.setAttribute('content', barColor)
+    } catch {
+      // cosmetic only
+    }
     try {
       localStorage.setItem(STORAGE_KEY, theme)
     } catch {
