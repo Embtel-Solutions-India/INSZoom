@@ -554,6 +554,13 @@ const caseSchema = new mongoose.Schema(
     postApprovalAction: { type: mongoose.Schema.Types.Mixed, default: undefined },
     clientName: { type: String, trim: true },
     clientEmail: { type: String, lowercase: true, trim: true },
+    // Set when the internal team renamed the case (caseRename.service.js). While set, a name coming back from GoHighLevel (contact / card sync) never overwrites it.
+    nameEdit: {
+      at: { type: Date, default: null },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      previousName: { type: String, default: "" },
+      previousNames: { type: [String], default: undefined }, // every name the case had before an edit: GoHighLevel may still carry any of them
+    },
     employeeInvite: {
       email: { type: String, lowercase: true, trim: true },
       name: String,

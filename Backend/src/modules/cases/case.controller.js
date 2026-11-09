@@ -2993,6 +2993,29 @@ exports.setEmployeeIdentity = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/cases/:id/name   { name } for an employer matter (the company) | { firstName, middleName?, lastName } for a person | dryRun?: true
+ * The internal team renames a case: the new name replaces the old one everywhere it is held (see caseRename.service.js). Staff only; the person must be able to open the case.
+ */
+exports.getCaseNameInfo = async (req, res, next) => {
+  try {
+    return res.status(200).json(await require("./caseRename.service").getEditInfo({ caseId: req.params.id, actor: req.user }));
+  } catch (err) {
+    if (err.status && err.status < 500) return res.status(err.status).json({ success: false, code: err.code, message: err.message });
+    handleError(err, next);
+  }
+};
+
+exports.renameCase = async (req, res, next) => {
+  try {
+    const result = await require("./caseRename.service").renameCase({ caseId: req.params.id, input: req.body || {}, actor: req.user, req, dryRun: req.body?.dryRun === true });
+    return res.status(200).json(result);
+  } catch (err) {
+    if (err.status && err.status < 500) return res.status(err.status).json({ success: false, code: err.code, message: err.message });
+    handleError(err, next);
+  }
+};
+
+/**
  * POST /api/cases/:principalId/employee-setup-link  { childCaseId }
  *
  * A fresh one-time link the invited employee opens to choose their own password - for the Case Manager (or the employer) to copy and hand over when the email did
