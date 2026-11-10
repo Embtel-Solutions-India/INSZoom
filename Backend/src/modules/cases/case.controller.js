@@ -1032,6 +1032,17 @@ exports.getDashboardStats = async (req, res, next) => {
   }
 };
 
+// A timeline line for the dashboard: GHL's raw opportunity ids ("Opportunity QnESj... in ...", "GHL opportunity ...") mean nothing to staff, so they
+// are turned into plain words. Display only; the stored timeline is untouched.
+function readableActivity(event) {
+  const text = String(event?.description || "").trim();
+  if (!text) return event?.title || null;
+  const inPipeline = text.match(/^Opportunity\s+\S+\s+in\s+("[^"]*")/i);
+  if (inPipeline) return `Added to ${inPipeline[1]}`;
+  if (/^(GHL )?opportunity\s+[A-Za-z0-9]{12,}\s*$/i.test(text)) return event?.title || "Created from GHL";
+  return text;
+}
+
 exports.getNeedsAttention = async (req, res, next) => {
   try {
     const baseFilter = caseService.buildCaseFilter({}, req.user);
@@ -1046,7 +1057,7 @@ exports.getNeedsAttention = async (req, res, next) => {
     };
     const cases = await Case.find(filter)
       .populate("assignedCaseManager", "name displayName")
-      .select("caseNumber clientName visaType visaCategory stage status plan rfeDeadline assignedCaseManager updatedAt timeline questionnaireData")
+      .select("caseNumber clientName clientEmail employeeIdentity.name employeeIdentity.email pendingEmployee.name pendingEmployee.email visaType visaCategory stage status plan finance.totalAmount finance.amountPaid rfeDeadline assignedCaseManager updatedAt timeline questionnaireData")
       .sort({ updatedAt: -1 })
       .limit(20);
 
@@ -1054,18 +1065,25 @@ exports.getNeedsAttention = async (req, res, next) => {
       const reasons = [];
       if (c.stage === "rfe") reasons.push({ label: "RFE", color: "red" });
       if (c.status === "on_hold") reasons.push({ label: "On Hold", color: "orange" });
-      if (["not_started", "pending", "failed"].includes(c.plan?.paymentStatus)) reasons.push({ label: "Unpaid", color: "red" });
+      // Payment tag from the real figures: Paid / Partially paid / Unpaid (Unpaid also when the case has no total and nothing paid).
+      const total = Number(c.finance?.totalAmount) || 0;
+      const paid = Number(c.finance?.amountPaid) || 0;
+      if (total > 0 && paid >= total) reasons.push({ label: "Paid", color: "green" });
+      else if (paid > 0) reasons.push({ label: "Partially paid", color: "orange" });
+      else reasons.push({ label: "Unpaid", color: "red" });
       const lastEvent = (c.timeline || [])[c.timeline.length - 1];
       return {
         _id: c._id,
         caseNumber: c.caseNumber,
-        clientName: c.clientName,
+        // An employee/beneficiary child case keeps the person's name and email on the employee record, not on the case itself.
+        clientName: c.clientName || c.employeeIdentity?.name || c.pendingEmployee?.name || "",
+        clientEmail: c.clientEmail || c.employeeIdentity?.email || c.pendingEmployee?.email || "",
         visaType: c.visaType,
         visaCategory: c.visaCategory,
         caseManagerName: c.assignedCaseManager?.name || c.assignedCaseManager?.displayName || "Unassigned",
         reasons,
         rfeDeadline: c.rfeDeadline,
-        lastActivity: lastEvent?.description || lastEvent?.title || null,
+        lastActivity: readableActivity(lastEvent),
         updatedAt: c.updatedAt,
       };
     });

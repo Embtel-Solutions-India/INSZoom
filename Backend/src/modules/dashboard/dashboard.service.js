@@ -122,7 +122,7 @@ async function caseAnalytics(query = {}, user) {
     Case.countDocuments({ $and: [match, { assignedCaseManager: { $ne: null } }, { $nor: [completedCaseMatch(), onHoldCaseMatch()] }] }),
     Case.countDocuments({ $and: [match, completedCaseMatch()] }),
     Case.countDocuments({ $and: [match, onHoldCaseMatch()] }),
-    groupCount(Case, "stage", match),
+    require("../../integrations/ghl/ghlStageNames").ghlStageCounts(Case, match), // GHL stage names, both pipelines combined, non-empty only
     groupCount(Case, "visaType", match),
     groupCount(Case, "plan.tier", match),
     groupCount(Case, "status", match),
