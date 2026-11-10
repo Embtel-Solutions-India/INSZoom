@@ -145,7 +145,7 @@ test("VisaFormMapping: TN Canada/TN Mexico form mapping is untouched by this tas
 });
 
 test("no other visa type's employer/employee checklist definitions were disturbed by this addition", () => {
-  ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_employer_checklist", "i140_petitioner_checklist"].forEach((key) => {
+  ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_document_checklist", "i140_petitioner_checklist"].forEach((key) => {
     assert.ok(EMPLOYMENT_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`);
   });
   // 15 -> 18 by the later, unrelated E-2 task (e2.js added its own three
@@ -154,5 +154,5 @@ test("no other visa type's employer/employee checklist definitions were disturbe
   // added its own two checklists: employer, employee) - see
   // e3Checklists.test.js.
   // 25 -> 27 by the later, unrelated PERM task (permChecklists.js added its own employer + employee checklist).
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 36, "EB1C x2 (added), H1B x2, L1A x3, L1B x3, L1A-Extension x3, P x2, O1 x2, O2 x2, EB1B x2, I-140 x2, TN x2, E-2 x3, E-3 x2, PERM x2 = 27");
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 34, "36 before L-1A / L-1A Extension moved to one document checklist each: minus the 4 retired L-1A / L-1A Extension employer + employee checklists, plus l1a_document_checklist and l1aext_document_checklist");
 });

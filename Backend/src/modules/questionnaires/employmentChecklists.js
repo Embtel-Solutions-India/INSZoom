@@ -15,6 +15,7 @@ const o1 = require("../employment-workflow/questionnaires/o1");
 const o2 = require("../employment-workflow/questionnaires/o2");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { EB1C_CHECKLIST_DEFINITIONS } = require("./eb1cChecklists");
+const { L1A_DOCUMENT_CHECKLIST_DEFINITIONS } = require("./l1aDocumentChecklists");
 const { O1B_CHECKLIST_DEFINITIONS } = require("./o1bChecklists");
 const { O1A_CHECKLIST_DEFINITIONS } = require("./o1aChecklists");
 const i140 = require("../employment-workflow/questionnaires/i140");
@@ -1315,14 +1316,16 @@ const l1bCopyOf = (definition) => l1aVariantCopyOf(definition, { keyPrefix: "l1b
 const l1aExtensionCopyOf = (definition) =>
   l1aVariantCopyOf(definition, { keyPrefix: "l1aext", label: "L-1A Extension", visaType: "L1AEXTENSION", visaTypes: L1A_EXTENSION_VISA_TYPES });
 
+// L-1A and L-1A Extension are now served by the single "L1A Document Checklist" (l1aDocumentChecklists.js) + the Business Plan checklist. The old L-1A / L-1A Extension Employer and
+// Employee checklists are RETIRED: they are not defined here any more (so they are never re-created or re-seeded) and questionnaire.service refuses to assign them to any case that does
+// not already carry them (RETIRED_L1A_CHECKLIST_KEYS). The builders below stay only because L-1B still reuses them.
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
   buildH1bEmployeeChecklist(),
-  buildL1aEmployerChecklist(),
-  buildL1aEmployeeChecklist(),
   buildL1aBusinessPlanChecklist(),
   ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1bCopyOf),
-  ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1aExtensionCopyOf),
+  l1aExtensionCopyOf(buildL1aBusinessPlanChecklist()),
+  ...L1A_DOCUMENT_CHECKLIST_DEFINITIONS,
   buildE2VisaChecklist(),
   buildE2BusinessPlanChecklist(),
   buildE2SupportingDocumentsChecklist(),

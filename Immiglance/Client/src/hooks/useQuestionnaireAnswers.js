@@ -13,7 +13,6 @@ import {
   isQuestionVisible,
   isQuestionRequired,
   validateQuestion,
-  DOCUMENTS_SECTION_KEY,
   REQUESTED_SECTION_KEY,
   isStaffRequested,
 } from "../utils/questionnaireEngine";
@@ -132,45 +131,51 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
       .sort((a, b) => (a.order || 0) - (b.order || 0)),
     [fieldQuestions, documentQuestions, hiddenQuestions, answers]
   );
+  // EVERY checklist is shown exactly as it is defined: its own sections, with their own names, in their own order, and inside each section its
+  // questions in the checklist's order - uploads stay inside the section they belong to (there is no separate "Documents" step pulling them
+  // out any more, so a U.S.-company document can never be confused with a foreign-company one). A question whose section the checklist does not
+  // list still shows, in a section of its own after the listed ones, so nothing is ever dropped. (questionnaire.settings.inlineDocuments, set by
+  // the L1A Documentation Checklist, is therefore now simply what every checklist does.)
+  // What the case manager asked this client for comes FIRST, in one group of its own (documents and information together); those questions
+  // are not repeated in their normal sections. With no request on the case that group does not exist and nothing below changes.
+  // still returned for callers that count fields and documents separately (no screen uses them to place questions any more)
   const visibleFieldQuestions = useMemo(() => visibleQuestions.filter((question) => !isFileQuestion(question)), [visibleQuestions]);
   const visibleDocumentQuestions = useMemo(() => visibleQuestions.filter(isFileQuestion), [visibleQuestions]);
-
-  // Documents step is appended after the questionnaire's own sections, and
-  // only shows up once there's at least one currently-applicable document
-  // question — this is exactly where a conditional document (e.g. "Upload
-  // FEIN Letter" when DOL verification = No) surfaces, inside the
-  // questionnaire, never on the reusable Documents page's own baseline list.
-  // What the case manager asked this client for comes FIRST, in one group of its own (documents and information together); those questions
-  // are not repeated in their normal sections. With no request on the case both lists are empty and nothing below changes.
   const requestedQuestions = useMemo(() => visibleQuestions.filter(isStaffRequested), [visibleQuestions]);
-  const regularFieldQuestions = useMemo(() => (requestedQuestions.length ? visibleFieldQuestions.filter((question) => !isStaffRequested(question)) : visibleFieldQuestions), [requestedQuestions.length, visibleFieldQuestions]);
-  const regularDocumentQuestions = useMemo(() => (requestedQuestions.length ? visibleDocumentQuestions.filter((question) => !isStaffRequested(question)) : visibleDocumentQuestions), [requestedQuestions.length, visibleDocumentQuestions]);
+  const regularQuestions = useMemo(() => (requestedQuestions.length ? visibleQuestions.filter((question) => !isStaffRequested(question)) : visibleQuestions), [requestedQuestions.length, visibleQuestions]);
 
   const sections = useMemo(() => {
-    const base = regularDocumentQuestions.length
-      ? [...questionnaireSections, { key: DOCUMENTS_SECTION_KEY, title: "Documents", description: "Upload the documents this section requires." }]
-      : questionnaireSections;
+    const listed = new Set(questionnaireSections.map((section) => sectionKey(section)));
+    const unlisted = [];
+    regularQuestions.forEach((question) => {
+      const key = question.sectionKey || "general";
+      if (!listed.has(key) && !unlisted.includes(key)) unlisted.push(key);
+    });
+    const extra = unlisted.map((key) => {
+      const ofSection = regularQuestions.filter((question) => (question.sectionKey || "general") === key);
+      return { key, title: ofSection.every(isFileQuestion) ? "Documents" : "Other questions" };
+    });
+    const base = [...questionnaireSections, ...extra];
     if (!requestedQuestions.length) return base;
     return [{ key: REQUESTED_SECTION_KEY, title: "Requested by your case manager", description: "Your case manager asked for these items. Please provide them first." }, ...base];
-  }, [questionnaireSections, regularDocumentQuestions.length, requestedQuestions.length]);
+  }, [questionnaireSections, regularQuestions, requestedQuestions.length]);
 
   const questionsBySection = useMemo(() => {
     const map = new Map();
     sections.forEach((section) => map.set(sectionKey(section), []));
-    regularFieldQuestions.forEach((question) => {
+    regularQuestions.forEach((question) => {
       const key = question.sectionKey || "general";
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(question);
     });
-    if (regularDocumentQuestions.length) map.set(DOCUMENTS_SECTION_KEY, regularDocumentQuestions);
     if (requestedQuestions.length) map.set(REQUESTED_SECTION_KEY, requestedQuestions);
     return map;
-  }, [sections, regularFieldQuestions, regularDocumentQuestions, requestedQuestions]);
+  }, [sections, regularQuestions, requestedQuestions]);
 
   const allValidationErrors = useMemo(() => visibleQuestions.flatMap((question) =>
     validateQuestion(question, answers[questionKey(question)], answers).map((message) => ({
       key: questionKey(question),
-      sectionKey: isStaffRequested(question) ? REQUESTED_SECTION_KEY : isFileQuestion(question) ? DOCUMENTS_SECTION_KEY : (question.sectionKey || "general"),
+      sectionKey: isStaffRequested(question) ? REQUESTED_SECTION_KEY : (question.sectionKey || "general"),
       label: question.label,
       message,
     }))

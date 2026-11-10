@@ -154,6 +154,8 @@ const questionnaireSchema = new mongoose.Schema(
       enableDigitalSignature: { type: Boolean, default: false },
       allowPdfExport: { type: Boolean, default: true },
       allowImportExport: { type: Boolean, default: true },
+      // true: the upload questions stay inside their own sections instead of being collected into the shared "Documents" step (used by the L1A Documentation Checklist)
+      inlineDocuments: { type: Boolean, default: false },
     },
     builder: {
       dragDropEnabled: { type: Boolean, default: true },

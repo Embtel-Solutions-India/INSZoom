@@ -941,6 +941,14 @@ async function notifyChecklistAssigned(questionnaire, caseData, { assignedTo, me
   }
 }
 
+// The old L-1A / L-1A Extension Employer and Employee checklists are retired (the single "L1A Document Checklist" replaced them). They can never be put on a case again, by any path:
+// automatic provisioning, a form mapping, a rule, or a person picking one by hand. A case that ALREADY carries one keeps it (its own reference is untouched).
+const { RETIRED_L1A_CHECKLIST_KEYS, NEW_DOCUMENT_CHECKLIST_KEYS, carriesRetiredL1aChecklist } = require("./l1aDocumentChecklists");
+const isRetiredChecklistFor = (questionnaire, caseData) => (
+  RETIRED_L1A_CHECKLIST_KEYS.includes(questionnaire?.key)
+  && !(caseData?.questionnaireReferences || []).some((reference) => String(reference.questionnaireId) === String(questionnaire._id) || String(reference.questionnaireTemplateId || "") === String(questionnaire._id))
+);
+
 async function assignQuestionnaire(questionnaire, payload, user, req) {
   const caseData = await Case.findById(payload.caseId);
   if (!caseData) {
@@ -952,6 +960,11 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
     const error = new Error("Not authorized to assign questionnaire to this case");
     error.status = 403;
     throw error;
+  }
+  if (isRetiredChecklistFor(questionnaire, caseData) || (NEW_DOCUMENT_CHECKLIST_KEYS.includes(questionnaire?.key) && await carriesRetiredL1aChecklist(caseData))) {
+    // nothing is assigned; the caller gets the same shape as a normal assignment (without a response id), so no flow breaks
+    logger.warn("retired_checklist_assignment_blocked", { caseId: String(caseData._id), checklistKey: questionnaire.key });
+    return { responseId: undefined, case: caseData, questionnaire, retired: true, message: "This checklist has been retired. Use the L1A Document Checklist." };
   }
   const targetRole = payload.targetRole || questionnaire.checklistRole || "";
   const participant = payload.participantId
@@ -2762,6 +2775,7 @@ async function reconcileDefinition(definition, systemUser, req) {
         progressMode: "questions",
         defaultLocale: "en",
         enableBranching: true,
+        ...(definition.settings || {}),
       },
       createdBy: systemUser._id,
       updatedBy: systemUser._id,
@@ -2778,6 +2792,11 @@ async function reconcileDefinition(definition, systemUser, req) {
     const designerEdited = (field) => adminEdits.isEdited(questionnaire.adminEditedFields, field);
     if (!designerEdited("description") && questionnaire.description !== definition.description) {
       questionnaire.description = definition.description;
+      changed = true;
+    }
+    // a definition that keeps its uploads inside their sections (settings.inlineDocuments) brings an existing template of that key in line
+    if (definition.settings?.inlineDocuments !== undefined && Boolean(questionnaire.settings?.inlineDocuments) !== definition.settings.inlineDocuments) {
+      questionnaire.set("settings.inlineDocuments", definition.settings.inlineDocuments);
       changed = true;
     }
     if (!designerEdited("assignmentRules") && definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
@@ -3320,7 +3339,10 @@ async function resolveCaseQuestionnaires(caseId) {
         $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }],
       }).lean()));
     }
+    // a legacy L-1A case (it already carries an old Employer / Employee checklist) is not given the new L1A Document Checklist on top
+    const legacyL1a = /^L1A/.test(visaType) ? await carriesRetiredL1aChecklist(caseData) : false;
     for (const questionnaire of defaults) {
+      if (legacyL1a && NEW_DOCUMENT_CHECKLIST_KEYS.includes(questionnaire.key)) continue;
       const id = String(questionnaire._id);
       const targetRole = questionnaire.checklistRole || "";
       const roleParticipants = participantService.activeParticipants(caseData, targetRole);
@@ -3495,9 +3517,25 @@ async function listCaseChecklists(caseId, user) {
       documentLabels: documentLabelsByQuestionnaire.get(String(entry.questionnaire._id)) || {},
       // every upload question this checklist currently asks for (as edited for this case), with whether it is answered:
       // the Required Documents list is built from this, so it always matches the checklist the client sees
-      documentItems: visibleQuestions
-        .filter((question) => question.type === "file")
-        .map((question) => ({ key: question.key, label: question.label, answered: hasAnsweredValue(getAnswerValue(answerMap, question.key)) })),
+      // Uploads only. Each item also says its type and the TITLE of its section, and the list is in the checklist's own order (its sections in order, then the questions of each
+      // section by order) - not the alphabetical section order the questions are loaded in.
+      documentItems: (() => {
+        const sections = [...(entry.questionnaire.sections || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+        const sectionIndex = (key) => { const index = sections.findIndex((section) => section.key === key); return index === -1 ? sections.length : index; };
+        return visibleQuestions
+          .filter((question) => question.type === "file")
+          .map((question) => ({
+            key: question.key,
+            label: question.label,
+            answered: hasAnsweredValue(getAnswerValue(answerMap, question.key)),
+            type: question.type,
+            section: sections.find((section) => section.key === question.sectionKey)?.title || "",
+            order: question.order || 0,
+            sectionIndex: sectionIndex(question.sectionKey),
+          }))
+          .sort((a, b) => a.sectionIndex - b.sectionIndex || a.order - b.order)
+          .map(({ sectionIndex, ...item }) => item);
+      })(),
     };
   }));
   timer.mark("progress_mapping", { count: checklists.length });
@@ -3801,6 +3839,7 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  isRetiredChecklistFor,
   deactivateQuestion,
   // create-or-patch ONE built-in checklist template from its code definition (used by scripts/syncChecklistDefinitions.js)
   reconcileDefinition,

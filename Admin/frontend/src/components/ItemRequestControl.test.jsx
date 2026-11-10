@@ -113,7 +113,7 @@ describe('QuestionnaireAnswersPanel with the Request control', () => {
     expect(answeredHeader.nextElementSibling.getAttribute('data-answered')).toBe('true')
   })
 
-  it('short questions pair up two to a row and come together; long ones take a full row each and come together after them', () => {
+  it('questions keep the checklist order; short ones sit two to a row, a long one takes the full row (never moved)', () => {
     const questions = [
       { key: 'q_short_1', label: 'Last Name', type: 'text', sectionKey: 's' },
       { key: 'q_long_label', label: 'Do you or any other person in this petition have a valid passport (Yes/No)?', type: 'text', sectionKey: 's' },
@@ -124,19 +124,18 @@ describe('QuestionnaireAnswersPanel with the Request control', () => {
     ]
     const answerMap = { q_short_1: 'Oberoi', q_short_2: 'Ishaan', q_short_3: 'India', q_long_value: '1600 Amphitheatre Parkway, Mountain View, California 94043, United States' }
     render(<QuestionnaireAnswersPanel questionnaire={questionnaire} fieldQuestions={questions} documentQuestions={[]} answerMap={answerMap} filesByKey={{}} requests={baseRequests()} />)
-    const shortGroup = screen.getByTestId('short-questions')
-    const longGroup = screen.getByTestId('long-questions')
-    expect(shortGroup.className).toContain('md:grid-cols-2') // two to a row
-    expect(shortGroup.textContent).toContain('Last Name')
-    expect(shortGroup.textContent).toContain('First Name')
-    expect(shortGroup.textContent).toContain('Country of birth')
-    expect(shortGroup.textContent).not.toContain('Current U.S. address')
-    expect(longGroup.className).not.toContain('md:grid-cols-2') // one per row
-    ;['valid passport', 'Current U.S. address', 'Job location'].forEach((label) => expect(longGroup.textContent).toContain(label))
-    // the short group comes first, the long group after it
-    expect(shortGroup.compareDocumentPosition(longGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // order inside each group is the checklist's own order
-    expect(longGroup.textContent.indexOf('valid passport')).toBeLessThan(longGroup.textContent.indexOf('Current U.S. address'))
+    const section = screen.getByTestId('inline-section')
+    const grid = section.querySelector('.grid')
+    expect(grid.className).toContain('md:grid-cols-2') // two to a row
+    // the checklist's own order, exactly as defined - nothing is regrouped
+    const text = section.textContent
+    const order = ['Last Name', 'valid passport', 'First Name', 'Current U.S. address', 'Job location', 'Country of birth'].map((label) => text.indexOf(label))
+    order.forEach((position) => expect(position).toBeGreaterThan(-1))
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    // the long ones take the full row, the short ones do not
+    const wide = Array.from(section.querySelectorAll('[data-testid="wide-question"]')).map((node) => node.textContent)
+    ;['valid passport', 'Current U.S. address', 'Job location'].forEach((label) => expect(wide.some((content) => content.includes(label))).toBe(true))
+    ;['Last Name', 'First Name', 'Country of birth'].forEach((label) => expect(wide.some((content) => content.includes(label))).toBe(false))
   })
 
   it('is unchanged without the request context', () => {

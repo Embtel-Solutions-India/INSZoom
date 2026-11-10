@@ -263,6 +263,10 @@ const L1A_EMPLOYER = {
 };
 
 // L-1A employee: the same personal / status block as the H-1B employee (shared keys keep their path) plus what is specific to this checklist.
+// The single L-1A / L-1A Extension document checklist: every question is a document upload, except one free-text answer (the beneficiary's managerial duties and the percentage of time for each),
+// which has no single canonical field. So it maps no canonical paths.
+const L1A_DOCUMENT = {};
+
 const L1A_EMPLOYEE = {
   ...pick(H1B_EMPLOYEE, [
     "employee_personal_lastName", "employee_personal_firstName", "employee_personal_middleName", "employee_personal_otherNamesUsed", "employee_personal_dateOfBirth",
@@ -713,6 +717,7 @@ const K1_BENEFICIARY = {
 const FAMILY_CATEGORIES = ["cr1", "ir2", "cr2", "ir3", "ir4", "ir5", "f1", "f2a", "f2b", "f3", "f4"];
 const SIBLINGS = {
   ...Object.fromEntries(["l1b", "l1aext"].flatMap((visa) => [[`${visa}_employer_checklist`, L1A_EMPLOYER], [`${visa}_employee_checklist`, L1A_EMPLOYEE]])),
+  l1aext_document_checklist: L1A_DOCUMENT,
   ...Object.fromEntries(FAMILY_CATEGORIES.flatMap((category) => [
     [`i130_${category}_petitioner_checklist`, IR1_PETITIONER],
     [`i130_${category}_beneficiary_checklist`, IR1_BENEFICIARY],
@@ -739,6 +744,7 @@ const CHECKLIST_PARTY_PATHS = Object.freeze({
   // batch 2
   l1a_employer_checklist: Object.freeze(L1A_EMPLOYER),
   l1a_employee_checklist: Object.freeze(L1A_EMPLOYEE),
+  l1a_document_checklist: Object.freeze(L1A_DOCUMENT),
   tn_employer_checklist: Object.freeze(TN_EMPLOYER),
   tn_employee_checklist: Object.freeze(TN_EMPLOYEE),
   i140_petitioner_checklist: Object.freeze(I140_PETITIONER),

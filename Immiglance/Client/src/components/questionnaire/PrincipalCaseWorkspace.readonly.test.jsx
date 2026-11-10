@@ -39,6 +39,8 @@ vi.mock("../../hooks/useQuestionnaireAnswers", () => ({
   },
 }));
 vi.mock("./CaseRoleChecklist", () => ({ CaseRoleChecklistView: () => <div>employer checklist</div> }));
+// the list of the matter's other released checklists (business plan, ...) - none in these tests
+vi.mock("../../hooks/useCaseChecklists", () => ({ default: () => ({ checklists: [], loading: false, refetch: vi.fn() }) }));
 vi.mock("./DataEntryModeModal", () => ({ default: () => null }));
 
 import PrincipalCaseWorkspace from "./PrincipalCaseWorkspace";
@@ -66,8 +68,7 @@ describe("read-only view of an invited employee", () => {
     expect(screen.queryByText("Save progress")).toBeNull();
     expect(screen.queryByText("Grant access to employee")).toBeNull();
     expect(screen.queryByText("Submit")).toBeNull();
-    // the employee's answer is displayed but cannot be edited
-    fireEvent.click(screen.getByText("Continue"));
+    // the employee's answer is displayed but cannot be edited (the checklist's sections are the first step: no separate Documents step before them)
     const input = await screen.findByDisplayValue("Ana");
     expect(input.disabled).toBe(true);
   });

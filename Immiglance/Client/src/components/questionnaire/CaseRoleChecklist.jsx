@@ -6,7 +6,7 @@ import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
 import EarlierCaseNote from "./EarlierCaseNote";
 import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
-import { questionKey, sectionKey, matchingAutofillSources } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, matchingAutofillSources, isWideQuestion } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 
 // Renders ONE case document's ONE targetRole questionnaire through the exact
@@ -154,6 +154,8 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
                   type={question.type === "file" ? "document" : "field"}
                   label={question.label}
                   help={question.description}
+                  // a long question (a long answer, a long wording, or parts written on separate lines) takes the full row; the rest stay two to a row, always in the checklist's own order
+                  wide={isWideQuestion(question) || String(question.label || "").includes("\n")}
                   required={question.required}
                   status={status}
                   statusReason={reason}

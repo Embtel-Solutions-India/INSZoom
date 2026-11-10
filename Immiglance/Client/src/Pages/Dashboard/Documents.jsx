@@ -36,7 +36,6 @@ import {
   matchingAutofillSources,
   isWideQuestion,
   REQUESTED_SECTION_KEY,
-  orderShortThenWide,
 } from "../../utils/questionnaireEngine";
 import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from "../../utils/checklistStatus";
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
@@ -99,7 +98,9 @@ function buildRoleSections(qa, reusableCategories, roleGroup) {
   const isRequestedSection = (section) => section.id.endsWith(`-${REQUESTED_SECTION_KEY}`);
   const requestedSections = questionnaireSections.filter(isRequestedSection);
   const otherQuestionnaireSections = requestedSections.length ? questionnaireSections.filter((section) => !isRequestedSection(section)) : questionnaireSections;
-  return dedupeSectionsByLabel([...requestedSections, ...docSections, ...otherQuestionnaireSections]);
+  // The checklist's own sections come BEFORE the reusable-document baseline: a document the checklist already asks for stays in the checklist's
+  // section (U.S. company / foreign company / ...), and only baseline documents the checklist does not ask for are listed after it.
+  return dedupeSectionsByLabel([...requestedSections, ...otherQuestionnaireSections, ...docSections]);
 }
 
 // Merges save-state/lastSavedAt/statusMessage across however many qa
@@ -775,7 +776,8 @@ export default function Documents() {
         <span className="text-xs font-semibold text-muted-foreground">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {orderShortThenWide(section.items, (item) => item.question).map((item) => {
+        {/* the checklist's own order: a long question takes the full row, but the next card is always the next question of the checklist */}
+        {section.items.map((item) => {
           const { status, reason } = itemStatus(item);
           if (item.type === "document" && item.docId) {
             return (
@@ -806,7 +808,7 @@ export default function Documents() {
               status={status}
               statusReason={reason}
               savingLabel={src.savingKey === key ? "Saving…" : undefined}
-              wide={isWideQuestion(question)}
+              wide={isWideQuestion(question) || String(question.label || "").includes("\n")}
             >
               <QuestionInput
                 question={question}

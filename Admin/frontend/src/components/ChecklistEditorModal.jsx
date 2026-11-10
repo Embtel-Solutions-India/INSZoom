@@ -10,19 +10,19 @@ const TYPE_LABELS = {
 }
 const typeLabel = (type) => TYPE_LABELS[type] || String(type || 'text').replace(/_/g, ' ')
 
-// The order the CLIENT sees: sections in the questionnaire's own section order, the questions of each section by their
-// order number, and every document-upload question in a final "Documents" step (mirrors the client portal's checklist).
-function arrangeLikeClient(questions, sections) {
+// The order the CLIENT sees (mirrors the client portal's checklist): the checklist exactly as it is defined - its own sections in their own
+// order, and inside each section its questions in order, uploads included (there is no separate "Documents" group any more). A question whose
+// section the checklist does not list still shows, in a group of its own after the listed ones. (`inlineDocuments` is kept for callers; every
+// checklist is now arranged this way.)
+// eslint-disable-next-line no-unused-vars
+function arrangeLikeClient(questions, sections, inlineDocuments = true) {
   const byOrder = (a, b) => (a.order || 0) - (b.order || 0)
   const orderedSections = [...(sections || [])].sort(byOrder)
   const known = new Set(orderedSections.map((section) => section.key))
   const isFile = (question) => question.type === 'file' || question.type === 'file-multiple'
-  const fields = questions.filter((question) => !isFile(question))
-  const groups = orderedSections.map((section) => ({ key: section.key, title: section.title, items: fields.filter((question) => (question.sectionKey || 'general') === section.key).sort(byOrder) }))
-  const strays = fields.filter((question) => !known.has(question.sectionKey || 'general'))
-  if (strays.length) groups.push({ key: 'general', title: 'Other', items: strays.sort(byOrder) })
-  const documents = questions.filter(isFile).sort(byOrder)
-  if (documents.length) groups.push({ key: '__documents', title: 'Documents', items: documents })
+  const groups = orderedSections.map((section) => ({ key: section.key, title: section.title, items: questions.filter((question) => (question.sectionKey || 'general') === section.key).sort(byOrder) }))
+  const strays = questions.filter((question) => !known.has(question.sectionKey || 'general')).sort(byOrder)
+  if (strays.length) groups.push({ key: 'general', title: strays.every(isFile) ? 'Documents' : 'Other questions', items: strays })
   return groups.filter((group) => group.items.length)
 }
 
@@ -63,6 +63,7 @@ const SEND_RETRY_DELAYS_MS = [0, 1000, 2000, 4000, 8000, 15000] // only for the 
 export default function ChecklistEditorModal({ caseId, checklist, onClose, onSaved }) {
   const [questions, setQuestions] = useState([])
   const [sections, setSections] = useState([])
+  const [inlineDocuments, setInlineDocuments] = useState(false)
   const [deleted, setDeleted] = useState([]) // questions removed from this case's copy of the checklist; listed under the live ones with a Restore button
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -103,6 +104,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       const deletedList = [...removed.filter((question) => !pending.restored.has(question.key)), ...pendingRemoved]
       setDeleted([...new Map(deletedList.map((question) => [question.key, question])).values()])
       setSections(data.questionnaire?.sections || [])
+      setInlineDocuments(Boolean(data.questionnaire?.settings?.inlineDocuments))
       if (!quiet) setDrafts({})
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not load this checklist.')
@@ -193,8 +195,8 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
     sendInBackground({ op: 'update', questionKey: question.key, patch: { label } })
   }
 
-  const groups = useMemo(() => arrangeLikeClient(questions, sections), [questions, sections])
-  const deletedGroups = useMemo(() => arrangeLikeClient(deleted, sections), [deleted, sections])
+  const groups = useMemo(() => arrangeLikeClient(questions, sections, inlineDocuments), [questions, sections, inlineDocuments])
+  const deletedGroups = useMemo(() => arrangeLikeClient(deleted, sections, inlineDocuments), [deleted, sections, inlineDocuments])
 
   const draftOf = (question) => drafts[question.key] || {}
   const setDraft = (question, patch) => setDrafts((current) => ({ ...current, [question.key]: { ...current[question.key], ...patch } }))
@@ -233,7 +235,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                   <li key={question.key} className="rounded-xl border border-border p-3">
                     <label className="block text-xs font-medium text-muted-foreground">
                       Question
-                      <textarea rows={2} value={label} onChange={(event) => setDraft(question, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" />
+                      <textarea rows={Math.min(12, Math.max(2, String(label || '').split('\n').length + 1))} value={label} onChange={(event) => setDraft(question, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" />
                     </label>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">

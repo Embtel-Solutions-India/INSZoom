@@ -3,7 +3,7 @@ import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
 import EarlierCaseNote from "./EarlierCaseNote";
-import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired, orderShortThenWide } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
 import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
@@ -12,9 +12,10 @@ import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
 // hidden while OCR is not reliable. Set to true to show it again - nothing else needs to change.
 const PERM_RESUME_AUTOFILL_ENABLED = false;
 
+// The checklist is shown exactly as it is defined: its own sections (one tab each, with their own names) in their own order, and inside each
+// section its questions in order - uploads included, so a document is always seen in the section it belongs to. Then Review.
 const STEPS = [
-  { key: "documents", label: "Documents" },
-  { key: "information", label: "Information" },
+  { key: "information", label: "Checklist" },
   { key: "review", label: "Review" },
 ];
 
@@ -50,19 +51,14 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
   const steps = STEPS;
   const safeStepIndex = Math.min(stepIndex, steps.length - 1);
   const stepKey = steps[safeStepIndex].key;
-  const stepOfItem = (item) => (item.isDocument ? 0 : 1);
-
-  const documentQuestions = useMemo(
-    () => sectionsWithItems.flatMap((section) => section.questions.filter((q) => isFileQuestion(q))),
-    [sectionsWithItems]
-  );
-  const infoSections = useMemo(
-    () => sectionsWithItems
-      .map((section) => ({ ...section, questions: section.questions.filter((q) => !isFileQuestion(q)) }))
-      .filter((section) => section.questions.length > 0),
-    [sectionsWithItems]
-  );
-  const documentAutofillSources = useMemo(() => matchingAutofillSources(documentQuestions), [documentQuestions]);
+  // every section with its questions, uploads included, in the checklist's order
+  const infoSections = sectionsWithItems;
+  // a missing item opens the Checklist step on ITS section
+  const openItem = (item) => {
+    const index = infoSections.findIndex((section) => section.key === item.sectionKey);
+    setStepIndex(0);
+    if (index >= 0) setActiveInfoSection(index);
+  };
 
   const questionStatus = (question) => {
     const key = questionKey(question);
@@ -76,7 +72,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
       section.questions.forEach((question) => {
         const { status } = questionStatus(question);
         // only REQUIRED items hold back Submit (a question is required by its checklist definition); blank optional ones do not
-        if (status === STATUS.NOT_STARTED && isQuestionRequired(question, answers)) missing.push({ section: section.title, question, isDocument: isFileQuestion(question) });
+        if (status === STATUS.NOT_STARTED && isQuestionRequired(question, answers)) missing.push({ section: section.title, sectionKey: section.key, question, isDocument: isFileQuestion(question) });
       });
     });
     return missing;
@@ -99,7 +95,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         status={status}
         statusReason={reason}
         savingLabel={savingKey === key ? "Saving…" : undefined}
-        wide={isWideQuestion(question)}
+        wide={isWideQuestion(question) || String(question.label || "").includes("\n")}
       >
         <QuestionInput
           question={question}
@@ -245,29 +241,6 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         </div>
       </div>
 
-      {/* Step 1: Documents */}
-      {stepKey === "documents" && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-            <p className="text-sm font-bold text-foreground">Documents we need</p>
-          </div>
-          {!readOnly && documentAutofillSources.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {documentAutofillSources.map((documentType) => (
-                <AutofillButton key={documentType} documentType={documentType} caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
-              ))}
-              {documentAutofillSources.includes("passport") && (
-                <span className="self-center text-xs text-muted-foreground">Optional - scan your passport to fill in your name, date of birth, nationality and passport details. You can review and edit everything on the next steps.</span>
-              )}
-            </div>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-            {orderShortThenWide(documentQuestions).map(renderQuestionRow)}
-            {documentQuestions.length === 0 && <p className="text-sm text-muted-foreground">No documents required for this checklist.</p>}
-          </div>
-        </div>
-      )}
-
       {/* Step 2: Information */}
       {stepKey === "information" && (
         <div className="space-y-5">
@@ -296,9 +269,11 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
               <section>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{infoSections[activeInfoSection].title}</h2>
-                  {PERM_RESUME_AUTOFILL_ENABLED && !readOnly && infoSections[activeInfoSection].autofillSources.includes("perm_resume") && (
-                    <AutofillButton documentType="perm_resume" caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
-                  )}
+                  {!readOnly && infoSections[activeInfoSection].autofillSources
+                    .filter((documentType) => documentType !== "perm_resume" || PERM_RESUME_AUTOFILL_ENABLED)
+                    .map((documentType) => (
+                      <AutofillButton key={documentType} documentType={documentType} caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
+                    ))}
                   <span className="text-xs text-muted-foreground">
                     {/* BUG (fixed): this ternary never checked saveState === "error"
                         at all, unlike the equivalent status line in the sibling
@@ -310,7 +285,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                  {orderShortThenWide(infoSections[activeInfoSection].questions).map(renderQuestionRow)}
+                  {infoSections[activeInfoSection].questions.map(renderQuestionRow)}
                 </div>
               </section>
             )}
@@ -344,7 +319,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                   <li key={item.question._id || item.question.key}>
                     <button
                       type="button"
-                      onClick={() => { setStepIndex(stepOfItem(item)); }}
+                      onClick={() => openItem(item)}
                       className="text-sm text-primary underline underline-offset-2"
                     >
                       {item.section} — {item.question.label}

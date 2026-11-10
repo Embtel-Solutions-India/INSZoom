@@ -90,7 +90,7 @@ test("beneficiary checklist personal/immigration fields match the source (spot c
 });
 
 test("regression: EB-1A/EB-1B/H-1B/L-1A/P/O-1 checklist definitions are unaffected", () => {
-  const untouchedKeys = ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_employer_checklist", "l1a_employee_checklist", "eb1b_employer_checklist", "eb1b_employee_checklist"];
+  const untouchedKeys = ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_document_checklist", "l1b_employer_checklist", "eb1b_employer_checklist", "eb1b_employee_checklist"];
   untouchedKeys.forEach((key) => assert.ok(EMPLOYMENT_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`));
   // 13 -> 15 by the later, unrelated TN task (tn.js added its own employer
   // + employee checklist) - see tnChecklists.test.js. 15 -> 18 by the later,
@@ -99,5 +99,5 @@ test("regression: EB-1A/EB-1B/H-1B/L-1A/P/O-1 checklist definitions are unaffect
   // by the later, unrelated E-3 task (e3.js added its own employer +
   // employee checklist) - see e3Checklists.test.js.
   // 25 -> 27 by the later, unrelated PERM task (permChecklists.js added its own employer + employee checklist).
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 36, "EB1C x2 (added), H1B x2, L1A x3, L1B x3, L1A-Extension x3, P x2, O1 x2, O2 x2, EB1B x2, I-140 x2, TN x2, E-2 x3, E-3 x2, PERM x2 = 27");
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 34, "36 before L-1A / L-1A Extension moved to one document checklist each: minus the 4 retired L-1A / L-1A Extension employer + employee checklists, plus l1a_document_checklist and l1aext_document_checklist");
 });

@@ -47,10 +47,12 @@ set("H-1B", "I-907", [cm("h1b_employer_checklist", COND, { role: "employer" }), 
 // G-28 -> no client checklist (spec is explicit about this - no entry).
 
 // ---- L-1A (spec §3 L-1A) ----------------------------------------------
-set("L-1A", "I-129", [cm("l1a_employer_checklist", AUTO, { role: "employer" }), cm("l1a_employee_checklist", AUTO, { role: "employee" })]);
-set("L-1A", "I-129S", [cm("l1a_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1a_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
-set("L-1A", "I-539", [cm("l1a_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
-set("L-1A", "I-907", [cm("l1a_employer_checklist", COND, { role: "employer" }), cm("l1a_employee_checklist", COND, { role: "employee" })]);
+// NEW L-1A cases get ONE document checklist (l1a_document_checklist, role employer, attached to the employer matter). The old Employer + Employee pair is RETIRED: it stays listed here ONLY so the
+// cases that already carry it keep feeding these forms from their own answers; questionnaire.service blocks it from being assigned to any case that does not already have it.
+set("L-1A", "I-129", [cm("l1a_document_checklist", AUTO, { role: "employer" }), cm("l1a_employer_checklist", AUTO, { role: "employer" }), cm("l1a_employee_checklist", AUTO, { role: "employee" })]);
+set("L-1A", "I-129S", [cm("l1a_document_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1a_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1a_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
+set("L-1A", "I-539", [cm("l1a_document_checklist", COND, { role: "employer", notes: "COS / extension" }), cm("l1a_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
+set("L-1A", "I-907", [cm("l1a_document_checklist", COND, { role: "employer" }), cm("l1a_employer_checklist", COND, { role: "employer" }), cm("l1a_employee_checklist", COND, { role: "employee" })]);
 // Business plan checklist rides on I-129 too, gated on New Office - added
 // as a SECOND entry on the same I-129 row (merged with the two above).
 {
@@ -66,10 +68,11 @@ set("L-1B", "I-539", [cm("l1b_employee_checklist", COND, { role: "employee", not
 set("L-1B", "I-907", [cm("l1b_employer_checklist", COND, { role: "employer" }), cm("l1b_employee_checklist", COND, { role: "employee" })]);
 
 // L-1A Extension: its own copy of every L-1A checklist (l1aext_*), mapped to the same forms as L-1A. Filed as an L-1A, so I-129 prints L-1A (case.classification).
-set("L-1A Extension", "I-129", [cm("l1aext_employer_checklist", AUTO, { role: "employer" }), cm("l1aext_employee_checklist", AUTO, { role: "employee" }), cm("l1aext_business_plan_checklist", COND, { role: "employer", condition: NEW_OFFICE_CONDITION, notes: "New Office petition only" })]);
-set("L-1A Extension", "I-129S", [cm("l1aext_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1aext_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
-set("L-1A Extension", "I-539", [cm("l1aext_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
-set("L-1A Extension", "I-907", [cm("l1aext_employer_checklist", COND, { role: "employer" }), cm("l1aext_employee_checklist", COND, { role: "employee" })]);
+// (same as L-1A above: the single document checklist for new cases; the retired l1aext_employer / l1aext_employee entries stay only for cases that already carry them)
+set("L-1A Extension", "I-129", [cm("l1aext_document_checklist", AUTO, { role: "employer" }), cm("l1aext_employer_checklist", AUTO, { role: "employer" }), cm("l1aext_employee_checklist", AUTO, { role: "employee" }), cm("l1aext_business_plan_checklist", COND, { role: "employer", condition: NEW_OFFICE_CONDITION, notes: "New Office petition only" })]);
+set("L-1A Extension", "I-129S", [cm("l1aext_document_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1aext_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1aext_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
+set("L-1A Extension", "I-539", [cm("l1aext_document_checklist", COND, { role: "employer", notes: "COS / extension" }), cm("l1aext_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
+set("L-1A Extension", "I-907", [cm("l1aext_document_checklist", COND, { role: "employer" }), cm("l1aext_employer_checklist", COND, { role: "employer" }), cm("l1aext_employee_checklist", COND, { role: "employee" })]);
 
 // ---- E-2 (spec §3 E-2) -------------------------------------------------
 set("E-2", "I-129", [cm("e2_visa_checklist", COND, { notes: "USCIS COS/extension route" })]);

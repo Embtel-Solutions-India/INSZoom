@@ -154,7 +154,17 @@ class ImmigrationKnowledgeEngineService {
       module: { $in: ["cases", "clients"] },
     }).sort({ "assignmentRules.priority": -1, version: -1 }).lean();
     const grouped = new Map();
+    // L-1A / L-1A Extension: the old Employer / Employee checklists are retired and the single L1A Document Checklist replaced them. A case that already carries an old one (a "legacy" case)
+    // keeps it and is never given the new one; every other case gets only the new one - so the retired checklists (and their document requirements) never reach a new case's plan.
+    const l1a = require("../questionnaires/l1aDocumentChecklists");
+    const legacyL1a = /^L-?1A/i.test(String(caseData.visaType || "")) ? await l1a.carriesRetiredL1aChecklist(caseData) : false;
+    const referencedIds = new Set((caseData.questionnaireReferences || []).flatMap((reference) => [reference.questionnaireTemplateId, reference.questionnaireId]).filter(Boolean).map(String));
     candidates
+      .filter((item) => {
+        if (l1a.RETIRED_KEY_PATTERN.test(item.key || "")) return referencedIds.has(String(item._id)) || referencedIds.has(String(item.rootQuestionnaire || ""));
+        if (legacyL1a && l1a.NEW_DOCUMENT_CHECKLIST_KEYS.includes(item.key)) return false;
+        return true;
+      })
       .filter((item) => this.questionnaireApplies(item, caseData))
       // Defense in depth: even if questionnaireApplies() matched, never let
       // a questionnaire whose declared visa scope excludes this case's visa
