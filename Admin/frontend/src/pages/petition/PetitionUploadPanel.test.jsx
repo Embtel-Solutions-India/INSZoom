@@ -55,7 +55,7 @@ describe('PetitionUploadPanel', () => {
     expect(screen.getByRole('button', { name: /Download/ })).toBeTruthy()
   })
 
-  it('right after an upload it asks who should review the petition; the choice is sent once, after a confirmation naming the client, and the prompt goes away', async () => {
+  it('right after an upload there is NO "who should review it?" prompt (the row already has the two buttons); sending from the row asks once, in a confirmation naming the client', async () => {
     mocks.upload.mockImplementation(async () => {
       mocks.listUploads.mockResolvedValue({ data: { documents: [doc('d1', 'Petition.pdf', '2026-10-28T09:00:00Z')] } })
     })
@@ -66,9 +66,10 @@ describe('PetitionUploadPanel', () => {
     await screen.findByText('No petition has been uploaded for this case yet.')
     const file = new File(['%PDF'], 'Petition.pdf', { type: 'application/pdf' })
     await act(async () => { fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } }) })
-    const banner = await screen.findByRole('status')
-    expect(within(banner).getByText(/who should review it/)).toBeTruthy()
-    fireEvent.click(within(banner).getByRole('button', { name: /Client review/ }))
+    await screen.findByText('Petition.pdf')
+    expect(screen.queryByText(/who should review it/)).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Client review/ }))
     const confirmation = await screen.findByRole('dialog')
     expect(within(confirmation).getByText(/Pat Petitioner \(petitioner\) will be emailed/)).toBeTruthy()
     expect(nativeConfirm).not.toHaveBeenCalled() // the app's own dialog, never the browser's grey popup
@@ -76,6 +77,44 @@ describe('PetitionUploadPanel', () => {
     await waitFor(() => expect(mocks.sendToClient).toHaveBeenCalledWith('c1', 'd1', ''))
     await screen.findByText(/Sent for client review/)
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('drag & drop area: a PDF dropped on it is uploaded like the button does; a non-PDF or several files are refused with a message and nothing is uploaded', async () => {
+    mocks.upload.mockResolvedValue({})
+    render(<PetitionUploadPanel caseId="c1" canUpload />)
+    const zone = await screen.findByTestId('petition-drop-zone')
+    const pdf = new File(['%PDF'], 'Petition.pdf', { type: 'application/pdf' })
+    fireEvent.dragEnter(zone, { dataTransfer: { files: [pdf] } })
+    expect(within(zone).getByText(/Release to upload/)).toBeTruthy()
+    await act(async () => { fireEvent.drop(zone, { dataTransfer: { files: [pdf] } }) })
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
+    expect(mocks.upload.mock.calls[0][1]).toBe(pdf)
+
+    fireEvent.drop(zone, { dataTransfer: { files: [new File(['x'], 'notes.docx', { type: 'application/msword' })] } })
+    expect(await screen.findByText(/is not a PDF/)).toBeTruthy()
+    fireEvent.drop(zone, { dataTransfer: { files: [pdf, pdf] } })
+    expect(await screen.findByText(/one petition PDF at a time/)).toBeTruthy()
+    expect(mocks.upload).toHaveBeenCalledTimes(1)
+  })
+
+  it('supporting documents have the same drag & drop area, uploading with the supporting-document type and its own wording', async () => {
+    mocks.upload.mockResolvedValue({})
+    render(<PetitionUploadPanel caseId="c1" canUpload kind="supporting" />)
+    const zone = await screen.findByTestId('petition-drop-zone')
+    expect(within(zone).getByText('Drag and drop the supporting document PDF here')).toBeTruthy()
+    const pdf = new File(['%PDF'], 'Report.pdf', { type: 'application/pdf' })
+    await act(async () => { fireEvent.drop(zone, { dataTransfer: { files: [pdf] } }) })
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
+    expect(mocks.upload.mock.calls[0][1]).toBe(pdf)
+    expect(mocks.upload.mock.calls[0][3]).toBe('petition_supporting_upload')
+    fireEvent.drop(zone, { dataTransfer: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } })
+    expect(await screen.findByText(/A supporting document must be a PDF file/)).toBeTruthy()
+  })
+
+  it('the drag & drop area is only for people who can upload', async () => {
+    render(<PetitionUploadPanel caseId="c1" canUpload={false} />)
+    await waitFor(() => expect(mocks.listUploads).toHaveBeenCalled())
+    expect(screen.queryByTestId('petition-drop-zone')).toBeNull()
   })
 
   it('attorney review: asks first in the app\'s own centred dialog, sends for that petition, reports how many attorneys were told; nothing is sent when the case manager cancels', async () => {
