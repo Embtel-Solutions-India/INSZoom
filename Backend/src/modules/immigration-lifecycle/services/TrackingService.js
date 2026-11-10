@@ -4,6 +4,7 @@ const User = require("../../../models/User");
 const ImmigrationTimelineService = require("./ImmigrationTimelineService");
 const NotificationLifecycleService = require("./NotificationLifecycleService");
 const notificationService = require("../../notifications/notification.service");
+const { normalizeRole } = require("../../authorization/roleHierarchy");
 
 // Only statuses where this function actually has the real data a template
 // needs (receipt number, filing date, RFE deadline) are mapped to a
@@ -172,15 +173,48 @@ function notifyClientOfFedexNumber(caseData, number, previous, user) {
   } catch (_error) { /* never affects the save */ }
 }
 
-async function setFedexNumber(caseData, trackingNumber, user, req) {
+// ---- the FedEx amount (what the shipment cost) ---------------------------------------------------------------------------------------------------------------------------------------------
+// INTERNAL ONLY. Kept on the case's hidden `fedexAmount` field (never in a client / attorney payload, never in an e-mail), in US dollars. Only these roles may read or write it.
+const FEDEX_AMOUNT_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr"]);
+const canSeeFedexAmount = (user) => FEDEX_AMOUNT_ROLES.has(normalizeRole(user?.role));
+
+/** Pure. undefined = "not sent, leave as is"; null = cleared; otherwise a non-negative number rounded to cents. Throws a 400 for anything else. */
+function cleanFedexAmount(value) {
+  if (value === undefined) return undefined;
+  if (value === null || String(value).trim() === "") return null;
+  const amount = Number(String(value).replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1e8) throw Object.assign(new Error("Enter a valid FedEx amount (a number, 0 or more)."), { status: 400, code: "INVALID_FEDEX_AMOUNT" });
+  return Math.round(amount * 100) / 100;
+}
+
+async function getFedexAmount(caseId) {
+  const Case = require("../../../models/Case");
+  const row = await Case.findById(caseId).select("+fedexAmount").lean();
+  return typeof row?.fedexAmount === "number" ? row.fedexAmount : null;
+}
+
+/** Saves (or clears) the amount; audit-logged, never e-mailed or notified. `amount` is already cleaned; undefined does nothing. */
+async function setFedexAmount(caseData, amount, user, req) {
+  if (amount === undefined) return undefined;
+  const Case = require("../../../models/Case");
+  const previous = await getFedexAmount(caseData._id);
+  if (previous === amount) return amount;
+  await Case.updateOne({ _id: caseData._id }, amount === null ? { $unset: { fedexAmount: "" } } : { $set: { fedexAmount: amount } });
+  try { await ImmigrationTimelineService.writeAudit("FEDEX_AMOUNT_SET", caseData, user, { previous, amount }, req); } catch (_error) { /* bookkeeping only */ }
+  return amount;
+}
+
+async function setFedexNumber(caseData, trackingNumber, user, req, amountInput) {
   const number = cleanFedexNumber(trackingNumber);
   if (!number) throw Object.assign(new Error("Enter a valid FedEx tracking number (8 to 34 letters or digits)."), { status: 400, code: "INVALID_FEDEX_NUMBER" });
+  const amount = canSeeFedexAmount(user) ? cleanFedexAmount(amountInput) : undefined; // validated BEFORE anything is saved
   const Case = require("../../../models/Case");
   const previous = caseData.immigrationLifecycle?.tracking?.filing?.trackingNumber || "";
   await Case.updateOne(
     { _id: caseData._id },
     { $set: { "immigrationLifecycle.tracking.filing.carrier": "fedex", "immigrationLifecycle.tracking.filing.trackingNumber": number } }
   );
+  await setFedexAmount(caseData, amount, user, req);
   try { await ImmigrationTimelineService.writeAudit("FEDEX_TRACKING_SET", caseData, user, { previous, trackingNumber: number }, req); } catch (_error) { /* bookkeeping only */ }
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "fedex_tracking_set" }); } catch (_error) { /* live update only */ }
   notifyClientOfFedexNumber(caseData, number, previous, user);
@@ -189,6 +223,7 @@ async function setFedexNumber(caseData, trackingNumber, user, req) {
 
 async function save(caseData, payload, user, req) {
   validatePayload(payload);
+  const fedexAmount = canSeeFedexAmount(user) ? cleanFedexAmount(payload.fedexAmount) : undefined; // validated before anything is saved; ignored for non-internal roles
   const lifecycle = ImmigrationTimelineService.ensure(caseData);
   const previousStatus = lifecycle.tracking?.status || "draft";
   const previousFedexNumber = lifecycle.tracking?.filing?.carrier === "fedex" ? lifecycle.tracking?.filing?.trackingNumber || "" : "";
@@ -209,6 +244,7 @@ async function save(caseData, payload, user, req) {
   }
   ImmigrationTimelineService.audit(caseData, "uscis_tracking_updated", user, { previousStatus, tracking }, req);
   await caseData.save();
+  await setFedexAmount(caseData, fedexAmount, user, req);
   await ImmigrationTimelineService.writeAudit("USCIS_TRACKING_UPDATED", caseData, user, { previousStatus, tracking }, req);
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "uscis_tracking_updated" }); } catch (_error) { /* live update only */ }
   if (tracking.filing?.carrier === "fedex") {
@@ -280,4 +316,4 @@ async function get(caseData) {
   };
 }
 
-module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber };
+module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount };

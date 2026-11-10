@@ -1197,6 +1197,9 @@ const caseSchema = new mongoose.Schema(
      * deliberately separate from `stage` (the immigration workflow stage):
      * moving a pipeline card must never touch `stage`.
      */
+    // What the filing's FedEx shipment cost, in US dollars. INTERNAL ONLY: `select: false` means no query returns it unless it asks for "+fedexAmount", so it can never leak
+    // to a client, employer, employee or attorney through a case payload. Read / written only by TrackingService for internal-team roles.
+    fedexAmount: { type: Number, min: 0, select: false },
     // Payment figures read from the case's GoHighLevel card (integrations/ghl/ghlFinance.js), ALL IN US DOLLARS (never cents):
     //   totalAmount = the card's Value (the company's own fees, USCIS fees not included), uscisFee = USCIS Fee, amountPaid = QB Amount Paid.
     // The Admin payment analytics read only these. Internal: never sent to client-side roles (case.service serializeCaseForUser).

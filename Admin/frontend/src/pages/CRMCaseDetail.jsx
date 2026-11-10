@@ -1611,6 +1611,8 @@ const CRMCaseDetail = () => {
           assignedTo: value.rfe?.assignedTo?._id || value.rfe?.assignedTo || '',
         },
       })
+      // the FedEx amount is internal: the server only sends it to the internal team's roles; when it is absent the field is not shown and nothing is sent back
+      if (response.data.fedexAmount !== undefined) setTracking(current => ({ ...current, fedexAmount: response.data.fedexAmount === null ? '' : String(response.data.fedexAmount) }))
       setStatusTouched(false)
       setTrackingDocuments(response.data.governmentDocuments || [])
       setTrackingTimeline(response.data.timeline || [])
@@ -3050,12 +3052,47 @@ const CRMCaseDetail = () => {
                   <button type="button" onClick={() => askFedex({ caseId: id, caseNumber: caseData?.caseNumber || '', label: caseData?.clientName || '' })} className="btn-primary shrink-0">Add FedEx number</button>
                 </div>
               )}
+              {/* FedEx Tracking: its own section, always the first one on this page. Everything about the courier shipment lives here (saved with the page's Save Changes button). */}
+              <div className="card" data-testid="fedex-tracking-section">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-lg bg-indigo-100 p-2 text-indigo-700"><Truck className="h-5 w-5" /></div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">FedEx Tracking</h3>
+                    <p className="text-sm text-muted-foreground">Courier shipment of the filing. The client sees only the tracking number, never the amount.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <TrackingField label="Shipping Carrier">
+                    <select value={tracking.filing.carrier} onChange={event => updateTracking('filing', 'carrier', event.target.value)} className="input-field">
+                      <option value="">Select carrier</option>
+                      <option value="fedex">FedEx</option>
+                      <option value="ups">UPS</option>
+                      <option value="usps">USPS</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </TrackingField>
+                  <TrackingField label="Shipment Tracking Number">
+                    <input type="text" value={tracking.filing.trackingNumber} onChange={event => updateTracking('filing', 'trackingNumber', event.target.value)} className="input-field" />
+                    <FedexTrackingTools carrier={tracking.filing.carrier} number={tracking.filing.trackingNumber} />
+                  </TrackingField>
+                  {tracking.fedexAmount !== undefined && (
+                    <TrackingField label="FedEx Amount (USD) · internal only">
+                      <input type="number" min="0" step="0.01" inputMode="decimal" value={tracking.fedexAmount} onChange={event => updateTracking(null, 'fedexAmount', event.target.value)} className="input-field" placeholder="e.g. 45.80" data-testid="fedex-amount-input" />
+                      <p className="mt-1 text-xs text-muted-foreground">Never shown to the client.</p>
+                    </TrackingField>
+                  )}
+                  <TrackingField label="Delivery Confirmation">
+                    <input type="date" value={tracking.filing.deliveryConfirmationDate} onChange={event => updateTracking('filing', 'deliveryConfirmationDate', event.target.value)} className="input-field" />
+                  </TrackingField>
+                </div>
+              </div>
+
               <div className="card">
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-lg bg-blue-100 p-2 text-blue-700"><Receipt className="h-5 w-5" /></div>
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Filing Information</h3>
-                    <p className="text-sm text-muted-foreground">Submission, delivery, receipt, and fee information.</p>
+                    <p className="text-sm text-muted-foreground">Submission, receipt, and fee information.</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -3077,22 +3114,6 @@ const CRMCaseDetail = () => {
                       <option value="paper">Paper</option>
                       <option value="online">Online</option>
                     </select>
-                  </TrackingField>
-                  <TrackingField label="Shipping Carrier">
-                    <select value={tracking.filing.carrier} onChange={event => updateTracking('filing', 'carrier', event.target.value)} className="input-field">
-                      <option value="">Select carrier</option>
-                      <option value="fedex">FedEx</option>
-                      <option value="ups">UPS</option>
-                      <option value="usps">USPS</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </TrackingField>
-                  <TrackingField label="Shipment Tracking Number">
-                    <input type="text" value={tracking.filing.trackingNumber} onChange={event => updateTracking('filing', 'trackingNumber', event.target.value)} className="input-field" />
-                    <FedexTrackingTools carrier={tracking.filing.carrier} number={tracking.filing.trackingNumber} />
-                  </TrackingField>
-                  <TrackingField label="Delivery Confirmation">
-                    <input type="date" value={tracking.filing.deliveryConfirmationDate} onChange={event => updateTracking('filing', 'deliveryConfirmationDate', event.target.value)} className="input-field" />
                   </TrackingField>
                   <TrackingField label="Filing Fee">
                     <input type="number" min="0" step="0.01" value={(Number(tracking.filing.filingFeeCents || 0) / 100).toFixed(2)}
