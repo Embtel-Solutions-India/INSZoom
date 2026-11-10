@@ -27,25 +27,24 @@ function stringifyDataValues(data = {}) {
 }
 
 function buildMessage(payload = {}) {
-  const tag = payload.tag || payload.data?.tag;
+  const chatTag = payload.tag || payload.data?.tag; // one conversation = one tag (kept in `data` so the app can group a conversation's notifications)
+  // Each notification ALSO gets its own tag ("<conversation>:<id>"). A notification that merely replaces an earlier one with the same tag is added to the
+  // Notification Center without popping up on Safari (Mac, iPhone, iPad), which does not support the re-alert flag; a notification with its own tag always pops
+  // up. The app then closes the conversation's older ones, so only the newest stays on screen.
+  const tag = chatTag && payload.data?.notificationId ? `${chatTag}:${payload.data.notificationId}` : chatTag;
   const link = payload.link;
   return {
-    notification: { title: payload.title, body: payload.body },
+    // DATA ONLY: no ready-made "notification" part. With one, Firebase's own code showed a copy of the notification AND the app's service worker showed another
+    // (and on iPhone / Mac Safari the worker could not even tell the first was there), which is why a notification arrived twice. Without it the service worker is
+    // the only thing that displays it, so every push is shown exactly once, in the same way on Android, Windows, macOS and iPhone.
     // `link` goes into `data` (not just webpush.fcmOptions below) because the foreground handler (onMessage) and the
     // service worker's onBackgroundMessage both read payload.data.link to route the click. title/body are repeated in
     // `data` so a service worker can always render the notification itself.
     // `url` = the absolute address on the recipient's own portal (opened when no tab of that portal is open); `link` stays the in-app path.
-    data: stringifyDataValues({ ...payload.data, link, url: payload.url, title: payload.title, body: payload.body, tag }),
+    data: stringifyDataValues({ ...payload.data, link, url: payload.url, title: payload.title, body: payload.body, tag: chatTag }),
     webpush: {
       // High urgency + a day of retention: delivered immediately to a sleeping browser, like a chat app.
       headers: { Urgency: "high", TTL: "86400" },
-      notification: {
-        title: payload.title,
-        body: payload.body,
-        icon: "/icon-192.png",
-        // Same tag = the thread's notification is replaced (and re-alerts) instead of piling up.
-        ...(tag ? { tag, renotify: true } : {}),
-      },
       // FCM only accepts an https link here; the service worker reads data.url / data.link either way.
       ...(/^https:\/\//i.test(payload.url || "") ? { fcmOptions: { link: payload.url } } : {}),
     },
@@ -145,4 +144,4 @@ async function sendToUsers(userIds, payload = {}) {
   return sendMulticast(tokenDocs.map((entry) => entry.token), payload);
 }
 
-module.exports = { sendToToken, sendMulticast, sendToUser, sendToUsers };
+module.exports = { buildMessage, sendToToken, sendMulticast, sendToUser, sendToUsers };

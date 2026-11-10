@@ -4189,6 +4189,7 @@ const CRMCaseDetail = () => {
                       setNewStage(employee?.currentKey || '')
                     }}
                     className="input-field"
+                    disabled={stageUpdating}
                   >
                     <option value="">Select employee</option>
                     {ghlEmployees.map((employee) => <option key={employee.caseId} value={employee.caseId}>{[employee.name, employee.email].filter(Boolean).join(' - ') || employee.caseNumber}</option>)}
@@ -4201,6 +4202,7 @@ const CRMCaseDetail = () => {
                   value={newStage}
                   onChange={(e) => setNewStage(e.target.value)}
                   className="input-field"
+                  disabled={stageUpdating}
                 >
                   <option value="">Select stage</option>
                   {ghlUnavailable ? null : useGhlStages
@@ -4213,6 +4215,15 @@ const CRMCaseDetail = () => {
                 {ghlUnavailable ? <p className="mt-1 text-sm text-red-700">{ghlUnavailable}</p> : null}
                 {useGhlStages ? <p className="mt-1 text-xs text-muted-foreground">{ghlEmployees ? 'Moves only the chosen employee card on the Pipeline board and updates GoHighLevel.' : 'Moves the card on the Pipeline board and updates GoHighLevel.'}</p> : null}
               </div>
+              {stageUpdating && (
+                <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-medium text-foreground" role="status" aria-live="polite" data-testid="stage-updating-status">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Updating the stage… please wait
+                </div>
+              )}
               <div className="flex gap-3">
                 <button onClick={() => setShowStageUpdateModal(false)} className="btn-secondary flex-1 disabled:opacity-50" disabled={stageUpdating}>
                   Cancel

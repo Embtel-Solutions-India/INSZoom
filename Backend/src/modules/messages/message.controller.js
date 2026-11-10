@@ -249,22 +249,54 @@ exports.translateMessage = async (req, res, next) => {
   }
 };
 
+const unreadSenderCache = new Map(); // userId -> { signature, senders }
+
 exports.getUnreadCount = async (req, res, next) => {
   try {
-    const filter = await messageService.buildConversationFilter(req.user);
+    // cacheCaseIds: the badge may use a recent copy of "which cases this staff member can see" (saves a database round trip on every page and poll)
+    const filter = await messageService.buildConversationFilter(req.user, { cacheCaseIds: true });
     // The badge only needs the per-user counters. Avoid hydrating complete
     // conversations (participants, audit history, integrations, etc.) on
     // every authenticated page and polling tick.
     const conversations = await Conversation.find(filter)
-      .select("participants unreadClient unreadManager")
+      .select("participants unreadClient unreadManager lastMessageAt")
       .lean();
     const userId = req.user._id.toString();
-    const total = conversations.reduce((sum, conversation) => {
+    const unreadOf = (conversation) => {
       const participant = (conversation.participants || []).find((item) => item.user?.toString() === userId);
-      if (participant) return sum + (participant.unreadCount || 0);
-      return sum + (req.user.role === "client" ? conversation.unreadClient || 0 : conversation.unreadManager || 0);
-    }, 0);
-    res.json({ success: true, unreadCount: total, count: total });
+      if (participant) return participant.unreadCount || 0;
+      return req.user.role === "client" ? conversation.unreadClient || 0 : conversation.unreadManager || 0;
+    };
+    const total = conversations.reduce((sum, conversation) => sum + unreadOf(conversation), 0);
+
+    // The people who wrote most recently (for the browser-tab hover text). Best effort: at most 2 small lookups, and only when something is unread;
+    // a failure here never affects the count.
+    let senders = [];
+    if (total > 0) {
+      try {
+        const recent = conversations.filter((conversation) => unreadOf(conversation) > 0)
+          .sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0))
+          .slice(0, 2);
+        // The names only change when a conversation gets a new message or its unread number changes, so they are looked up again only then
+        // (the 60-second poll would otherwise pay two extra database round trips every time for the same answer).
+        const signature = recent.map((conversation) => `${conversation._id}:${new Date(conversation.lastMessageAt || 0).getTime()}:${unreadOf(conversation)}`).join("|");
+        const cached = unreadSenderCache.get(userId);
+        if (cached && cached.signature === signature) {
+          senders = cached.senders;
+        } else {
+          const found = await Promise.all(recent.map((conversation) => Message.findOne({
+            conversationId: conversation._id,
+            deletedAt: null,
+            senderId: { $ne: req.user._id },
+            readByUsers: { $ne: req.user._id }
+          }).sort({ createdAt: -1 }).select("senderName").lean()));
+          senders = [...new Set(found.map((item) => String(item?.senderName || "").trim()).filter(Boolean))];
+          if (unreadSenderCache.size > 500) unreadSenderCache.clear();
+          unreadSenderCache.set(userId, { signature, senders });
+        }
+      } catch { /* the count is still returned */ }
+    }
+    res.json({ success: true, unreadCount: total, count: total, senders });
   } catch (error) {
     next(error);
   }

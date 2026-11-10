@@ -51,8 +51,19 @@ describe('showMessagePushInForeground', () => {
     expect(showNotification).toHaveBeenCalledTimes(1)
     const [title, options] = showNotification.mock.calls[0]
     expect(title).toBe('Sarah Johnson')
-    expect(options).toMatchObject({ body: 'Please upload your passport copy.', tag: 'msg-c1', renotify: true })
+    expect(options).toMatchObject({ body: 'Please upload your passport copy.', renotify: true })
+    expect(options.tag).toMatch(/^msg-c1:n-\d+$/) // its own tag: it always pops up, even on Safari
     expect(options.data).toEqual({ link: '/dashboard/messages/c1', url: 'https://client.example.com/messages/c1' })
+  })
+
+  it("closes this conversation's older notifications (one stays on screen) and leaves other conversations alone", async () => {
+    const older = { tag: 'msg-c1:n-old', close: vi.fn() }
+    const otherChat = { tag: 'msg-c9:n-x', close: vi.fn() }
+    Object.defineProperty(globalThis.navigator, 'serviceWorker', { configurable: true, value: { register: vi.fn().mockResolvedValue({ showNotification, getNotifications: vi.fn().mockResolvedValue([older, otherChat]) }) } })
+    await load()
+    expect(await service.showMessagePushInForeground(payload())).toBe(true)
+    expect(older.close).toHaveBeenCalledTimes(1)
+    expect(otherChat.close).not.toHaveBeenCalled()
   })
 
   it('also covers an attorney feedback message', async () => {

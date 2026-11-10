@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useTheme } from '../contexts/ThemeContext'
 import EnablePushButton from '../components/EnablePushButton'
+import TabAlert from '../components/TabAlert'
 import BrandMark from '../components/BrandMark'
 import { useBranding } from '../utils/branding'
 import useScrollRestoration from '../hooks/useScrollRestoration'
@@ -375,6 +376,7 @@ const Layout = () => {
         </main>
       </div>
       <EnablePushButton />
+      <TabAlert />
       <EverydayPrompt />
     </div>
   )

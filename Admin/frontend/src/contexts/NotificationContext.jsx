@@ -18,6 +18,7 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [unreadMessageCount, setUnreadMessageCount] = useState(0)
+  const [unreadMessageSenders, setUnreadMessageSenders] = useState([]) // who wrote most recently (browser-tab hover text)
   const { token, user } = useAuth()
   const { subscribe, connected } = useSocket()
   const inFlightRef = useRef({ notifications: false, unreadCount: false, unreadMessages: false })
@@ -78,6 +79,7 @@ export const NotificationProvider = ({ children }) => {
     try {
       const response = await api.get('/messages/unread-count')
       setUnreadMessageCount(normalizeCountResponse(response.data))
+      setUnreadMessageSenders(Array.isArray(response.data?.senders) ? response.data.senders : [])
     } catch (error) {
       // Never replace a bounded count request with a full message listing.
       // That fallback amplified transient pool pressure into another large
@@ -117,8 +119,8 @@ export const NotificationProvider = ({ children }) => {
     try { Promise.resolve(showMessagePushInForeground?.(payload)).catch(() => {}) } catch { /* the bell below must always update */ }
     setNotifications((prev) => [{
       _id: `fcm-${Date.now()}`,
-      title: payload?.notification?.title,
-      message: payload?.notification?.body,
+      title: payload?.notification?.title || payload?.data?.title,
+      message: payload?.notification?.body || payload?.data?.body,
       link: payload?.data?.link,
       isRead: false,
       createdAt: new Date().toISOString(),
@@ -173,11 +175,12 @@ export const NotificationProvider = ({ children }) => {
     notifications,
     unreadCount,
     unreadMessageCount,
+    unreadMessageSenders,
     fetchNotifications,
     fetchUnreadMessageCount,
     markAsRead,
     markAllAsRead
-  }), [notifications, unreadCount, unreadMessageCount, fetchNotifications, fetchUnreadMessageCount, markAsRead, markAllAsRead])
+  }), [notifications, unreadCount, unreadMessageCount, unreadMessageSenders, fetchNotifications, fetchUnreadMessageCount, markAsRead, markAllAsRead])
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>
 }

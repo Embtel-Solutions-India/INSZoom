@@ -819,7 +819,7 @@ const Messaging = () => {
     const id = setInterval(() => {
       if (document.visibilityState === 'hidden') return
       fetchMessages()
-    }, 15000)
+    }, 45000)
     return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
