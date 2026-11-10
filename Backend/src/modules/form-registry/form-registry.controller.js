@@ -10,6 +10,7 @@ const USCISMappingVersion = require("../../models/USCISMappingVersion");
 const { recordAuditEvent } = require("../audit/audit.service");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
 const checklistMappingService = require("./checklist-mapping.service");
+const formCatalogCache = require("./formCatalogCache");
 
 function handleError(error, next) {
   if (error.status) return next(error);
@@ -125,15 +126,30 @@ async function buildFormCatalog(onlyFormCode) {
     const escapedOnly = only.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const mappingFilter = only ? { active: true, formTemplateFormCode: only.toLowerCase() } : { active: true, formTemplateFormCode: { $ne: null } };
     const templateFilter = only ? { formCode: new RegExp(`^${escapedOnly}$`, "i") } : {};
-    const [mappings, templates] = await Promise.all([
-      VisaFormMapping.find(mappingFilter)
-        .select("visaType formNumber formTemplateFormCode provisioningType processingPaths agency checklistMappings triggerCondition adminManaged")
-        .lean(),
-      USCISFormTemplate.find(templateFilter)
-        .select("formCode title formName status mappingStatus officialStatus editionDate approvedAt activatedAt artifacts.form.status version updatedAt createdAt")
-        .lean(),
-    ]);
-    const checklistTitles = await checklistMappingService.titlesForKeys(mappings.flatMap((mapping) => (mapping.checklistMappings || []).map((entry) => entry.checklistKey)));
+    // Every independent read is started at once (the template read is by far the biggest, ~470 MB of documents): the checklist titles wait only for the
+    // mapping rows they come from, and the supplement rows + their component definitions are read while the templates are still loading.
+    const mappingsPromise = VisaFormMapping.find(mappingFilter)
+      .select("visaType formNumber formTemplateFormCode provisioningType processingPaths agency checklistMappings triggerCondition adminManaged")
+      .lean()
+      .exec(); // .exec(): a real promise (a Mongoose query object may only be awaited once, and these are awaited in more than one place)
+    const templatesPromise = USCISFormTemplate.find(templateFilter)
+      .select("formCode title formName status mappingStatus officialStatus editionDate approvedAt activatedAt artifacts.form.status version updatedAt createdAt")
+      .lean()
+      .exec();
+    // Supplement/component forms (a VisaFormMapping row with componentCode set), see below. Not needed for a single-form lookup.
+    const componentMappingsPromise = only ? Promise.resolve([]) : VisaFormMapping.find({ active: true, componentCode: { $ne: null } })
+      .select("visaType formNumber componentCode parentForm provisioningType processingPaths agency")
+      .lean()
+      .exec();
+    const componentDefsPromise = componentMappingsPromise.then((rows) => {
+      const codes = [...new Set(rows.map((row) => row.componentCode))];
+      return codes.length
+        ? USCISFormComponentDefinition.find({ componentCode: { $in: codes }, status: "ACTIVE" }).select("componentCode name parentTemplateId").sort({ discoveredAt: -1 }).lean().exec()
+        : [];
+    });
+    const mappings = await mappingsPromise;
+    const checklistTitlesPromise = checklistMappingService.titlesForKeys(mappings.flatMap((mapping) => (mapping.checklistMappings || []).map((entry) => entry.checklistKey)));
+    const [templates, checklistTitles] = await Promise.all([templatesPromise, checklistTitlesPromise]);
     const grouped = new Map();
     for (const mapping of mappings) {
       const formCode = String(mapping.formTemplateFormCode).toUpperCase();
@@ -281,9 +297,7 @@ async function buildFormCatalog(onlyFormCode) {
     // doesn't count (mirrors visaFormMapping.service.js's own
     // resolveActiveComponent semantics, re-derived here rather than reused
     // since that helper isn't exported and this is a read-only projection).
-    const componentMappings = only ? [] : await VisaFormMapping.find({ active: true, componentCode: { $ne: null } })
-      .select("visaType formNumber componentCode parentForm provisioningType processingPaths agency")
-      .lean();
+    const componentMappings = await componentMappingsPromise;
     const componentGroups = new Map();
     for (const mapping of componentMappings) {
       if (!componentGroups.has(mapping.componentCode)) {
@@ -296,9 +310,7 @@ async function buildFormCatalog(onlyFormCode) {
         processingPaths: mapping.processingPaths || [],
       });
     }
-    const componentDefs = componentGroups.size
-      ? await USCISFormComponentDefinition.find({ componentCode: { $in: [...componentGroups.keys()] }, status: "ACTIVE" }).select("componentCode name parentTemplateId").sort({ discoveredAt: -1 }).lean()
-      : [];
+    const componentDefs = await componentDefsPromise;
     const componentDefByCode = new Map();
     for (const def of componentDefs) if (!componentDefByCode.has(def.componentCode)) componentDefByCode.set(def.componentCode, def);
 
@@ -337,7 +349,8 @@ async function buildFormCatalog(onlyFormCode) {
 
 exports.getFormCatalog = async (req, res, next) => {
   try {
-    res.json({ success: true, data: await buildFormCatalog() });
+    // the full list is kept for a few seconds (formCatalogCache.js): any change to a template / mapping / component definition made through this server clears it at once
+    res.json({ success: true, data: await formCatalogCache.cached(() => buildFormCatalog()) });
   } catch (error) {
     handleError(error, next);
   }
@@ -683,3 +696,17 @@ exports.applyMappingToCases = async (req, res, next) => {
     handleError(error, next);
   }
 };
+
+// The endpoints that change what the catalog shows (fetch a form, delete one, change a mapping's checklists / apply it) clear the short-lived catalog copy as soon as they
+// finish, so the page's reload right after an action always reads fresh data (a change made by a background worker in another process is covered by the copy's short time limit).
+for (const name of ["fetchFormFromUSCIS", "deleteFormFromCatalog", "updateMappingChecklists", "applyMappingToCases"]) {
+  const original = exports[name];
+  if (typeof original !== "function") continue;
+  exports[name] = async function withFreshCatalog(req, res, next) {
+    try {
+      return await original(req, res, next);
+    } finally {
+      formCatalogCache.invalidate();
+    }
+  };
+}

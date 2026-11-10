@@ -75,7 +75,7 @@ async function overview(deps = {}) {
   const windowStart = new Date(now.getTime() - TIMING_WINDOW_DAYS * DAY);
   const select = "formCode state currentStage attempts lastError nextAttemptAt createdAt";
 
-  const [jobCounts, oldest, retryCounts, sample, blocked, held, runs, headline, mode, placement, alive] = await Promise.all([
+  const [jobCounts, oldest, retryCounts, sample, blocked, held, runs, headline, mode, placement, alive, preflight] = await Promise.all([
     safely(() => counts(d.Job), Object.fromEntries(Object.values(JOB_STATES).map((state) => [state, 0]))),
     safely(() => d.Job.findOne({ state: { $in: UNRESOLVED_STATES } }).sort({ createdAt: 1 }).select(select).lean(), null),
     safely(() => retries(d.Job, since24h), { total: 0, last24h: 0 }),
@@ -87,6 +87,7 @@ async function overview(deps = {}) {
     safely(() => d.mode(), "unknown"),
     safely(() => d.placement(), null),
     safely(() => d.workerAlive(), false),
+    safely(() => d.preflight(), null), // Phase 7.1: the latest start-up check, read together with the rest (it used to wait until they had all finished)
   ]);
 
   return {
@@ -99,7 +100,7 @@ async function overview(deps = {}) {
       retries: retryCounts,
       stageTimings: stageTimings(sample),
     },
-    preflight: await safely(() => d.preflight(), null) || null, // Phase 7.1: the latest start-up check (null until the first one has run)
+    preflight: preflight || null, // the latest start-up check (null until the first one has run)
     blocked: blocked.map((job) => jobSummary(job, now)),
     held: held.map((job) => jobSummary(job, now)),
     runs: runs.map(presentRun),

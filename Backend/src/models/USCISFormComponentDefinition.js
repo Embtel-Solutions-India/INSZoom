@@ -79,4 +79,5 @@ const uscisFormComponentDefinitionSchema = new mongoose.Schema(
 uscisFormComponentDefinitionSchema.index({ parentTemplateId: 1, componentCode: 1 }, { unique: true });
 uscisFormComponentDefinitionSchema.index({ parentFormCode: 1, componentCode: 1, status: 1 });
 
+require("../modules/form-registry/formCatalogCache").watch(uscisFormComponentDefinitionSchema); // any write clears the Form Governance catalog copy
 module.exports = mongoose.model("USCISFormComponentDefinition", uscisFormComponentDefinitionSchema);

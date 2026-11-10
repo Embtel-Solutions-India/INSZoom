@@ -235,4 +235,5 @@ visaFormMappingSchema.statics.TRIGGER_FIELD_WHITELIST = TRIGGER_FIELD_WHITELIST;
 visaFormMappingSchema.statics.validateTriggerNode = validateTriggerNode;
 visaFormMappingSchema.statics.CHECKLIST_ASSIGNMENT_TYPES = CHECKLIST_ASSIGNMENT_TYPES;
 
+require("../modules/form-registry/formCatalogCache").watch(visaFormMappingSchema); // any write clears the Form Governance catalog copy
 module.exports = mongoose.models.VisaFormMapping || mongoose.model("VisaFormMapping", visaFormMappingSchema);
