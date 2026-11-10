@@ -17,12 +17,14 @@ const KIND = {
     help: 'Upload the petition as a PDF (up to 200 MB). Only your team can see it until you send it to the attorney or the client.',
     uploadLabel: 'Upload Petition', empty: 'No petition has been uploaded for this case yet.', fallbackName: 'petition.pdf',
     attorneyLabel: 'Attorney review', clientLabel: 'Client review',
+    dropTitle: 'Drag and drop the petition PDF here', dropRelease: 'Release to upload the petition', dropBad: 'The petition must be a PDF file.', dropMany: 'Drop one petition PDF at a time.',
   },
   supporting: {
     documentType: 'petition_supporting_upload', title: 'Supporting Documents', noun: 'document', Noun: 'Document',
     help: 'Upload letters, reports or other documents as PDFs (up to 200 MB). Only your team can see them until you send them to the attorney or the client.',
     uploadLabel: 'Upload Document', empty: 'No supporting document has been uploaded for this case yet.', fallbackName: 'document.pdf',
     attorneyLabel: 'Send to attorney', clientLabel: 'Send to client',
+    dropTitle: 'Drag and drop the supporting document PDF here', dropRelease: 'Release to upload the document', dropBad: 'A supporting document must be a PDF file.', dropMany: 'Drop one document PDF at a time.',
   },
 }
 const AUDIENCE_LABEL = { client: 'the client', petitioner: 'the petitioner', employer: 'the employer' }
@@ -54,7 +56,6 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
   const [progress, setProgress] = useState(0)
   const [sending, setSending] = useState('') // `${documentId}:attorney|client`
   const [notice, setNotice] = useState('')
-  const [justUploaded, setJustUploaded] = useState(null)
   const [chat, setChat] = useState(null)
   const [confirm, setConfirm] = useState(null) // { doc, target } waiting for the case manager's OK
   const [releaseNote, setReleaseNote] = useState('') // optional note typed in the send popup: shown in the e-mail and to the attorney
@@ -139,6 +140,18 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
 
   const MAX_PETITION_BYTES = 200 * 1024 * 1024
 
+  // drag & drop: the same upload as the button, one PDF at a time (the picker is PDF-only too)
+  const dragDepth = useRef(0)
+  const [dragOver, setDragOver] = useState(false)
+  const handleDropped = (fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    if (files.length > 1) { setError(text.dropMany); return }
+    const [file] = files
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name || '')) { setError(`"${file.name}" is not a PDF. ${text.dropBad}`); return }
+    handleFile(file)
+  }
+
   const handleFile = async (file) => {
     if (!file) return
     if (file.size > MAX_PETITION_BYTES) {
@@ -157,9 +170,6 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
       const docs = res.data.documents || res.data.data || []
       setUploads(docs)
       await Promise.all([loadReview(), loadAi()])
-      // the two options right after an upload: the newest petition is the one just uploaded
-      const newest = [...docs].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0]
-      setJustUploaded(newest ? String(newest._id) : null)
     } catch (e) {
       setError(e.response?.data?.message || e.message || `Unable to upload the ${text.noun}. Please try again.`)
     } finally {
@@ -191,7 +201,6 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
         await petitionReviewApi.sendToClient(caseId, documentId, releaseNote.trim())
         setNotice(`Sent for client review - ${audienceName} was notified.`)
       }
-      if (justUploaded === documentId) setJustUploaded(null)
       await loadReview()
     } catch (e) {
       setError(e.response?.data?.message || `Unable to send the ${text.noun} for ${target} review.`)
@@ -208,7 +217,6 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
       await documentsApi.remove(String(deleting._id))
       const removedId = String(deleting._id)
       setDeleting(null)
-      if (justUploaded === removedId) setJustUploaded(null)
       setUploads((current) => current.filter((doc) => String(doc._id) !== removedId))
       setNotice(`${text.Noun} deleted.`)
       setError('')
@@ -241,7 +249,6 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
     )
   }
 
-  const justUploadedDoc = justUploaded ? uploads.find((doc) => String(doc._id) === justUploaded) : null
 
   return (
     // the petition is the main panel (larger title, blue icon, solid button - no coloured border, which read as "selected"); Supporting Documents below it stays plain
@@ -267,23 +274,31 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
         )}
       </div>
 
-      {uploading && (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+      {/* Drag & drop area (petition AND supporting documents): click it to pick the PDF from the computer, or drag a PDF in from outside the app and release it here. Same upload as the button above. */}
+      {canUpload && (
+        <div
+          role="button"
+          tabIndex={uploading ? -1 : 0}
+          aria-disabled={uploading}
+          aria-label={`Upload the ${text.noun}: click to choose a PDF, or drag and drop it here`}
+          data-testid="petition-drop-zone" data-kind={kind}
+          onClick={() => { if (!uploading) inputRef.current?.click() }}
+          onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && !uploading) { event.preventDefault(); inputRef.current?.click() } }}
+          onDragEnter={(event) => { event.preventDefault(); if (!uploading) dragDepth.current += 1; if (!uploading) setDragOver(true) }}
+          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = uploading ? 'none' : 'copy' }}
+          onDragLeave={(event) => { event.preventDefault(); dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragOver(false) }}
+          onDrop={(event) => { event.preventDefault(); dragDepth.current = 0; setDragOver(false); if (!uploading) handleDropped(event.dataTransfer?.files) }}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${dragOver ? 'border-primary bg-primary/10' : 'border-border bg-muted/30 hover:border-primary/50 hover:bg-muted/50'} ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+        >
+          <Upload className={`h-6 w-6 ${dragOver ? 'text-primary' : 'text-muted-foreground'}`} aria-hidden="true" />
+          <p className="text-sm font-semibold text-foreground">{dragOver ? text.dropRelease : text.dropTitle}</p>
+          <p className="text-xs text-muted-foreground">or click to choose it from your computer</p>
         </div>
       )}
 
-      {/* the "who should review it?" prompt after an upload is for the petition only; supporting documents use the buttons on their row */}
-      {canUpload && !supporting && justUploadedDoc && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5" role="status">
-          <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><CheckCircle className="h-4 w-4 text-primary" /> {text.Noun} uploaded - who should review it?</p>
-            <p className="truncate text-xs text-muted-foreground">{justUploadedDoc.originalName || justUploadedDoc.fileName}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {releaseButtons(justUploadedDoc)}
-            <button type="button" onClick={() => setJustUploaded(null)} className="text-xs font-semibold text-muted-foreground hover:text-foreground">Later</button>
-          </div>
+      {uploading && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
         </div>
       )}
 

@@ -8,6 +8,10 @@ import { displayTrackingNumber, isValidTrackingNumber } from '../utils/fedexTrac
 // shows it with a link to FedEx. "Add later" closes it; the case's USCIS Tracking tab keeps reminding until a number exists. A number already on file is pre-filled.
 export default function FedexNumberModal({ caseId, caseNumber, label = '', onClose }) {
   const [value, setValue] = useState('')
+  // What the shipment cost (US dollars): INTERNAL only, never shown to the client. The box is always there with the number (this popup is only for the internal team; the server ignores
+  // an amount from any other role). It is sent only when the person typed in it, so a saved amount is never overwritten by an empty box that has not finished loading.
+  const [amount, setAmount] = useState('')
+  const [amountTouched, setAmountTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
@@ -19,6 +23,8 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
       .then((response) => {
         const number = response.data?.tracking?.filing?.trackingNumber
         if (!cancelled && number) setValue((current) => current || displayTrackingNumber(number))
+        const sent = response.data?.fedexAmount
+        if (!cancelled && sent !== undefined && sent !== null) setAmount((current) => current || String(sent))
       })
       .catch(() => {}) // a number is simply not pre-filled
     return () => { cancelled = true }
@@ -38,10 +44,15 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
       inputRef.current?.focus()
       return
     }
+    if (amountTouched && amount.trim() !== '' && !(Number(amount) >= 0)) {
+      setError('Enter a valid FedEx amount (a number, 0 or more), or leave it empty.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
-      await lifecycleApi.saveFedexNumber(caseId, value)
+      if (amountTouched) await lifecycleApi.saveFedexNumber(caseId, value, amount)
+      else await lifecycleApi.saveFedexNumber(caseId, value)
       window.dispatchEvent(new CustomEvent('fedex-number-saved', { detail: { caseId } }))
       onClose(true)
     } catch (err) {
@@ -75,6 +86,24 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
           className="input-field mt-1.5 font-mono"
           aria-invalid={Boolean(error)}
         />
+        {(
+          <>
+            <label htmlFor="fedex-amount-input" className="mt-4 block text-sm font-medium text-foreground">FedEx amount (USD) <span className="font-normal text-muted-foreground">· optional, internal only</span></label>
+            <input
+              id="fedex-amount-input"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => { setAmount(event.target.value); setAmountTouched(true); if (error) setError('') }}
+              placeholder="e.g. 45.80"
+              disabled={busy}
+              className="input-field mt-1.5"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">For the internal team only. The client never sees the amount, only the tracking number.</p>
+          </>
+        )}
         <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-900">
           This number is saved in the case&apos;s USCIS Tracking tab. To change it later, update it there.
         </div>

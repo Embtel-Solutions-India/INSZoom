@@ -30,16 +30,25 @@ export function stageToneStyle(stage) {
   return { backgroundColor: `rgba(${tone.rgb}, 0.13)`, borderColor: `rgba(${tone.rgb}, 0.38)`, color: tone.text }
 }
 
+// An employer matter with SEVERAL employees: true only when every one of them is at a filed / outcome stage (Submitted, Receipt tracking, RFE, Approved, Disapproved, Feedback), even if
+// those stages differ. While any employee is still earlier (Case Onboarded ...) or On Hold, the matter as a whole stays white; its employee rows still show their own colours.
+// (A matter with ONE employee never gets here: it simply takes that employee's stage.)
+export function allEmployeesFiled(caseItem) {
+  const summary = caseItem?.pipelineStageSummary
+  return Array.isArray(summary) && summary.length > 1 && summary.every((item) => stageToneKey(item?.name) === 'blue')
+}
+
 // Whole-line tint for a list row: a soft wash of the colour across the row (no edge line). A matter whose
-// employees are in different stages has no single colour, so its row stays white (its colour bar shows the mix).
+// employees are in different stages has no single colour, so its row stays white (its colour bar shows the mix) - unless all of them are filed (allEmployeesFiled).
 export function rowToneStyle(caseItem) {
   const stage = caseItem?.pipelineStageKey || caseItem?.pipelineStage
+  const mixed = Array.isArray(caseItem?.pipelineStageSummary) && caseItem.pipelineStageSummary.length > 1
   if (caseItem?.status === 'completed') {
     // --completed-row-bg exists only in the dark theme (index.css); in the day theme the var() falls back to the stage tint
-    const own = Array.isArray(caseItem?.pipelineStageSummary) && caseItem.pipelineStageSummary.length > 1 ? undefined : TONE_VARS[stageToneKey(stage)]
+    const own = mixed ? (allEmployeesFiled(caseItem) ? TONE_VARS.blue : undefined) : TONE_VARS[stageToneKey(stage)]
     return { '--stage-bg': own ? `rgba(${own.rgb}, 0.09)` : 'transparent', backgroundColor: 'var(--completed-row-bg, var(--stage-bg))' }
   }
-  if (Array.isArray(caseItem?.pipelineStageSummary) && caseItem.pipelineStageSummary.length > 1) return undefined
+  if (mixed) return allEmployeesFiled(caseItem) ? { backgroundColor: `rgba(${TONE_VARS.blue.rgb}, 0.09)` } : undefined
   const tone = TONE_VARS[stageToneKey(caseItem?.pipelineStageKey || caseItem?.pipelineStage)]
   if (!tone) return undefined
   return { backgroundColor: `rgba(${tone.rgb}, 0.09)` }

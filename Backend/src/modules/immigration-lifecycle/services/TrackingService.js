@@ -4,6 +4,7 @@ const User = require("../../../models/User");
 const ImmigrationTimelineService = require("./ImmigrationTimelineService");
 const NotificationLifecycleService = require("./NotificationLifecycleService");
 const notificationService = require("../../notifications/notification.service");
+const { normalizeRole } = require("../../authorization/roleHierarchy");
 
 // Only statuses where this function actually has the real data a template
 // needs (receipt number, filing date, RFE deadline) are mapped to a
@@ -172,23 +173,110 @@ function notifyClientOfFedexNumber(caseData, number, previous, user) {
   } catch (_error) { /* never affects the save */ }
 }
 
-async function setFedexNumber(caseData, trackingNumber, user, req) {
+// ---- the FedEx amount (what the shipment cost) ---------------------------------------------------------------------------------------------------------------------------------------------
+// INTERNAL ONLY. Kept on the case's hidden `fedexAmount` field (never in a client / attorney payload, never in an e-mail), in US dollars. Only these roles may read or write it.
+const FEDEX_AMOUNT_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr"]);
+const canSeeFedexAmount = (user) => FEDEX_AMOUNT_ROLES.has(normalizeRole(user?.role));
+
+/** Pure. undefined = "not sent, leave as is"; null = cleared; otherwise a non-negative number rounded to cents. Throws a 400 for anything else. */
+function cleanFedexAmount(value) {
+  if (value === undefined) return undefined;
+  if (value === null || String(value).trim() === "") return null;
+  const amount = Number(String(value).replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1e8) throw Object.assign(new Error("Enter a valid FedEx amount (a number, 0 or more)."), { status: 400, code: "INVALID_FEDEX_AMOUNT" });
+  return Math.round(amount * 100) / 100;
+}
+
+async function getFedexAmount(caseId) {
+  const Case = require("../../../models/Case");
+  const row = await Case.findById(caseId).select("+fedexAmount").lean();
+  return typeof row?.fedexAmount === "number" ? row.fedexAmount : null;
+}
+
+/** Saves (or clears) the amount; audit-logged, never e-mailed or notified. `amount` is already cleaned; undefined does nothing. */
+async function setFedexAmount(caseData, amount, user, req) {
+  if (amount === undefined) return undefined;
+  const Case = require("../../../models/Case");
+  const previous = await getFedexAmount(caseData._id);
+  if (previous === amount) return amount;
+  await Case.updateOne({ _id: caseData._id }, amount === null ? { $unset: { fedexAmount: "" } } : { $set: { fedexAmount: amount } });
+  try { await ImmigrationTimelineService.writeAudit("FEDEX_AMOUNT_SET", caseData, user, { previous, amount }, req); } catch (_error) { /* bookkeeping only */ }
+  return amount;
+}
+
+async function setFedexNumber(caseData, trackingNumber, user, req, amountInput) {
   const number = cleanFedexNumber(trackingNumber);
   if (!number) throw Object.assign(new Error("Enter a valid FedEx tracking number (8 to 34 letters or digits)."), { status: 400, code: "INVALID_FEDEX_NUMBER" });
+  const amount = canSeeFedexAmount(user) ? cleanFedexAmount(amountInput) : undefined; // validated BEFORE anything is saved
   const Case = require("../../../models/Case");
   const previous = caseData.immigrationLifecycle?.tracking?.filing?.trackingNumber || "";
   await Case.updateOne(
     { _id: caseData._id },
     { $set: { "immigrationLifecycle.tracking.filing.carrier": "fedex", "immigrationLifecycle.tracking.filing.trackingNumber": number } }
   );
+  await setFedexAmount(caseData, amount, user, req);
   try { await ImmigrationTimelineService.writeAudit("FEDEX_TRACKING_SET", caseData, user, { previous, trackingNumber: number }, req); } catch (_error) { /* bookkeeping only */ }
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "fedex_tracking_set" }); } catch (_error) { /* live update only */ }
   notifyClientOfFedexNumber(caseData, number, previous, user);
   return { carrier: "fedex", trackingNumber: number };
 }
 
+// ---- Filed by pipeline stage -------------------------------------------------------------------------------------------------------------------------------------------------------------
+// A case at Submitted (FedEx) or any later stage (Receipt Tracking, RFE, Status - Approved / Disapproved, FeedBack) HAS been filed, so its recorded USCIS status must read Filed - not only
+// on one screen. On Hold is not a filed stage. Only a PRE-filing status (draft / ready to file / none) is changed: any later status (receipt issued, approved ...) stays exactly as recorded.
+// Quiet on purpose: it never sends the client a status e-mail or notification, and adds no timeline entry (the stage move itself is already on the timeline).
+const FILED_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "rfe", "status_approved", "status_disapproved", "feedback"];
+const PRE_FILING_STATUSES = ["draft", "ready_to_file", ""];
+
+/** The filter that finds cases that sit at a filed stage but whose recorded status still says "not filed". Pass an _id (or any extra filter) to narrow it. */
+const filedByStageFilter = (extra = {}) => ({
+  ...extra,
+  "integrations.ghl.unifiedStageKey": { $in: FILED_STAGE_KEYS },
+  $or: [{ "immigrationLifecycle.tracking.status": { $in: PRE_FILING_STATUSES } }, { "immigrationLifecycle.tracking.status": { $exists: false } }],
+});
+
+const FILED_PATCH = { "immigrationLifecycle.tracking.status": "filed", "immigrationLifecycle.filingStatus": STATUS_TO_LIFECYCLE.filed };
+const PRE_FILING_FILTER = { $or: [{ "immigrationLifecycle.tracking.status": { $in: PRE_FILING_STATUSES } }, { "immigrationLifecycle.tracking.status": { $exists: false } }] };
+
+/**
+ * An employer matter (the principal case) has no pipeline card of its own - its employees do. It reads Filed when EVERY employee case under it that has a card is at a filed stage
+ * (at least one). Same quiet rules as above. Returns true when it changed the matter.
+ */
+async function markMatterFiledIfAllEmployeesFiled(parentId, { dryRun = false } = {}) {
+  try {
+    const Case = require("../../../models/Case");
+    const cards = await Case.find({ parentCase: parentId, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } }).select("integrations.ghl.unifiedStageKey").lean();
+    if (!cards.length || !cards.every((card) => FILED_STAGE_KEYS.includes(card.integrations?.ghl?.unifiedStageKey))) return false;
+    const target = { _id: parentId, "integrations.ghl.opportunityId": null, ...PRE_FILING_FILTER }; // null also matches a missing field: the matter has no card of its own
+    if (dryRun) return Boolean(await Case.exists(target));
+    const result = await Case.updateOne(target, { $set: FILED_PATCH }, { timestamps: false });
+    if (result?.modifiedCount) {
+      try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(parentId, "tracking", { reason: "filed_by_stage" }); } catch (_error) { /* live update only */ }
+      return true;
+    }
+  } catch (_error) { /* bookkeeping only */ }
+  return false;
+}
+
+/** Sets the recorded status to Filed for ONE case when its stage says it was filed (and, for an employee case, its employer matter when all its employees are). Never throws; returns true when it changed something. */
+async function markFiledByStage(caseId) {
+  let changed = false;
+  try {
+    const Case = require("../../../models/Case");
+    const result = await Case.updateOne(filedByStageFilter({ _id: caseId }), { $set: FILED_PATCH }, { timestamps: false });
+    if (result?.modifiedCount) {
+      changed = true;
+      try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseId, "tracking", { reason: "filed_by_stage" }); } catch (_error) { /* live update only */ }
+    }
+    const row = await Case.findById(caseId).select("parentCase").lean();
+    if (row?.parentCase) changed = (await markMatterFiledIfAllEmployeesFiled(row.parentCase)) || changed;
+  } catch (_error) { /* bookkeeping only: a stage move is never failed by this */ }
+  return changed;
+}
+
 async function save(caseData, payload, user, req) {
   validatePayload(payload);
+  const fedexAmount = canSeeFedexAmount(user) ? cleanFedexAmount(payload.fedexAmount) : undefined; // validated before anything is saved; ignored for non-internal roles
   const lifecycle = ImmigrationTimelineService.ensure(caseData);
   const previousStatus = lifecycle.tracking?.status || "draft";
   const previousFedexNumber = lifecycle.tracking?.filing?.carrier === "fedex" ? lifecycle.tracking?.filing?.trackingNumber || "" : "";
@@ -209,6 +297,7 @@ async function save(caseData, payload, user, req) {
   }
   ImmigrationTimelineService.audit(caseData, "uscis_tracking_updated", user, { previousStatus, tracking }, req);
   await caseData.save();
+  await setFedexAmount(caseData, fedexAmount, user, req);
   await ImmigrationTimelineService.writeAudit("USCIS_TRACKING_UPDATED", caseData, user, { previousStatus, tracking }, req);
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "uscis_tracking_updated" }); } catch (_error) { /* live update only */ }
   if (tracking.filing?.carrier === "fedex") {
@@ -280,4 +369,4 @@ async function get(caseData) {
   };
 }
 
-module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber };
+module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount, FILED_STAGE_KEYS, filedByStageFilter, markFiledByStage, markMatterFiledIfAllEmployeesFiled };

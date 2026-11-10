@@ -110,7 +110,8 @@ exports.dashboard = async (req, res) => {
 exports.fedexTracking = async (req, res) => {
   try {
     const caseData = await loadCase(req.params.caseId, req.user);
-    return respond(res, 200, { filing: await TrackingService.setFedexNumber(caseData, req.body?.trackingNumber, req.user, req) });
+    const filing = await TrackingService.setFedexNumber(caseData, req.body?.trackingNumber, req.user, req, req.body?.amount);
+    return respond(res, 200, { filing });
   } catch (error) {
     handle(res, error);
   }
@@ -122,7 +123,10 @@ exports.tracking = async (req, res) => {
     if (req.method === "PUT") {
       return respond(res, 200, { tracking: await TrackingService.save(caseData, req.body || {}, req.user, req) });
     }
-    return respond(res, 200, await TrackingService.get(caseData));
+    const result = await TrackingService.get(caseData);
+    // the FedEx amount is internal: only the internal team's roles are sent it
+    if (TrackingService.canSeeFedexAmount(req.user)) result.fedexAmount = await TrackingService.getFedexAmount(caseData._id);
+    return respond(res, 200, result);
   } catch (error) {
     handle(res, error);
   }

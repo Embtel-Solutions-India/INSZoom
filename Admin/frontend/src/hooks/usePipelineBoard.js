@@ -166,12 +166,15 @@ export default function usePipelineBoard(category = 'immigrant') {
     const task = previous.then(async () => {
       try {
         if (latestRef.current.get(cardId)?.seq !== seq) return
-        if (confirmedRef.current.get(cardId) === toKey) return // dragged back to where the server already has it
+        // dragged back to where the server already has it - except Submitted (FedEx): that move is always sent (the server answers "unchanged" if the card really is there), because the
+        // FedEx-number / client-e-mail prompts below follow every move into Submitted, and a stale "confirmed" stage (the card was moved out elsewhere) must never swallow them
+        if (confirmedRef.current.get(cardId) === toKey && toKey !== 'submitted_fedex') return
         const res = await ghlApi.moveStage(cardId, { unifiedStageKey: toKey, moveId })
         confirmedRef.current.set(cardId, toKey)
         const syncStatus = res.data?.card?.syncStatus
         if (syncStatus) patchCard(cardId, { syncStatus })
-        if (toKey === 'submitted_fedex' && latestRef.current.get(cardId)?.seq === seq) {
+        // only a card that really moved into Submitted is followed up (the server answers "unchanged" when it was already there)
+        if (toKey === 'submitted_fedex' && !res.data?.unchanged && latestRef.current.get(cardId)?.seq === seq) {
           try {
             const card = columnsRef.current.flatMap((col) => col.cards).find((item) => item._id === cardId)
             const who = card?.employeeIdentified === false ? 'Employee' : card?.clientName || ''

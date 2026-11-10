@@ -76,4 +76,37 @@ async function attachStageNames(sources, serialized) {
   return serialized;
 }
 
-module.exports = { attachStageNames };
+/**
+ * Dashboard "Pipeline by stage": how many cases sit in each GoHighLevel stage, immigrant and non-immigrant pipelines combined (same-named stages
+ * add up). Only stages that hold at least one case are returned, in pipeline order. Cases without a GHL card are not counted. Returns
+ * [{ key: <stage name>, count, value: 0 }] to match the other dashboard groupings. Never throws.
+ */
+async function ghlStageCounts(Case, match) {
+  try {
+    const rows = await Case.aggregate([
+      { $match: { $and: [match, { "integrations.ghl.opportunityId": { $exists: true, $ne: null } }] } },
+      { $group: { _id: { pipeline: "$integrations.ghl.pipelineId", key: "$integrations.ghl.unifiedStageKey" }, count: { $sum: 1 } } },
+    ]);
+    const config = env.ghl.enabled && env.ghl.locationId
+      ? await GHLIntegration.findOne({ locationId: env.ghl.locationId }).select("pipelines").lean().catch(() => null)
+      : null;
+    const info = new Map(); // "pipelineId:key" -> { name, order }
+    (config?.pipelines || []).forEach((pipeline) => (pipeline.stages || []).forEach((stage, index) => info.set(`${pipeline.ghlPipelineId}:${stage.key}`, { name: stage.name, order: Number.isFinite(stage.order) ? stage.order : index })));
+    const merged = new Map(); // stage name -> { count, order }
+    rows.forEach((row) => {
+      const found = info.get(`${row._id.pipeline}:${row._id.key}`);
+      if (!found || !row.count) return;
+      const current = merged.get(found.name) || { count: 0, order: found.order };
+      current.count += row.count;
+      current.order = Math.min(current.order, found.order);
+      merged.set(found.name, current);
+    });
+    return [...merged.entries()]
+      .sort((a, b) => a[1].order - b[1].order || a[0].localeCompare(b[0]))
+      .map(([key, { count }]) => ({ key, count, value: 0 }));
+  } catch {
+    return [];
+  }
+}
+
+module.exports = { attachStageNames, ghlStageCounts };

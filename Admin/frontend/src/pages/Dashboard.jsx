@@ -288,6 +288,7 @@ const AdminPanel = ({
                     ))}
                   </div>
                 </div>
+                {item.clientEmail && <p className="text-[11px] text-muted-foreground truncate">{item.clientEmail}</p>}
                 <p className="text-[11px] text-muted-foreground truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
                 {item.lastActivity && <p className="text-[11px] text-muted-foreground truncate">{item.lastActivity}</p>}
               </button>
@@ -568,6 +569,7 @@ const TeamLeadPanel = ({
                       ))}
                     </div>
                   </div>
+                  {item.clientEmail && <p className="text-[11px] text-muted-foreground truncate">{item.clientEmail}</p>}
                   <p className="text-[11px] text-muted-foreground truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
                   {item.lastActivity && <p className="text-[11px] text-muted-foreground truncate">{item.lastActivity}</p>}
                 </button>
