@@ -3,6 +3,7 @@ import { ghlApi } from '../../services/api'
 import { resolveDisplayVisa } from '../../utils/visaDisplay'
 import { useDraggable } from '@dnd-kit/core'
 import { AlertTriangle, GripVertical, Trash2 } from 'lucide-react'
+import { formatUsdExact } from '../../utils/money'
 
 const PRIORITY_DOT = {
   urgent: 'bg-red-500',
@@ -58,6 +59,8 @@ export function CardView({ card, stages, onMoveTo, onDelete, isOverlay = false }
               {card.beneficiaryIdentified ? `Beneficiary: ${card.beneficiaryName}` : 'Beneficiary: not identified yet'}
             </p>
           ) : card.clientEmail ? <p className="truncate text-xs text-muted-foreground">{card.clientEmail}</p> : isEmployee ? null : <p className="text-xs italic text-muted-foreground">No email</p>}
+          {/* the card's Value in GoHighLevel: the total the client is to pay; only sent to roles that may see money */}
+          {typeof card.value === 'number' ? <p className="mt-1 truncate text-xs font-normal text-muted-foreground" data-testid="card-value">Value: {formatUsdExact(card.value)}</p> : null}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {card.visaSelectionRequired ? (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800">Visa required</span>

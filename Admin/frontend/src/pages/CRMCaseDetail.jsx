@@ -4222,7 +4222,7 @@ const CRMCaseDetail = () => {
             <div className="space-y-3">
               {[
                 ['totalAmount', 'Total fees (the GoHighLevel Value; USCIS fees not included)'],
-                ['uscisFee', 'USCIS fee'],
+                ['uscisFee', 'USCIS fee (optional)'],
                 ['amountPaid', 'Amount paid (QB Amount Paid)'],
               ].map(([key, label]) => (
                 <label key={key} className="block text-sm">

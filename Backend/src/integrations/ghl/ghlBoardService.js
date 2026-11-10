@@ -6,13 +6,13 @@ const GHLSyncJob = require("../../models/GHLSyncJob");
 const GHLWebhookEvent = require("../../models/GHLWebhookEvent");
 const caseService = require("../../modules/cases/case.service");
 const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
-const { presentCard, ADMIN_ROLES } = require("./ghlPresenter");
+const { presentCard, ADMIN_ROLES, canSeeValue } = require("./ghlPresenter");
 
 const DEFAULT_PER_COLUMN = 50;
 const MAX_PER_COLUMN = 100;
 
 const CARD_FIELDS =
-  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
+  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl finance.totalAmount createdAt updatedAt";
 
 // Same visibility as the Cases list (admin / super_admin / team_lead see all
 // cases; a case manager only those assigned to them), narrowed to GHL cases.
@@ -37,7 +37,22 @@ async function loadEmployers(cards) {
   return new Map(matters.map((m) => [String(m._id), { name: m.petitionerName || m.clientName || "", user: m.user }]));
 }
 
-async function loadColumn(scope, column, user, { limit, skip }) {
+// The total Value of every stage of one pipeline, in one query: sum of each case's GoHighLevel Value (finance.totalAmount, US dollars) per stage. Counts ALL the cases in a
+// stage (not just the page on screen), so it always matches the stage count. Roles that may not see money get none. Never throws: a problem just means no total is shown.
+async function stageValues(scope, user) {
+  if (!canSeeValue(user)) return null;
+  try {
+    const rows = await Case.aggregate([
+      { $match: scope },
+      { $group: { _id: "$integrations.ghl.unifiedStageKey", value: { $sum: { $ifNull: ["$finance.totalAmount", 0] } } } },
+    ]);
+    return new Map(rows.map((row) => [row._id, Math.round((Number(row.value) || 0) * 100) / 100]));
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function loadColumn(scope, column, user, { limit, skip, values }) {
   const filter = { $and: [scope, { "integrations.ghl.unifiedStageKey": column.key }] };
   const [total, docs] = await Promise.all([
     Case.countDocuments(filter),
@@ -62,7 +77,7 @@ async function loadColumn(scope, column, user, { limit, skip }) {
     if (isAdmin) { card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention); card.failedJobId = failedJobs.get(String(doc._id)) || null; }
     return card;
   });
-  return { key: column.key, name: column.name, total, cards, hasMore: skip + cards.length < total };
+  return { key: column.key, name: column.name, total, ...(values ? { value: values.get(column.key) || 0 } : {}), cards, hasMore: skip + cards.length < total };
 }
 
 const PIPELINE_ORDER = ["immigrant", "non_immigrant"];
@@ -106,9 +121,10 @@ async function getBoard(user, { perColumn, column, skip, category } = {}) {
   if (column) {
     const stage = stages.find((s) => s.key === column);
     if (!stage) return { ...base, columns: [] };
-    return { ...base, columns: [await loadColumn(activeScope, stage, user, { limit, skip: offset })] };
+    return { ...base, columns: [await loadColumn(activeScope, stage, user, { limit, skip: offset, values: await stageValues(activeScope, user) })] };
   }
-  const columns = await Promise.all(stages.map((stage) => loadColumn(activeScope, stage, user, { limit, skip: 0 })));
+  const values = await stageValues(activeScope, user);
+  const columns = await Promise.all(stages.map((stage) => loadColumn(activeScope, stage, user, { limit, skip: 0, values })));
   return { ...base, columns };
 }
 

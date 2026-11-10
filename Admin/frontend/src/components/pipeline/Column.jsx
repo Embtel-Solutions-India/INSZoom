@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import Card from './Card'
+import { formatUsdExact } from '../../utils/money'
 
 import { PAGE_SIZE } from './pageSize'
 
@@ -32,7 +33,11 @@ function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, onDelete, 
       style={{ '--accent': accent }}
     >
       <header className="stage-col-head flex items-center justify-between px-3 py-2.5">
-        <h2 className="truncate text-sm font-semibold">{column.name}</h2>
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{column.name}</h2>
+          {/* the stage's total Value (sum of its cases' GoHighLevel Value); only sent to roles that may see money */}
+          {typeof column.value === 'number' ? <p className="mt-0.5 truncate text-xs font-semibold text-foreground" data-testid={`stage-value-${column.key}`} title="Total value of the cases in this stage">{formatUsdExact(column.value)}</p> : null}
+        </div>
         <span className="stage-col-count ml-2 rounded-full px-2 py-0.5 text-xs font-medium">{column.total}</span>
       </header>
       <div ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
