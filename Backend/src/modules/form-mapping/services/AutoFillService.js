@@ -468,7 +468,7 @@ class AutoFillService {
       await require("../../uscis-forms/case-form-selection.service").assertFormAllowed({ _id: caseId }, { formCode: template.formCode || template.formNumber, componentCode: null });
     }
     const canonicalData = await CanonicalDataService.build(caseId, user, req, {
-      skipRebuild: Boolean(options.selectedFieldIds?.length),
+      skipRebuild: Boolean(options.selectedFieldIds?.length) || Boolean(options.useStoredCanonical),
       reason: "form_mapping",
     });
     const readiness = canonicalData.validation || {};

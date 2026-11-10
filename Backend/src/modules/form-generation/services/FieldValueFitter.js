@@ -44,6 +44,28 @@ function liftFieldLimit(field) {
 const normalizeChoice = (text) => String(text ?? "").replace(/[^a-z0-9]+/gi, "").toLowerCase();
 const optionCode = (option) => String(option ?? "").split(" - ")[0];
 
+// A State drop-down on a USCIS form lists the two-letter codes ("DE"); case data often holds the full name ("DELAWARE"), or the other way round. Both directions are matched
+// through this table, so a state the person entered is never dropped just because it is spelled the other way.
+const US_STATES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware", DC: "District of Columbia", FL: "Florida",
+  GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
+  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin",
+  WY: "Wyoming", AS: "American Samoa", GU: "Guam", MP: "Northern Mariana Islands", PR: "Puerto Rico", VI: "Virgin Islands", UM: "United States Minor Outlying Islands",
+  AA: "Armed Forces Americas", AE: "Armed Forces Europe", AP: "Armed Forces Pacific",
+};
+const STATE_CODE_BY_NAME = new Map(Object.entries(US_STATES).map(([code, name]) => [normalizeChoice(name), code]));
+
+/** The option that is the same US state as `raw` ("DELAWARE" <-> "DE"), or undefined. */
+function matchState(raw, options) {
+  const target = normalizeChoice(raw);
+  const code = STATE_CODE_BY_NAME.get(target) || (US_STATES[String(raw).trim().toUpperCase()] ? String(raw).trim().toUpperCase() : null);
+  if (!code) return undefined;
+  const wantedForms = new Set([normalizeChoice(code), normalizeChoice(US_STATES[code])]);
+  return options.find((option) => wantedForms.has(normalizeChoice(option)) || wantedForms.has(normalizeChoice(optionCode(option))));
+}
+
 function fitChoiceValue({ value, options = [] }) {
   const wanted = (Array.isArray(value) ? value : [value])
     .map((item) => (item === null || item === undefined ? "" : String(item)))
@@ -57,7 +79,8 @@ function fitChoiceValue({ value, options = [] }) {
       options.find((option) => option === raw) ||
       options.find((option) => String(option).trim() === raw.trim()) ||
       options.find((option) => normalizeChoice(option) === target) ||
-      options.find((option) => normalizeChoice(optionCode(option)) === target);
+      options.find((option) => normalizeChoice(optionCode(option)) === target) ||
+      matchState(raw, options);
     if (!match) {
       return { status: "dropped", values: [], reason: `"${raw}" is not one of the choices on this form; left unselected` };
     }

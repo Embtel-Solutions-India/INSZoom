@@ -855,6 +855,7 @@ const CRMCaseDetail = () => {
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
+  const [downloadingFormId, setDownloadingFormId] = useState(null) // the form whose Download is running: its button shows "Downloading…" and ignores a second click
   // the result / error line above the forms list clears itself after a minute (it can also be closed with its X)
   useEffect(() => {
     if (!formActionMessage) return undefined
@@ -3836,6 +3837,8 @@ const CRMCaseDetail = () => {
                             </button>
                             <button
                               onClick={async () => {
+                                if (downloadingFormId) return
+                                setDownloadingFormId(form._id)
                                 try {
                                   const response = await formGenerationApi.downloadForm(form._id)
                                   const blob = new Blob([response.data], { type: 'application/pdf' })
@@ -3852,12 +3855,22 @@ const CRMCaseDetail = () => {
                                   if (formWarnings.length) setFormActionMessage(`Downloaded. Please review these fields on the PDF: ${formWarnings.join('; ')}`)
                                 } catch (error) {
                                   setFormActionMessage(error.response?.data?.message || 'Unable to download this form.')
+                                } finally {
+                                  setDownloadingFormId(null)
                                 }
                               }}
-                              className="btn-secondary text-xs whitespace-nowrap"
+                              className="btn-secondary text-xs whitespace-nowrap inline-flex items-center justify-center gap-1.5 disabled:opacity-70 disabled:cursor-wait"
+                              disabled={Boolean(downloadingFormId)}
+                              aria-busy={downloadingFormId === form._id}
                               title="Download the official, filled PDF (sliced to this form's own pages only)"
                             >
-                              Download
+                              {downloadingFormId === form._id && (
+                                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+                                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                                </svg>
+                              )}
+                              {downloadingFormId === form._id ? 'Downloading…' : 'Download'}
                             </button>
                           </div>
                         </td>
