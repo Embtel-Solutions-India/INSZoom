@@ -131,16 +131,20 @@ export default function usePipelineBoard(category = 'immigrant') {
     if (!flag) idleCheck()
   }, [idleCheck])
 
+  // A stage's total Value follows its cards live: the card's Value leaves the stage it was in and is added to the stage it lands in. Only when the server sent totals (roles that may see money).
+  const takeValue = (col, card) => (typeof col.value === 'number' ? { value: Math.max(0, Math.round((col.value - (Number(card?.value) || 0)) * 100) / 100) } : {})
+  const addValue = (col, card) => (typeof col.value === 'number' ? { value: Math.round((col.value + (Number(card?.value) || 0)) * 100) / 100 } : {})
+
   const relocate = (cols, cardId, toKey, patch) => {
     let moved = null
     const without = cols.map((col) => {
       const found = col.cards.find((c) => c._id === cardId)
       if (!found) return col
       moved = { ...found, ...patch }
-      return { ...col, total: Math.max(0, col.total - 1), cards: col.cards.filter((c) => c._id !== cardId) }
+      return { ...col, total: Math.max(0, col.total - 1), ...takeValue(col, found), cards: col.cards.filter((c) => c._id !== cardId) }
     })
     if (!moved) return cols
-    return without.map((col) => (col.key === toKey ? { ...col, total: col.total + 1, cards: [{ ...moved, unifiedStageKey: toKey }, ...col.cards] } : col))
+    return without.map((col) => (col.key === toKey ? { ...col, total: col.total + 1, ...addValue(col, moved), cards: [{ ...moved, unifiedStageKey: toKey }, ...col.cards] } : col))
   }
 
   const patchCard = (cardId, patch) =>
@@ -213,7 +217,7 @@ export default function usePipelineBoard(category = 'immigrant') {
       const incoming = res.data?.columns?.[0]
       if (!incoming) return
       incoming.cards.forEach((card) => confirmedRef.current.set(card._id, columnKey))
-      commit(columnsRef.current.map((c) => (c.key === columnKey ? { ...c, cards: incoming.cards, total: incoming.total, hasMore: incoming.hasMore } : c)))
+      commit(columnsRef.current.map((c) => (c.key === columnKey ? { ...c, cards: incoming.cards, total: incoming.total, ...(typeof incoming.value === 'number' ? { value: incoming.value } : {}), hasMore: incoming.hasMore } : c)))
     } catch (error) {
       if (!silent) {
         pagesRef.current.delete(columnKey)
@@ -231,7 +235,7 @@ export default function usePipelineBoard(category = 'immigrant') {
   const deleteCard = useCallback(async (cardId) => {
     const before = columnsRef.current
     commit(before.map((col) => (col.cards.some((c) => c._id === cardId)
-      ? { ...col, total: Math.max(0, col.total - 1), cards: col.cards.filter((c) => c._id !== cardId) }
+      ? { ...col, total: Math.max(0, col.total - 1), ...takeValue(col, col.cards.find((c) => c._id === cardId)), cards: col.cards.filter((c) => c._id !== cardId) }
       : col)))
     try {
       await casesApi.deletePermanently(cardId)
@@ -255,7 +259,7 @@ export default function usePipelineBoard(category = 'immigrant') {
       const have = new Set(columnsRef.current.flatMap((c) => c.cards.map((card) => card._id)))
       const fresh = incoming.cards.filter((card) => !have.has(card._id))
       fresh.forEach((card) => confirmedRef.current.set(card._id, columnKey))
-      commit(columnsRef.current.map((c) => (c.key === columnKey ? { ...c, cards: [...c.cards, ...fresh], total: incoming.total, hasMore: incoming.hasMore } : c)))
+      commit(columnsRef.current.map((c) => (c.key === columnKey ? { ...c, cards: [...c.cards, ...fresh], total: incoming.total, ...(typeof incoming.value === 'number' ? { value: incoming.value } : {}), hasMore: incoming.hasMore } : c)))
     } catch (error) {
       notify('error', `Couldn't load more cases: ${errorMessage(error)}`)
     }
@@ -306,6 +310,7 @@ export default function usePipelineBoard(category = 'immigrant') {
       subscribe('case:assigned', requestRefresh), // a case newly assigned to (or taken from) this person
       subscribe('case:unassigned', requestRefresh),
       subscribe('case:created', requestRefresh),
+      subscribe('payment:updated', requestRefresh), // a card's Value was edited (in GoHighLevel or here): its card and its stage total update
     ]
     return () => unsubs.forEach((off) => typeof off === 'function' && off())
   }, [subscribe, connected, requestRefresh])

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { casesApi } from "../../services/api";
 import useCaseDataChanged from "../../hooks/useCaseDataChanged";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
+import useCaseChecklists from "../../hooks/useCaseChecklists";
 import { CaseRoleChecklistView } from "./CaseRoleChecklist";
 import DataEntryModeModal from "./DataEntryModeModal";
 import EmployeeDashboard from "./EmployeeDashboard";
@@ -22,6 +23,19 @@ const READ_ONLY_REFRESH_MS = 20000;
 // into a per-employee Documents → Information → Review packet. Rendered by
 // Documents.jsx only when activeCase.caseRole === 'principal' (a genuinely
 // new-architecture case with real child Cases).
+// One more released checklist of the employer side (e.g. the L-1A Business Plan Checklist), shown under the main one with its own title, sections,
+// Save progress and Submit - the same view and the same saving as the main checklist. Shows nothing until it is released to the client.
+function AdditionalChecklist({ caseId, checklist }) {
+  const qa = useQuestionnaireAnswers(caseId, checklist.targetRole, { referenceId: checklist.referenceId });
+  if (qa.initialLoading || qa.notReleased || qa.error || !qa.questionnaire) return null;
+  return (
+    <section className="space-y-3" data-testid={`additional-checklist-${checklist.targetRole}`}>
+      <h2 className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary">{qa.questionnaire.title || checklist.title}</h2>
+      <CaseRoleChecklistView qa={qa} caseId={caseId} />
+    </section>
+  );
+}
+
 export default function PrincipalCaseWorkspace({ activeCase }) {
   const principalId = activeCase._id;
   const isFamily = activeCase.caseStructure === "family";
@@ -48,6 +62,16 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // read employerQa.answers to gate the data-entry-mode modal below, without
   // fetching the same case+role questionnaire twice.
   const employerQa = useQuestionnaireAnswers(principalId, employerTargetRole);
+  // Every OTHER checklist released to the employer side of this matter (the business plan, ...) is shown too, one after another, below the main
+  // one. The list the server gives a client only contains released checklists; employee checklists live on each employee card, and the Premium
+  // Processing add-on has its own section, so neither is repeated here.
+  const { checklists: matterChecklists } = useCaseChecklists(principalId);
+  const additionalChecklists = (matterChecklists || []).filter((item) => (
+    item.targetRole
+    && item.targetRole !== employerTargetRole
+    && item.targetRole !== employeeTargetRole
+    && !item.staffRequest
+  ));
   // Always called (hooks can't be conditional) — disabled until a card is
   // actually opened, matching CaseRoleChecklist's own disabled-when-readOnly
   // pattern for this same hook.
@@ -146,6 +170,9 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           §7A.4 calls for. Hidden while a packet is open; EmployeePacketStepper
           has its own header (employee name + "All employees" back link). */}
       {!activeChildId && <CaseRoleChecklistView qa={employerQa} caseId={principalId} />}
+      {!activeChildId && additionalChecklists.map((checklist) => (
+        <AdditionalChecklist key={`${checklist.targetRole}:${checklist.referenceId || checklist.key}`} caseId={principalId} checklist={checklist} />
+      ))}
 
       {notice && (
         <div role="status" className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">

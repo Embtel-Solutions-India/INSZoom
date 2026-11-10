@@ -34,14 +34,14 @@ describe("requested items come first", () => {
     expect(result.current.requestedQuestions.map((q) => q.key).sort()).toEqual(["degree", "salary"]);
   });
 
-  it("requested items are not repeated in their normal sections or in the Documents group", () => {
+  it("requested items are not repeated in their normal sections; the other uploads stay in their own section", () => {
     current = { fieldQuestions: plainFields, documentQuestions: plainDocs };
     const { result } = renderHook(() => useQuestionnaireAnswers("case-1", "employee"));
     const { questionsBySection } = result.current;
-    expect((questionsBySection.get("work") || []).map((q) => q.key)).toEqual([]); // "salary" moved up
-    expect((questionsBySection.get("personal") || []).map((q) => q.key)).toEqual(["first_name"]);
-    expect(result.current.sections.map((s) => s.title)).toEqual(["Requested by your case manager", "Personal", "Work", "Documents"]);
-    expect(questionsBySection.get("__documents__").map((q) => q.key)).toEqual(["passport"]);
+    expect((questionsBySection.get("work") || []).map((q) => q.key)).toEqual([]); // "salary" and "degree" moved up
+    expect((questionsBySection.get("personal") || []).map((q) => q.key)).toEqual(["first_name", "passport"]);
+    expect(result.current.sections.map((s) => s.title)).toEqual(["Requested by your case manager", "Personal", "Work"]);
+    expect(questionsBySection.has("__documents__")).toBe(false);
   });
 
   it("a requested question still counts as required (and as missing while blank)", () => {
@@ -56,8 +56,10 @@ describe("requested items come first", () => {
       documentQuestions: plainDocs.map(({ metadata, ...rest }) => rest),
     };
     const { result } = renderHook(() => useQuestionnaireAnswers("case-1", "employee"));
-    expect(result.current.sections.map((s) => s.title)).toEqual(["Personal", "Work", "Documents"]);
+    // every checklist is shown exactly as defined: its own sections, uploads inside the section they belong to, in the checklist's order
+    expect(result.current.sections.map((s) => s.title)).toEqual(["Personal", "Work"]);
     expect(result.current.requestedQuestions).toEqual([]);
-    expect((result.current.questionsBySection.get("__documents__") || []).map((q) => q.key).sort()).toEqual(["degree", "passport"]);
+    expect(result.current.questionsBySection.get("personal").map((q) => q.key)).toEqual(["first_name", "passport"]);
+    expect(result.current.questionsBySection.get("work").map((q) => q.key)).toEqual(["salary", "degree"]);
   });
 });

@@ -3,6 +3,10 @@ const { employeeName } = require("./ghlEmployeeIdentity");
 
 const ADMIN_ROLES = new Set(["super_admin", "admin"]);
 
+// A case's money is internal: only these Admin-portal roles are ever sent a card's / stage's Value (same list as case.service serializeCaseForUser).
+const FINANCE_VIEW_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr"]);
+const canSeeValue = (user) => FINANCE_VIEW_ROLES.has(normalizeRole(user?.role));
+
 // Collapses the stored sync state to SYNCED / PENDING / FAILED. Only admins and
 // super admins ever see FAILED; everyone else sees PENDING while it is being
 // retried. No operation ids, retry counts, HTTP codes or error text are ever
@@ -55,7 +59,9 @@ function presentCard(caseDoc, user, ctx = {}) {
     // Internal metadata: which GHL pipeline the card belongs to.
     sourcePipelineId: ghl.pipelineId || null,
     syncStatus: publicSyncStatus(ghl, user),
+    // The card's Value in GoHighLevel = the total the client is to pay (finance.totalAmount, US dollars). Only sent to roles that may see money; absent for the others.
+    ...(canSeeValue(user) ? { value: Number(caseDoc.finance?.totalAmount) || 0 } : {}),
   };
 }
 
-module.exports = { publicSyncStatus, presentCard, ADMIN_ROLES };
+module.exports = { publicSyncStatus, presentCard, ADMIN_ROLES, canSeeValue };

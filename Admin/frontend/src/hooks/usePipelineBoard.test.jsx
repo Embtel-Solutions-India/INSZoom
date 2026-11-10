@@ -64,6 +64,31 @@ describe('usePipelineBoard', () => {
     expect(hook.result.current.notice).toBeNull()
   })
 
+  it("a stage's total Value follows its cards live: the moved card's Value leaves the old stage and is added to the new one; stages without totals (roles that cannot see money) are untouched", async () => {
+    api.board.mockResolvedValue({
+      data: {
+        ...boardData().data,
+        columns: [
+          { key: 'a', name: 'A', total: 2, value: 12000.5, hasMore: false, cards: [{ ...card('c1', 'a'), value: 10000 }, { ...card('c2', 'a'), value: 2000.5 }] },
+          { key: 'b', name: 'B', total: 1, value: 500, hasMore: false, cards: [{ ...card('c3', 'b'), value: 500 }] },
+          { key: 'c', name: 'C', total: 0, hasMore: false, cards: [] },
+        ],
+      },
+    })
+    const hook = await mount()
+    const value = (key) => hook.result.current.columns.find((c) => c.key === key).value
+    api.moveStage.mockResolvedValue({ data: { card: {} } })
+    await act(async () => hook.result.current.moveCard('c1', 'b'))
+    expect([value('a'), value('b')]).toEqual([2000.5, 10500])
+    await act(async () => hook.result.current.moveCard('c2', 'c'))
+    expect(value('a')).toBe(0)
+    expect(value('c')).toBeUndefined() // this stage has no total from the server: nothing is invented
+    // an edit of a card's Value (payment:updated) refreshes the board
+    api.board.mockClear()
+    await act(async () => { handlers['payment:updated']?.({ caseId: 'c3', kind: 'finance' }) })
+    await waitFor(() => expect(api.board).toHaveBeenCalled(), { timeout: 3000 })
+  })
+
   it('sends our own backend the stage key and a moveId, never anything GHL-specific', async () => {
     const hook = await mount()
     api.moveStage.mockResolvedValue({ data: { card: {} } })

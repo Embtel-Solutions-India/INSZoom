@@ -99,7 +99,7 @@ function AnswerRow({ label, value, extra = null, required = false, prefilledFrom
   return (
     <div className="min-w-0">
       <div className="mb-1 flex items-start justify-between gap-2">
-        <span className="min-w-0 text-[13px] font-medium leading-snug text-foreground">{label}{required && <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span>}</span>
+        <span className="min-w-0 whitespace-pre-wrap text-[13px] font-medium leading-snug text-foreground">{label}{required && <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span>}</span>
         {extra && <span className="shrink-0">{extra}</span>}
       </div>
       <div
@@ -291,7 +291,7 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requ
   return (
     <div className="rounded-lg border border-border bg-muted p-3 text-sm">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-foreground">{question.label}<RequiredMark question={question} />{current.length > 1 ? ` (${current.length})` : ''}</p>
+        <p className="whitespace-pre-wrap font-semibold text-foreground">{question.label}<RequiredMark question={question} />{current.length > 1 ? ` (${current.length})` : ''}</p>
         {requestControl}
       </div>
       {current.length ? (
@@ -299,7 +299,7 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requ
           {current.map((file, index) => (
             <li key={file.storageKey || index} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
               <Paperclip className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-medium text-foreground">{question.label} {index + 1}</span>
+              <span className="font-medium text-foreground">{String(question.label || '').split('\n')[0]} {index + 1}</span>
               <span className="min-w-0 break-all text-xs">{file.originalName}{formatFileSize(file.size) ? ` · ${formatFileSize(file.size)}` : ''}</span>
               <span className="ml-auto flex shrink-0 items-center gap-2 text-xs font-semibold">
                 <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, false)} className="hover:underline disabled:opacity-50">View</button>
@@ -384,7 +384,12 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
   // "file") and documentQuestions (type === "file") - re-merged here so a
   // file/image answer renders in the same section as the plain-text answers
   // around it, instead of needing its own separate panel.
+  // EVERY checklist is shown exactly as it is defined (the same as the client portal): its own sections in their own order, and inside each
+  // section its questions in the checklist's order - uploads and answers mixed, uploads inside the section they belong to. A section the
+  // checklist does not list (a question with an unknown section) follows the listed ones, so nothing is ever left out.
   const allQuestions = [...(fieldQuestions || []), ...(documentQuestions || [])]
+  const listedSections = [...(questionnaire?.sections || [])].sort((a, b) => (a.order || 0) - (b.order || 0)).map((section) => section.key)
+  const sectionRank = (key) => { const index = listedSections.indexOf(key); return index === -1 ? listedSections.length : index }
   const sectionOrder = []
   const bySection = new Map()
   allQuestions.forEach((question) => {
@@ -395,6 +400,10 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
     }
     bySection.get(key).push(question)
   })
+  sectionOrder.sort((a, b) => sectionRank(a) - sectionRank(b))
+  bySection.forEach((list) => list.sort((a, b) => (a.order || 0) - (b.order || 0)))
+  // a question that will not sit in half a row (long wording or answer, a long answer field, parts written on separate lines, a repeating group) takes the full row
+  const isWide = (question) => question.type === 'repeating_group' || String(question.label || '').includes('\n') || isLongQuestion(question, answerMap?.[question.key])
 
   const canEdit = typeof onSaveAnswer === 'function'
   const startEditing = () => {
@@ -457,57 +466,31 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
       <div className="space-y-5">
         {sectionOrder.map((sectionKey) => {
           const questions = bySection.get(sectionKey)
-          const repeatingQuestions = questions.filter((q) => q.type === 'repeating_group')
-          const fileQuestions = questions.filter((q) => q.type === 'file' || q.type === 'file-multiple')
-          const plainQuestions = questions.filter((q) => q.type !== 'repeating_group' && q.type !== 'file' && q.type !== 'file-multiple')
           return (
-            <div key={sectionKey}>
+            <div key={sectionKey} data-testid="inline-section">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">{sectionTitleFor(questionnaire, sectionKey)}</p>
-                {typeof onAutofill === 'function' && plainQuestions.some((q) => PASSPORT_FIELD_KEY.test(q.key)) && <PassportScanButton onAutofill={onAutofill} />}
+                {typeof onAutofill === 'function' && questions.some((q) => PASSPORT_FIELD_KEY.test(q.key)) && <PassportScanButton onAutofill={onAutofill} />}
               </div>
-              {plainQuestions.length > 0 && (() => {
-                const shortQuestions = plainQuestions.filter((q) => !isLongQuestion(q, answerMap?.[q.key]))
-                const longQuestions = plainQuestions.filter((q) => isLongQuestion(q, answerMap?.[q.key]))
-                const renderPlain = (question) => (
-                    editing && EDITABLE_SCALAR_TYPES.has(question.type) ? (
-                      <div key={question.key}>
-                        <label className="mb-1 block text-xs text-muted-foreground">{question.label}<RequiredMark question={question} /></label>
-                        <EditableAnswerInput
-                          question={question}
-                          value={draft[question.key]}
-                          onChange={(value) => setDraft((prev) => ({ ...prev, [question.key]: value }))}
-                        />
-                      </div>
-                    ) : (
-                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
-                    )
-                )
-                return (
-                  <>
-                    {shortQuestions.length > 0 && (
-                      <div className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm md:grid-cols-2" data-testid="short-questions">
-                        {shortQuestions.map(renderPlain)}
-                      </div>
-                    )}
-                    {longQuestions.length > 0 && (
-                      <div className={`grid grid-cols-1 gap-y-3 text-sm ${shortQuestions.length > 0 ? 'mt-3' : ''}`} data-testid="long-questions">
-                        {longQuestions.map(renderPlain)}
-                      </div>
-                    )}
-                  </>
-                )
-              })()}
-              {fileQuestions.length > 0 && (
-                <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {fileQuestions.map((question) => (
-                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
-                  ))}
-                </div>
-              )}
-              {repeatingQuestions.map((question) => (
-                <RepeatingGroupRows key={question.key} question={question} rows={answerMap?.[question.key]} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
-              ))}
+              {/* two columns like every checklist; a long question takes the full row, and the next one is always the next question of the checklist */}
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm md:grid-cols-2">
+                {questions.map((question) => (
+                  <div key={question.key} className={isWide(question) ? 'md:col-span-2' : ''} data-testid={isWide(question) ? 'wide-question' : undefined}>
+                    {(question.type === 'file' || question.type === 'file-multiple')
+                      ? <FileAnswerRow question={question} files={filesByKey?.[question.key]} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                      : question.type === 'repeating_group'
+                        ? <RepeatingGroupRows question={question} rows={answerMap?.[question.key]} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                        : editing && EDITABLE_SCALAR_TYPES.has(question.type)
+                          ? (
+                            <div>
+                              <label className="mb-1 block whitespace-pre-wrap text-xs text-muted-foreground">{question.label}<RequiredMark question={question} /></label>
+                              <EditableAnswerInput question={question} value={draft[question.key]} onChange={(value) => setDraft((prev) => ({ ...prev, [question.key]: value }))} />
+                            </div>
+                          )
+                          : <AnswerRow label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />}
+                  </div>
+                ))}
+              </div>
             </div>
           )
         })}

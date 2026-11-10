@@ -3476,6 +3476,8 @@ exports.sendQuestionnaire = async (req, res, next) => {
     if (req.body.questionnaireId) {
       const questionnaire = await Questionnaire.findById(req.body.questionnaireId);
       if (questionnaire) {
+        // a retired checklist (the old L-1A / L-1A Extension Employer / Employee pair) cannot be sent to a case that does not already carry it
+        if (questionnaireService.isRetiredChecklistFor(questionnaire, caseData)) return res.status(409).json({ success: false, code: "CHECKLIST_RETIRED", message: "This checklist has been retired. Use the L1A Document Checklist instead." });
         const result = await questionnaireService.assignQuestionnaire(questionnaire, { ...req.body, caseId: caseData._id }, req.user, req);
         return res.json({ success: true, message: "Questionnaire sent", data: result, questionnaireReferences: result.case.questionnaireReferences });
       }

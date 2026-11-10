@@ -42,7 +42,7 @@ export default function ChecklistItemRow({ id, type = "field", label, required =
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor={controlId} className="text-sm font-semibold text-foreground">
+              <label htmlFor={controlId} className="whitespace-pre-wrap text-sm font-semibold text-foreground">
                 {label}
                 {required && <span className="ml-1 text-destructive" aria-hidden="true">*</span>}
               </label>
@@ -51,7 +51,7 @@ export default function ChecklistItemRow({ id, type = "field", label, required =
                 {required ? "Required" : "Optional"}
               </span>
             </div>
-            {help && <p className="mt-1 text-xs leading-5 text-muted-foreground">{help}</p>}
+            {help && <p className="mt-1 whitespace-pre-line text-xs leading-5 text-muted-foreground">{help}</p>}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-start">

@@ -289,6 +289,21 @@ function CaseDocumentViewer({ document, onClose }) {
   )
 }
 
+// Required Documents: a checklist's items grouped under its own section titles, in the order the server gives (the checklist's section order,
+// then question order). Items without a section (an older server) stay one flat group, exactly as before.
+function requiredDocumentSections(items = []) {
+  const groups = []
+  items.forEach((item) => {
+    const title = item.section || ''
+    const last = groups[groups.length - 1]
+    if (last && last.title === title) last.items.push(item)
+    else groups.push({ title, items: [item] })
+  })
+  return groups
+}
+// an item a document can be uploaded for (a long-answer item such as L1A question 13 is listed in Required Documents but is answered, not uploaded)
+const isUploadDocumentItem = (item) => !item.type || item.type === 'file' || item.type === 'file-multiple'
+
 function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
   const inputRef = useRef(null)
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -3550,16 +3565,22 @@ const CRMCaseDetail = () => {
                     {c.title}
                     {c.clientApproval !== 'approved' ? <span className="ml-2 text-xs font-normal text-muted-foreground">Draft - not yet sent to the client</span> : null}
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {c.documentItems.map((item) => (
-                      <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-                        <p className="min-w-0 text-sm font-medium text-foreground">{item.label}</p>
-                        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${item.answered ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
-                          {item.answered ? 'Sent' : 'Pending'}
-                        </span>
+                  {/* the checklist's own sections, in its own order (when the server names them), each item exactly as the client sees it */}
+                  {requiredDocumentSections(c.documentItems).map((group) => (
+                    <div key={group.title || 'items'} className={group.title ? 'mb-3' : ''}>
+                      {group.title ? <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground" data-testid="required-documents-section">{group.title}</p> : null}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {group.items.map((item) => (
+                          <div key={item.key} className={`flex items-center justify-between gap-3 rounded-lg border border-border p-3 ${String(item.label || '').includes('\n') ? 'md:col-span-2' : ''}`}>
+                            <p className="min-w-0 whitespace-pre-wrap text-sm font-medium text-foreground">{item.label}</p>
+                            <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${item.answered ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
+                              {item.answered ? 'Sent' : 'Pending'}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -3646,7 +3667,7 @@ const CRMCaseDetail = () => {
           </div>
           {showCaseDocumentUpload && (
             <div className="mb-5">
-              <CaseDocumentUploadPanel caseId={id} checklistItems={checklistDocumentGroups.length ? checklistDocumentGroups.flatMap((c) => c.documentItems.map((item) => ({ documentType: item.key, name: item.label }))) : getChecklistItems()} onUploaded={() => { fetchDocuments(true); reloadCaseChecklists() }} />
+              <CaseDocumentUploadPanel caseId={id} checklistItems={checklistDocumentGroups.length ? checklistDocumentGroups.flatMap((c) => c.documentItems.filter(isUploadDocumentItem).map((item) => ({ documentType: item.key, name: String(item.label || '').split('\n')[0] }))) : getChecklistItems()} onUploaded={() => { fetchDocuments(true); reloadCaseChecklists() }} />
             </div>
           )}
           {tabLoading.documents ? (
@@ -4222,7 +4243,7 @@ const CRMCaseDetail = () => {
             <div className="space-y-3">
               {[
                 ['totalAmount', 'Total fees (the GoHighLevel Value; USCIS fees not included)'],
-                ['uscisFee', 'USCIS fee'],
+                ['uscisFee', 'USCIS fee (optional)'],
                 ['amountPaid', 'Amount paid (QB Amount Paid)'],
               ].map(([key, label]) => (
                 <label key={key} className="block text-sm">
