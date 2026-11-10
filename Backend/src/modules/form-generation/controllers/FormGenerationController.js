@@ -35,6 +35,14 @@ exports.preview = async (req, res) => {
 
 exports.download = async (req, res) => {
   try {
+    // The stored PDF is a snapshot from when it was last generated. If the case's data has moved on since (a name, e-mail or answer that arrived through the client
+    // portal, a staff edit or a sync), handing out that snapshot would drop those values - so the current form is served instead (same path as "Download form").
+    try {
+      const { isBehindCanonical } = require("../services/OfficialFormDownloadService");
+      const current = await require("../../../models/CaseForm").findById(req.params.caseFormId).select("caseId versionNumber syncState isLocked status");
+      const historical = current && (current.isLocked || ["locked", "filed"].includes(current.status));
+      if (current && !historical && (current.syncState?.stale || await isBehindCanonical(current))) return exports.downloadForm(req, res);
+    } catch (_error) { /* cannot tell: serve the stored PDF as before */ }
     const { caseForm, document, buffer } = await PDFGenerationService.getPdfDocument(req.params.caseFormId);
     await PDFGenerationService.audit("PDF_DOWNLOADED", caseForm, req.user, req, { documentId: document._id });
     sendFile(res, { buffer, fileName: document.originalName || "uscis-form.pdf", mimeType: "application/pdf", disposition: "attachment" });

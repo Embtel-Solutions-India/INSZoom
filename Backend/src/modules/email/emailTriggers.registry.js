@@ -62,6 +62,7 @@ const TRIGGERS = [
   t("document-requested", "Document Requested", "Documents", "client", "A client is asked to upload a document.", { groups: ["Client", "Case", "Document"] }),
 
   t("case-submitted-client", "Case Submitted - Congratulations", "Case Status", "client", "The client's case moved to the Submitted stage and the case manager chose to inform the client: a congratulations e-mail with where the case stands and what comes next. Sent once per case, only on the team's choice.", { groups: ["Client", "Case"] }),
+  t("case-fedex-number-client", "FedEx Tracking Number", "Case Status", "client", "The team adds the FedEx tracking number after the case-submitted e-mail already went out: the client gets the number, a FedEx tracking link and a pointer to the FedEx tracking area on their dashboard. If the number was on file when the submitted e-mail was sent, it was part of that e-mail and this one is not sent.", { groups: ["Client", "Case"] }),
   t("filing-submitted", "Filing Submitted", "Forms", "client", "A petition/application was filed with USCIS.", { groups: ["Client", "Case"] }),
 
   t("receipt-received", "Receipt Notice Received", "Case Status", "client", "A USCIS receipt notice arrived.", { groups: ["Client", "Case"] }),

@@ -39,7 +39,7 @@ export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = 
   }
 
   const options = [
-    { value: 'send', title: 'Send the client an e-mail', text: 'Tell the client that their case is complete and has been submitted.' },
+    { value: 'send', title: 'Send the client an e-mail', text: 'Tell the client that their case is complete and has been submitted. If a FedEx tracking number was entered, it is included in the same e-mail.' },
     { value: 'skip', title: "Don't inform the client", text: 'No e-mail will be sent to the client about this.' },
   ]
 

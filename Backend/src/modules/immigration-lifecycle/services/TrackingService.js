@@ -162,6 +162,16 @@ function cleanFedexNumber(value) {
   return FEDEX_NUMBER.test(compact) ? compact : null;
 }
 
+// A number added AFTER the client got the "case submitted" e-mail is e-mailed separately (see ghlSubmittedNotice.sendFedexNumberNotice for the rules). Fire and forget:
+// it never throws and never delays or fails the save.
+function notifyClientOfFedexNumber(caseData, number, previous, user) {
+  try {
+    require("../../../integrations/ghl/ghlSubmittedNotice")
+      .sendFedexNumberNotice({ caseId: caseData._id, trackingNumber: number, previous, user })
+      .catch(() => {});
+  } catch (_error) { /* never affects the save */ }
+}
+
 async function setFedexNumber(caseData, trackingNumber, user, req) {
   const number = cleanFedexNumber(trackingNumber);
   if (!number) throw Object.assign(new Error("Enter a valid FedEx tracking number (8 to 34 letters or digits)."), { status: 400, code: "INVALID_FEDEX_NUMBER" });
@@ -173,6 +183,7 @@ async function setFedexNumber(caseData, trackingNumber, user, req) {
   );
   try { await ImmigrationTimelineService.writeAudit("FEDEX_TRACKING_SET", caseData, user, { previous, trackingNumber: number }, req); } catch (_error) { /* bookkeeping only */ }
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "fedex_tracking_set" }); } catch (_error) { /* live update only */ }
+  notifyClientOfFedexNumber(caseData, number, previous, user);
   return { carrier: "fedex", trackingNumber: number };
 }
 
@@ -180,6 +191,7 @@ async function save(caseData, payload, user, req) {
   validatePayload(payload);
   const lifecycle = ImmigrationTimelineService.ensure(caseData);
   const previousStatus = lifecycle.tracking?.status || "draft";
+  const previousFedexNumber = lifecycle.tracking?.filing?.carrier === "fedex" ? lifecycle.tracking?.filing?.trackingNumber || "" : "";
   const tracking = normalizedTracking(caseData, payload, user);
   lifecycle.tracking = tracking;
   lifecycle.filingStatus = STATUS_TO_LIFECYCLE[tracking.status];
@@ -199,6 +211,10 @@ async function save(caseData, payload, user, req) {
   await caseData.save();
   await ImmigrationTimelineService.writeAudit("USCIS_TRACKING_UPDATED", caseData, user, { previousStatus, tracking }, req);
   try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "uscis_tracking_updated" }); } catch (_error) { /* live update only */ }
+  if (tracking.filing?.carrier === "fedex") {
+    const savedNumber = cleanFedexNumber(tracking.filing.trackingNumber);
+    if (savedNumber) notifyClientOfFedexNumber(caseData, savedNumber, previousFedexNumber, user);
+  }
   if (previousStatus !== tracking.status) {
     await NotificationLifecycleService.caseStakeholders(caseData, {
       type: "case_stage_changed",

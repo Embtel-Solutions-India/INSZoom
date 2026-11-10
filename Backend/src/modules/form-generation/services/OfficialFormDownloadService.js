@@ -39,6 +39,24 @@ function fieldWarnings(renderReport) {
   ];
 }
 
+// Is this form's saved copy behind the case's data? The editor shows the case's CURRENT data (it merges the canonical profile when it opens), but a download is
+// built from what is saved on the form - so a name, e-mail or any answer that reached the case through another path (client portal, staff edit, profile, sync) after
+// the form was last filled used to be missing from the downloaded PDF. The case's canonical profile carries a version that goes up with every change, and the form
+// remembers the version it was filled from: a higher case version means the form is behind. One small read; never throws (false = "cannot tell", i.e. old behaviour).
+async function isBehindCanonical(caseForm, deps = {}) {
+  try {
+    if (!caseForm || !caseForm.caseId || (caseForm.versionNumber || 0) <= 0) return false;
+    if (!deps.Case && require("mongoose").connection.readyState !== 1) return false; // no database connection: cannot tell, and must not wait for one
+    const CaseModel = deps.Case || require("../../../models/Case");
+    const row = await CaseModel.findById(caseForm.caseId).select("canonicalProfile.version").lean();
+    const caseVersion = Number(row?.canonicalProfile?.version || 0);
+    const syncedVersion = Number(caseForm.syncState?.canonicalVersion || 0);
+    return caseVersion > syncedVersion;
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping = false }, deps = {}) {
   const generation = deps.PDFGenerationService || PDFGenerationService;
   const renderer = deps.PDFRenderer || PDFRenderer;
@@ -52,12 +70,15 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
   // instead of failing.
   let caseForm = await generation.loadCaseForm(caseFormId, { readOnly: false });
   const isHistorical = caseForm.isLocked || ["locked", "filed"].includes(caseForm.status);
-  const wasStale = Boolean(caseForm.syncState?.stale) || !caseForm.syncState?.lastSyncedAt;
+  const flaggedStale = Boolean(caseForm.syncState?.stale) || !caseForm.syncState?.lastSyncedAt;
+  // behind the case's data without having been flagged: refreshed too, from the case's already-built profile (no 8-second rebuild)
+  const behind = !isHistorical && !flaggedStale && (await isBehindCanonical(caseForm, deps));
+  const wasStale = flaggedStale || behind;
 
   if (!isHistorical && wasStale) {
     try {
       const AutoFillService = deps.AutoFillService || require("../../form-mapping/services/AutoFillService");
-      await AutoFillService.generate(caseForm.caseId, caseForm.formCode, user, req, { regenerate: true });
+      await AutoFillService.generate(caseForm.caseId, caseForm.formCode, user, req, { regenerate: true, ...(behind ? { useStoredCanonical: true } : {}) });
       caseForm = await generation.loadCaseForm(caseFormId, { readOnly: true });
     } catch (error) {
       warnings.push(`Could not refresh the form from the latest case data (${error.message}); downloaded with the values last saved.`);
@@ -157,4 +178,4 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
   return { buffer: result.buffer, caseForm, mode, warnings, timings, bookkeeping: deferBookkeeping ? bookkeeping : null };
 }
 
-module.exports = { prepareOfficialDownload, withTimeout };
+module.exports = { prepareOfficialDownload, isBehindCanonical, withTimeout };

@@ -119,7 +119,8 @@ async function sendOnTeamChoice({ caseId, send, user }) {
       userId: client._id,
       recipientRole: client.role,
       triggeredBy: user?._id, // EmailLog.triggeredBy is a User id: the case manager who chose to send it
-      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber },
+      // the FedEx number, when the team has already entered it, goes inside this e-mail; without one the FedEx part is left out and the number follows in its own e-mail later
+      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: caseDoc.immigrationLifecycle?.tracking?.filing?.trackingNumber || undefined },
     });
     const outcome = { sent: Boolean(result?.sent), reason: result?.reason };
     await recordChoice(caseId, user, true, outcome);
@@ -130,4 +131,44 @@ async function sendOnTeamChoice({ caseId, send, user }) {
   }
 }
 
-module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, SUBMITTED_STAGE_KEY };
+const FEDEX_TEMPLATE = "case-fedex-number-client";
+const cleanNumber = (value) => String(value ?? "").replace(/[\s-]+/g, "");
+
+/**
+ * The FedEx number was added or changed by the team. If the client already got the "case submitted" e-mail WITHOUT it, they get this separate e-mail with the number
+ * and a pointer to the FedEx tracking area on their dashboard. Nothing is sent when:
+ *   - the submitted e-mail has not been sent (the team chose not to inform the client, or it is still to be sent - the number then rides inside that e-mail);
+ *   - the number is unchanged, or that exact number was already e-mailed for this case;
+ *   - the case is an employer matter / has no client login (same rules as the submitted e-mail).
+ * Fire and forget: never throws, never slows or fails the save.
+ */
+async function sendFedexNumberNotice({ caseId, trackingNumber, previous, user }) {
+  try {
+    const number = cleanNumber(trackingNumber);
+    if (!number || number === cleanNumber(previous)) return { sent: false, reason: "unchanged" };
+    const caseDoc = await Case.findById(caseId);
+    if (!caseDoc) return { sent: false, reason: "case_not_found" };
+    if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
+    const submittedSent = await EmailLog.findOne({ templateKey: TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    if (!submittedSent) return { sent: false, reason: "submitted_email_not_sent" };
+    const alreadyThisNumber = await EmailLog.findOne({ templateKey: FEDEX_TEMPLATE, caseId: caseDoc._id, "data.trackingNumber": number, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    if (alreadyThisNumber) return { sent: false, reason: "already_sent" };
+    const client = await recipientFor(caseDoc);
+    if (!client) return { sent: false, reason: "no_client_login" };
+    const { sendTemplateEmail } = require("../../modules/email/email.service");
+    const result = await sendTemplateEmail(FEDEX_TEMPLATE, {
+      to: client.email,
+      caseId: caseDoc._id,
+      userId: client._id,
+      recipientRole: client.role,
+      triggeredBy: user?._id,
+      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: number },
+    });
+    return { sent: Boolean(result?.sent), reason: result?.reason };
+  } catch (error) {
+    logger.warn("fedex_number_notice_failed", { caseId: String(caseId), error: error.message });
+    return { sent: false, reason: "error" };
+  }
+}
+
+module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, SUBMITTED_STAGE_KEY };

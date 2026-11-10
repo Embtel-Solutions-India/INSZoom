@@ -23,12 +23,13 @@ const SUPPRESS_ALL_EXEMPT = new Set(["password-reset"]);
 // Everyone who works in the Admin portal ("team_member" is the generic internal-team marker some call sites pass instead of a User.role).
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "team_member"];
 // Emails that go to the client and to nobody else (see sendTemplateEmail).
-const CLIENT_ONLY_TEMPLATES = new Set(["checklist-incomplete-reminder", "checklist-received-client", "petition-client-review", "supporting-document-client-review", "case-submitted-client"]);
+const CLIENT_ONLY_TEMPLATES = new Set(["checklist-incomplete-reminder", "checklist-received-client", "petition-client-review", "supporting-document-client-review", "case-submitted-client", "case-fedex-number-client"]);
 const TEMPLATE_AUDIENCE = {
   "case-created-client": "client",
   "checklist-incomplete-reminder": "client",
   "checklist-received-client": "client",
   "case-submitted-client": "client",
+  "case-fedex-number-client": "client",
   "petition-client-review": "client",
   "petition-feedback-received": "team_member",
   "petition-attorney-review": "attorney",
@@ -105,6 +106,7 @@ const TEMPLATES = {
   "case-created-client": require("./templates/case-created-client"),
   "checklist-incomplete-reminder": require("./templates/checklist-incomplete-reminder"),
   "case-submitted-client": require("./templates/case-submitted-client"),
+  "case-fedex-number-client": require("./templates/case-fedex-number-client"),
   "checklist-received-client": require("./templates/checklist-received-client"),
   "petition-client-review": require("./templates/petition-client-review"),
   "petition-feedback-received": require("./templates/petition-feedback-received"),

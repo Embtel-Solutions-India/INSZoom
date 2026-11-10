@@ -60,3 +60,14 @@ test("an answer that matches no choice is reported, not guessed", () => {
   assert.equal(result.status, "dropped");
   assert.match(result.reason, /"Z9" is not one of the choices/);
 });
+
+test("a State drop-down accepts the state spelled out or as its code, either way round (never left blank for a spelling difference)", () => {
+  const { fitChoiceValue } = require("../services/FieldValueFitter");
+  const codes = ["AL", "DE", "NY", "DC"];
+  assert.deepEqual(fitChoiceValue({ value: "DELAWARE", options: codes }).values, ["DE"]);
+  assert.deepEqual(fitChoiceValue({ value: "new york", options: codes }).values, ["NY"]);
+  assert.deepEqual(fitChoiceValue({ value: "District of Columbia", options: codes }).values, ["DC"]);
+  assert.deepEqual(fitChoiceValue({ value: "DE", options: ["Alabama", "Delaware"] }).values, ["Delaware"]);
+  assert.equal(fitChoiceValue({ value: "DE", options: codes }).status, "unchanged");
+  assert.equal(fitChoiceValue({ value: "Atlantis", options: codes }).status, "dropped");
+});
