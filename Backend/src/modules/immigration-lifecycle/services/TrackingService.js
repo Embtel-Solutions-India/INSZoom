@@ -221,6 +221,59 @@ async function setFedexNumber(caseData, trackingNumber, user, req, amountInput) 
   return { carrier: "fedex", trackingNumber: number };
 }
 
+// ---- Filed by pipeline stage -------------------------------------------------------------------------------------------------------------------------------------------------------------
+// A case at Submitted (FedEx) or any later stage (Receipt Tracking, RFE, Status - Approved / Disapproved, FeedBack) HAS been filed, so its recorded USCIS status must read Filed - not only
+// on one screen. On Hold is not a filed stage. Only a PRE-filing status (draft / ready to file / none) is changed: any later status (receipt issued, approved ...) stays exactly as recorded.
+// Quiet on purpose: it never sends the client a status e-mail or notification, and adds no timeline entry (the stage move itself is already on the timeline).
+const FILED_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "rfe", "status_approved", "status_disapproved", "feedback"];
+const PRE_FILING_STATUSES = ["draft", "ready_to_file", ""];
+
+/** The filter that finds cases that sit at a filed stage but whose recorded status still says "not filed". Pass an _id (or any extra filter) to narrow it. */
+const filedByStageFilter = (extra = {}) => ({
+  ...extra,
+  "integrations.ghl.unifiedStageKey": { $in: FILED_STAGE_KEYS },
+  $or: [{ "immigrationLifecycle.tracking.status": { $in: PRE_FILING_STATUSES } }, { "immigrationLifecycle.tracking.status": { $exists: false } }],
+});
+
+const FILED_PATCH = { "immigrationLifecycle.tracking.status": "filed", "immigrationLifecycle.filingStatus": STATUS_TO_LIFECYCLE.filed };
+const PRE_FILING_FILTER = { $or: [{ "immigrationLifecycle.tracking.status": { $in: PRE_FILING_STATUSES } }, { "immigrationLifecycle.tracking.status": { $exists: false } }] };
+
+/**
+ * An employer matter (the principal case) has no pipeline card of its own - its employees do. It reads Filed when EVERY employee case under it that has a card is at a filed stage
+ * (at least one). Same quiet rules as above. Returns true when it changed the matter.
+ */
+async function markMatterFiledIfAllEmployeesFiled(parentId, { dryRun = false } = {}) {
+  try {
+    const Case = require("../../../models/Case");
+    const cards = await Case.find({ parentCase: parentId, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } }).select("integrations.ghl.unifiedStageKey").lean();
+    if (!cards.length || !cards.every((card) => FILED_STAGE_KEYS.includes(card.integrations?.ghl?.unifiedStageKey))) return false;
+    const target = { _id: parentId, "integrations.ghl.opportunityId": null, ...PRE_FILING_FILTER }; // null also matches a missing field: the matter has no card of its own
+    if (dryRun) return Boolean(await Case.exists(target));
+    const result = await Case.updateOne(target, { $set: FILED_PATCH }, { timestamps: false });
+    if (result?.modifiedCount) {
+      try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(parentId, "tracking", { reason: "filed_by_stage" }); } catch (_error) { /* live update only */ }
+      return true;
+    }
+  } catch (_error) { /* bookkeeping only */ }
+  return false;
+}
+
+/** Sets the recorded status to Filed for ONE case when its stage says it was filed (and, for an employee case, its employer matter when all its employees are). Never throws; returns true when it changed something. */
+async function markFiledByStage(caseId) {
+  let changed = false;
+  try {
+    const Case = require("../../../models/Case");
+    const result = await Case.updateOne(filedByStageFilter({ _id: caseId }), { $set: FILED_PATCH }, { timestamps: false });
+    if (result?.modifiedCount) {
+      changed = true;
+      try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseId, "tracking", { reason: "filed_by_stage" }); } catch (_error) { /* live update only */ }
+    }
+    const row = await Case.findById(caseId).select("parentCase").lean();
+    if (row?.parentCase) changed = (await markMatterFiledIfAllEmployeesFiled(row.parentCase)) || changed;
+  } catch (_error) { /* bookkeeping only: a stage move is never failed by this */ }
+  return changed;
+}
+
 async function save(caseData, payload, user, req) {
   validatePayload(payload);
   const fedexAmount = canSeeFedexAmount(user) ? cleanFedexAmount(payload.fedexAmount) : undefined; // validated before anything is saved; ignored for non-internal roles
@@ -316,4 +369,4 @@ async function get(caseData) {
   };
 }
 
-module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount };
+module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount, FILED_STAGE_KEYS, filedByStageFilter, markFiledByStage, markMatterFiledIfAllEmployeesFiled };

@@ -8,8 +8,10 @@ import { displayTrackingNumber, isValidTrackingNumber } from '../utils/fedexTrac
 // shows it with a link to FedEx. "Add later" closes it; the case's USCIS Tracking tab keeps reminding until a number exists. A number already on file is pre-filled.
 export default function FedexNumberModal({ caseId, caseNumber, label = '', onClose }) {
   const [value, setValue] = useState('')
-  // What the shipment cost (US dollars): INTERNAL only, never shown to the client. null = the server did not send it for this role, so the field is hidden.
-  const [amount, setAmount] = useState(null)
+  // What the shipment cost (US dollars): INTERNAL only, never shown to the client. The box is always there with the number (this popup is only for the internal team; the server ignores
+  // an amount from any other role). It is sent only when the person typed in it, so a saved amount is never overwritten by an empty box that has not finished loading.
+  const [amount, setAmount] = useState('')
+  const [amountTouched, setAmountTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
@@ -22,7 +24,7 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
         const number = response.data?.tracking?.filing?.trackingNumber
         if (!cancelled && number) setValue((current) => current || displayTrackingNumber(number))
         const sent = response.data?.fedexAmount
-        if (!cancelled && sent !== undefined) setAmount((current) => (current === null ? (sent === null ? '' : String(sent)) : current))
+        if (!cancelled && sent !== undefined && sent !== null) setAmount((current) => current || String(sent))
       })
       .catch(() => {}) // a number is simply not pre-filled
     return () => { cancelled = true }
@@ -42,15 +44,15 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
       inputRef.current?.focus()
       return
     }
-    if (amount !== null && amount.trim() !== '' && !(Number(amount) >= 0)) {
+    if (amountTouched && amount.trim() !== '' && !(Number(amount) >= 0)) {
       setError('Enter a valid FedEx amount (a number, 0 or more), or leave it empty.')
       return
     }
     setBusy(true)
     setError('')
     try {
-      if (amount === null) await lifecycleApi.saveFedexNumber(caseId, value)
-      else await lifecycleApi.saveFedexNumber(caseId, value, amount)
+      if (amountTouched) await lifecycleApi.saveFedexNumber(caseId, value, amount)
+      else await lifecycleApi.saveFedexNumber(caseId, value)
       window.dispatchEvent(new CustomEvent('fedex-number-saved', { detail: { caseId } }))
       onClose(true)
     } catch (err) {
@@ -84,7 +86,7 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
           className="input-field mt-1.5 font-mono"
           aria-invalid={Boolean(error)}
         />
-        {amount !== null && (
+        {(
           <>
             <label htmlFor="fedex-amount-input" className="mt-4 block text-sm font-medium text-foreground">FedEx amount (USD) <span className="font-normal text-muted-foreground">· optional, internal only</span></label>
             <input
@@ -94,7 +96,7 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
               step="0.01"
               inputMode="decimal"
               value={amount}
-              onChange={(event) => { setAmount(event.target.value); if (error) setError('') }}
+              onChange={(event) => { setAmount(event.target.value); setAmountTouched(true); if (error) setError('') }}
               placeholder="e.g. 45.80"
               disabled={busy}
               className="input-field mt-1.5"

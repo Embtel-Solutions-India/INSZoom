@@ -124,6 +124,9 @@ const USCIS_STATUSES = [
   'transferred', 'approved', 'denied', 'withdrawn', 'closed'
 ]
 
+// Tag on a document uploaded from the USCIS Tracking tab's "USCIS Documents" card: such documents stay out of the Documents tab's "Uploaded Documents" list.
+const USCIS_TRACKING_TAG = 'uscis-tracking-upload'
+
 const emptyTracking = {
   status: 'draft',
   filing: {
@@ -1159,7 +1162,8 @@ const CRMCaseDetail = () => {
       // manager's own manual add via CaseDocumentUploadPanel, is labeled
       // with the actual uploader's role instead) and belong on the Petition
       // tab, not here.
-      setDocuments((response.data.documents || []).filter((doc) => doc.uploadedBy !== 'system'))
+      // Also not here: notices the team uploaded on the USCIS Tracking tab (tagged USCIS_TRACKING_TAG) - they are listed only in that tab's USCIS Documents card.
+      setDocuments((response.data.documents || []).filter((doc) => doc.uploadedBy !== 'system' && !(doc.tags || []).includes(USCIS_TRACKING_TAG)))
       setFetched(prev => ({ ...prev, documents: true }))
     } catch (error) {
       console.error('Error fetching documents:', error)
@@ -1644,6 +1648,37 @@ const CRMCaseDetail = () => {
       : { ...current, [field]: value })
   }
 
+  // USCIS Documents card: the team uploads a notice (receipt, approval, RFE ...) straight here. It is stored as an internal government document of this case, which is exactly what this card lists.
+  const uscisUploadRef = useRef(null)
+  const [uploadingUscisDocs, setUploadingUscisDocs] = useState(false)
+  const [uscisDocsMessage, setUscisDocsMessage] = useState('')
+  const uploadUscisDocuments = async (fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length || uploadingUscisDocs) return
+    setUploadingUscisDocs(true)
+    setUscisDocsMessage('')
+    let done = 0
+    try {
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('caseId', id)
+        formData.append('documentType', 'uscis_notice')
+        formData.append('category', 'government')
+        formData.append('tags', USCIS_TRACKING_TAG)
+        formData.append('legacySource', 'Admin')
+        await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+        done += 1
+      }
+      setUscisDocsMessage(done === 1 ? 'Document uploaded.' : `${done} documents uploaded.`)
+    } catch (error) {
+      setUscisDocsMessage(`${done ? `${done} uploaded, then it stopped: ` : ''}${error.response?.data?.message || 'Unable to upload the document.'}`)
+    } finally {
+      setUploadingUscisDocs(false)
+      if (done) fetchTracking(true)
+    }
+  }
+
   const saveTracking = async () => {
     try {
       setSavingTracking(true)
@@ -1746,6 +1781,10 @@ const CRMCaseDetail = () => {
     }
   }
 
+  // true once the person picked a stage in the Update Stage dialog (reset when the dialog closes or another employee is chosen)
+  const stagePickedRef = useRef(false)
+  useEffect(() => { if (!showStageUpdateModal) stagePickedRef.current = false }, [showStageUpdateModal])
+
   useEffect(() => {
     if (!showStageUpdateModal || !id) return undefined
     let cancelled = false
@@ -1758,10 +1797,11 @@ const CRMCaseDetail = () => {
         const employees = res.data?.employees ?? null
         setGhlEmployees(employees)
         // always the current Pipeline stage (of the chosen employee, for an employer matter), so a move made in GoHighLevel shows here
+        // ...but never over a stage the person has already picked in the dialog: a live GoHighLevel update re-runs this, and must not put the choice back to the current stage
         if (employees) {
           setStageEmployeeId((chosen) => (employees.some((e) => e.caseId === chosen) ? chosen : ''))
-          setNewStage(employees.find((e) => e.caseId === stageEmployeeIdRef.current)?.currentKey || '')
-        } else {
+          if (!stagePickedRef.current) setNewStage(employees.find((e) => e.caseId === stageEmployeeIdRef.current)?.currentKey || '')
+        } else if (!stagePickedRef.current) {
           setNewStage(res.data?.currentKey || '')
         }
       })
@@ -1799,11 +1839,12 @@ const CRMCaseDetail = () => {
   const handleStageUpdate = async () => {
     if (stageUpdating) return
     setStageUpdating(true)
-    const movedTo = newStage
+    let movedTo = newStage
     const movedEmployee = ghlEmployees ? ghlEmployees.find((employee) => employee.caseId === stageEmployeeId) : null
     try {
       if (useGhlStages) {
-        await ghlApi.moveStage(id, { unifiedStageKey: newStage, ...(ghlEmployees ? { employeeCaseId: stageEmployeeId } : {}), moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
+        const moved = await ghlApi.moveStage(id, { unifiedStageKey: newStage, ...(ghlEmployees ? { employeeCaseId: stageEmployeeId } : {}), moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
+        if (moved?.data?.unchanged) movedTo = '' // the card was already at that stage: nothing moved, so nothing to follow up on
       } else {
         await api.put(`/cases/${id}/stage`, { stage: newStage })
       }
@@ -3072,8 +3113,9 @@ const CRMCaseDetail = () => {
                     </select>
                   </TrackingField>
                   <TrackingField label="Shipment Tracking Number">
-                    <input type="text" value={tracking.filing.trackingNumber} onChange={event => updateTracking('filing', 'trackingNumber', event.target.value)} className="input-field" />
-                    <FedexTrackingTools carrier={tracking.filing.carrier} number={tracking.filing.trackingNumber} />
+                    {/* this is the FedEx section: typing a number with no carrier chosen means FedEx (the client portal only shows a FedEx number), and Copy / Track show for it */}
+                    <input type="text" value={tracking.filing.trackingNumber} onChange={event => { const value = event.target.value; setTracking(current => ({ ...current, filing: { ...current.filing, trackingNumber: value, carrier: current.filing.carrier || (value.trim() ? 'fedex' : '') } })) }} className="input-field" />
+                    <FedexTrackingTools carrier={tracking.filing.carrier || 'fedex'} number={tracking.filing.trackingNumber} />
                   </TrackingField>
                   {tracking.fedexAmount !== undefined && (
                     <TrackingField label="FedEx Amount (USD) · internal only">
@@ -3157,16 +3199,24 @@ const CRMCaseDetail = () => {
                     </select>
                   </TrackingField>
                 </div>
-                <TrackingField label="AI-Generated RFE Summary">
-                  <textarea rows={4} value={tracking.rfe.aiSummary} onChange={event => updateTracking('rfe', 'aiSummary', event.target.value)} className="input-field mt-4" placeholder="AI extraction or case manager-reviewed RFE summary" />
-                </TrackingField>
               </div>
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <div className="card">
-                  <h3 className="text-lg font-semibold text-foreground">USCIS Documents</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Receipt, approval, biometrics, interview, RFE, and transfer notices attach automatically after classification.</p>
-                  <div className="mt-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-foreground">USCIS Documents</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Receipt, approval, biometrics, interview, RFE, and transfer notices attach automatically after classification.</p>
+                    </div>
+                    <input ref={uscisUploadRef} type="file" multiple className="hidden" onChange={event => { uploadUscisDocuments(event.target.files); event.target.value = '' }} data-testid="uscis-document-input" />
+                    <button type="button" onClick={() => uscisUploadRef.current?.click()} disabled={uploadingUscisDocs} className="btn-secondary inline-flex shrink-0 items-center gap-2 disabled:opacity-50">
+                      <Upload className="h-4 w-4" /> {uploadingUscisDocs ? 'Uploading…' : 'Upload'}
+                    </button>
+                  </div>
+                  {uscisDocsMessage && (
+                    <p className={`mt-3 text-sm ${uscisDocsMessage.includes('uploaded') ? 'text-emerald-700' : 'text-rose-600'}`} role="status">{uscisDocsMessage}</p>
+                  )}
+                  <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
                     {trackingDocuments.length ? trackingDocuments.map(document => (
                       <div key={document._id} className="flex items-center justify-between rounded-lg border border-border p-3">
                         <div className="min-w-0">
@@ -4220,6 +4270,7 @@ const CRMCaseDetail = () => {
                     onChange={(e) => {
                       const employee = ghlEmployees.find((item) => item.caseId === e.target.value)
                       setStageEmployeeId(e.target.value)
+                      stagePickedRef.current = false
                       setNewStage(employee?.currentKey || '')
                     }}
                     className="input-field"
@@ -4234,7 +4285,7 @@ const CRMCaseDetail = () => {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">New Stage</label>
                 <select
                   value={newStage}
-                  onChange={(e) => setNewStage(e.target.value)}
+                  onChange={(e) => { stagePickedRef.current = true; setNewStage(e.target.value) }}
                   className="input-field"
                   disabled={stageUpdating}
                 >

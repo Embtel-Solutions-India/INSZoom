@@ -67,6 +67,8 @@ async function refreshClientProgress(caseDoc) {
 function notifySubmitted(args) {
   try {
     refreshClientProgress(args.caseDoc).catch(() => {});
+    // a move into Submitted or any later stage means the case has been filed: its recorded status becomes Filed (quietly - no e-mail, no notification)
+    require("../../modules/immigration-lifecycle/services/TrackingService").markFiledByStage(args.caseDoc._id).catch(() => {});
   } catch (_error) {
     /* never affects the move */
   }

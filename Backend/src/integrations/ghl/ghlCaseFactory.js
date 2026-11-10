@@ -91,6 +91,7 @@ async function markImportedCaseCompleted(caseDoc) {
     { _id: caseDoc._id, status: { $ne: "completed" } },
     { $set: { status: "completed" }, $push: { timeline: { type: "status", title: "Marked completed", description: "Imported from GoHighLevel at the Submitted (FedEx) stage: the case was already submitted.", metadata: { previousStatus: caseDoc.status, source: "ghl_import" }, createdAt: new Date() } } }
   ).catch((error) => logger.error("ghl_mark_completed_failed", { caseId: String(caseDoc._id), error: error.message }));
+  await require("../../modules/immigration-lifecycle/services/TrackingService").markFiledByStage(caseDoc._id); // submitted already = filed
 }
 
 // An individual imported case keeps the name of its GHL card. Called for cases that already exist whenever their card is seen again (a rename in
