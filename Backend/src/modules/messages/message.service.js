@@ -149,7 +149,12 @@ async function canAccessMessage(user, message) {
   return false;
 }
 
-async function buildConversationFilter(user) {
+// Only the unread badge opts in (options.cacheCaseIds): it may use the staff member's accessible case ids from up to 30 seconds ago. Access control
+// (conversation lists, opening or sending a message) always asks the database.
+const accessibleCaseIdCache = new Map(); // userId -> { at, ids }
+const CASE_ID_CACHE_MS = 30000;
+
+async function buildConversationFilter(user, options = {}) {
   const role = roleOf(user);
   const accessOr = [
     { "participants.user": user._id },
@@ -169,7 +174,18 @@ async function buildConversationFilter(user) {
     // snapshot. Case-type rows are additionally scoped to cases this user
     // currently has access to; non-case (direct) conversations keep using
     // the existing participant-based filter untouched.
-    const accessibleCaseIds = dbIsConnected() ? await Case.find(caseService.buildCaseFilter({}, user)).distinct("_id") : [];
+    const cacheKey = String(user._id);
+    const cachedIds = options.cacheCaseIds ? accessibleCaseIdCache.get(cacheKey) : null;
+    let accessibleCaseIds;
+    if (cachedIds && Date.now() - cachedIds.at < CASE_ID_CACHE_MS) {
+      accessibleCaseIds = cachedIds.ids;
+    } else {
+      accessibleCaseIds = dbIsConnected() ? await Case.find(caseService.buildCaseFilter({}, user)).distinct("_id") : [];
+      if (options.cacheCaseIds) {
+        if (accessibleCaseIdCache.size > 500) accessibleCaseIdCache.clear();
+        accessibleCaseIdCache.set(cacheKey, { at: Date.now(), ids: accessibleCaseIds });
+      }
+    }
     return {
       deletedAt: { $exists: false },
       $or: [
@@ -505,6 +521,16 @@ async function markMessageRead(message, user, req) {
   addAuditEntry(message, "read", user, {}, req);
   await message.save();
   await writeAuditLog("read", "message", message, user, {}, req);
+  // Reading one message must also lower this person's unread counter (the sidebar badge and the tab dot are built from it). Before, only opening a whole
+  // conversation reset it, so a counter could stay above zero with nothing left to read. Atomic, never below zero, and never allowed to fail the read.
+  if (!alreadyRead && message.conversationId && !sameId(message.senderId, user._id)) {
+    try {
+      await Conversation.updateOne(
+        { _id: message.conversationId, participants: { $elemMatch: { user: user._id, unreadCount: { $gt: 0 } } } },
+        { $inc: { "participants.$.unreadCount": -1 } }
+      );
+    } catch { /* the message is already marked read */ }
+  }
   return message;
 }
 

@@ -1,5 +1,3 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 
 // Public Firebase Web config — apiKey/appId/etc identify the project, they
 // are not secrets (Firebase's security boundary is server-side rules/App
@@ -24,20 +22,34 @@ function firebaseConfigured() {
   );
 }
 
-function getFirebaseApp() {
+// Firebase is only needed once someone is signed in (to register this browser for push and to receive it), so it is loaded ON DEMAND instead of being part of the code
+// every first visit has to download and run before the app appears (a big saving on a phone). If it cannot be loaded, push is simply unavailable; nothing else changes.
+let firebaseModules = null;
+function loadFirebase() {
+  if (!firebaseModules) {
+    firebaseModules = Promise.all([import("firebase/app"), import("firebase/messaging")])
+      .then(([app, messaging]) => ({ app, messaging }))
+      .catch((error) => { firebaseModules = null; throw error; }); // try again next time
+  }
+  return firebaseModules;
+}
+
+async function getFirebaseApp() {
   if (!firebaseConfigured()) return null;
-  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const { app } = await loadFirebase();
+  return app.getApps().length ? app.getApp() : app.initializeApp(firebaseConfig);
 }
 
 let messagingInstancePromise = null;
 async function getMessagingInstance() {
   if (messagingInstancePromise) return messagingInstancePromise;
   messagingInstancePromise = (async () => {
-    const app = getFirebaseApp();
+    const app = await getFirebaseApp();
     if (!app) return null;
-    if (!(await isSupported().catch(() => false))) return null;
-    return getMessaging(app);
-  })();
+    const { messaging } = await loadFirebase();
+    if (!(await messaging.isSupported().catch(() => false))) return null;
+    return messaging.getMessaging(app);
+  })().catch(() => { messagingInstancePromise = null; return null; }); // could not load Firebase: no push for now, and a later call tries again
   return messagingInstancePromise;
 }
 
@@ -60,7 +72,8 @@ async function getTokenIfPermissionGranted() {
   const [registration, messaging] = await Promise.all([registerServiceWorker(), getMessagingInstance()]);
   if (!registration || !messaging) return null;
   try {
-    return await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+    const firebase = await loadFirebase();
+    return await firebase.messaging.getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   } catch {
     return null;
   }
@@ -107,10 +120,12 @@ export async function requestPermissionAndGetToken() {
 export function onForegroundMessage(callback) {
   let unsubscribed = false;
   let detach = () => {};
-  getMessagingInstance().then((messaging) => {
+  getMessagingInstance().then(async (messaging) => {
     if (!messaging || unsubscribed) return;
-    detach = onMessage(messaging, callback);
-  });
+    const firebase = await loadFirebase();
+    if (unsubscribed) return;
+    detach = firebase.messaging.onMessage(messaging, callback);
+  }).catch(() => {});
   return () => {
     unsubscribed = true;
     detach();
