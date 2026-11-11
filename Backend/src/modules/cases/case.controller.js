@@ -951,7 +951,7 @@ exports.getCases = async (req, res, next) => {
     const skip = (page - 1) * limit;
     timer.mark("pagination_ready", { skip, sort });
 
-    // ?toneGroup=true: working cases first, then blue (filed / outcome), then red (on hold); the chosen sort applies inside each group
+    // ?toneGroup=true: working cases first, then orange (PWD under process), then blue (filed / outcome), then red (on hold); the chosen sort applies inside each group
     let grouped = ["true", "1"].includes(String(req.query.toneGroup));
     let toneStages = [];
     if (grouped) {
