@@ -20,6 +20,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("./employmentChecklists");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
+const { I140I485_DEFINITIONS } = require("./i140i485Checklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2432,6 +2433,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   },
   ...EMPLOYMENT_CHECKLIST_DEFINITIONS,
   ...FAMILY_CHECKLIST_DEFINITIONS,
+  ...I140I485_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the

@@ -281,6 +281,8 @@ const VISA_CATEGORIES = {
   "K-4": { caseStructure: "family", forms: ["i-539"], label: "K-4 Derivative Child of K-3" },
   F1: { caseStructure: "family", forms: ["i-130"], label: "F1 Unmarried Son/Daughter of U.S. Citizen" },
   // I-130 + Green Card (I-485) as its own case type: petitioner + beneficiary (Green Card) + I-864 sponsor checklists; filing path is always adjustment of status
+  // I-140 + I-485: employment based, employer + employee model; I-140 and I-485 checklists (stored with a slash - see questionnaires/i140i485Checklists.js)
+  "I-140/I-485": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "I-140 + I-485" },
   "I-130 + I-485": { caseStructure: "family", forms: ["i-130", "i-485"], label: "I-130 + I-485" },
   // IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); F1 and the older F-2A / F-1-FAMILY spellings stay.
 

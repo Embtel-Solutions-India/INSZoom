@@ -344,4 +344,4 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
   }),
 ];
 
-module.exports = { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, isConsularProcessingDisabled, resolveFamilyChecklistKeys, resolveGcNvcChecklistKey, visaSlug };
+module.exports = { buildFamilyBeneficiaryChecklist, buildFamilySponsorChecklist, withKey, FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, isConsularProcessingDisabled, resolveFamilyChecklistKeys, resolveGcNvcChecklistKey, visaSlug };

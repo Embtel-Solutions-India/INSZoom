@@ -716,6 +716,7 @@ const K1_BENEFICIARY = {
 // L-1A extension repeat L-1A; every family category (CR-1, IR-2 ... F4) repeats the IR-1 I-130 petitioner / beneficiary and I-864 sponsor checklists.
 const FAMILY_CATEGORIES = ["f1", "i130", "i130i485"]; // (CR-1, IR-2 ... F4 were removed 2026-11-12; the IR-1 tables stay as the base the remaining family checklists repeat)
 const SIBLINGS = {
+  i485_i864_employee_checklist: I864_PETITIONER, // I-140 + I-485: the I-864 checklist repeats the family I-864 table
   // the single-person I-485 (Adjustment of Status) I-864 checklist repeats the family I-864 sponsor checklist
   i485_i864_checklist: I864_PETITIONER,
   ...Object.fromEntries(["l1b", "l1aext"].flatMap((visa) => [[`${visa}_employer_checklist`, L1A_EMPLOYER], [`${visa}_employee_checklist`, L1A_EMPLOYEE]])),
@@ -750,6 +751,9 @@ const CHECKLIST_PARTY_PATHS = Object.freeze({
   tn_employee_checklist: Object.freeze(TN_EMPLOYEE),
   i140_petitioner_checklist: Object.freeze(I140_PETITIONER),
   i140_beneficiary_checklist: Object.freeze(I140_BENEFICIARY),
+  // I-140 + I-485: the same I-140 employer / employee questions, so the same paths
+  i140_i485_employer_checklist: Object.freeze(I140_PETITIONER),
+  i140_i485_employee_checklist: Object.freeze(I140_BENEFICIARY),
   // batch 3
   e3_employer_checklist: Object.freeze(E3_EMPLOYER),
   e3_employee_checklist: Object.freeze(E3_EMPLOYEE),

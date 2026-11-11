@@ -212,3 +212,29 @@ test("I-485 is a single-person case type (Adjustment of Status): the Green Card 
   assert.deepEqual(green.questions.map((q) => q.key), find("green_card_f1_beneficiary_checklist").questions.map((q) => q.key));
   assert.equal(resolveFamilyChecklistKeys("I-130 + I-485", "").length, 4, "the I-130 + I-485 case is unchanged");
 });
+
+test("I-140 + I-485: employment based (employer + employee), the I-140 checklists AND the I-485 checklists, one set of canonical paths for both", () => {
+  const { I140I485_DEFINITIONS } = require("../i140i485Checklists");
+  const byKey = Object.fromEntries(I140I485_DEFINITIONS.map((definition) => [definition.key, definition]));
+  assert.deepEqual(Object.keys(byKey).sort(), ["i140_i485_employee_checklist", "i140_i485_employer_checklist", "i485_green_card_employee_checklist", "i485_i864_employee_checklist"]);
+  assert.equal(byKey.i140_i485_employer_checklist.checklistRole, "employer");
+  for (const key of ["i140_i485_employee_checklist", "i485_green_card_employee_checklist", "i485_i864_employee_checklist"]) assert.equal(byKey[key].checklistRole, "employee", key);
+  for (const definition of I140I485_DEFINITIONS) {
+    assert.equal(definition.isDefault, true);
+    assert.ok(definition.visaTypes.includes("I-140/I-485") && definition.visaTypes.includes("I140/I485"));
+    assert.ok(!/[+*?]/.test(definition.visaType), "the visa type is safe inside the default-checklist RegExp lookup");
+    for (const question of definition.questions) assert.ok(!question.visibility.roles.some((role) => ["petitioner", "beneficiary", "client"].includes(role)), `${definition.key}.${question.key}: only employer / employee roles`);
+    assert.ok(CHECKLIST_PARTY_PATHS[definition.key], `${definition.key} has its canonical path table`);
+  }
+  // the same canonical path serves the I-140 and the I-485 for every shared fact
+  const paths = (key) => new Set(Object.values(CHECKLIST_PARTY_PATHS[key]).map((spec) => spec.path));
+  for (const shared of ["beneficiary.lastName", "beneficiary.firstName", "beneficiary.dateOfBirth", "beneficiary.ssn", "beneficiary.alienRegistrationNumber", "beneficiary.email", "beneficiary.i94Number", "beneficiary.lastArrivalDate"]) {
+    assert.ok(paths("i140_i485_employee_checklist").has(shared) && paths("i485_green_card_employee_checklist").has(shared), shared);
+  }
+  assert.equal(getCaseStructure("I-140/I-485"), "employer_employee");
+  assert.ok(VISA_TYPE_OPTIONS.some((option) => option.value === "i140i485" && option.label === "I-140 + I-485" && option.canonicalLabel === "I-140/I-485"));
+  const forms = visaFormSeeds.mappings.filter((row) => row.visaType === "I-140/I-485").map((row) => row.formNumber);
+  for (const form of ["I-140", "I-485", "I-765", "I-131", "I-693", "I-485 Supplement J", "I-864"]) assert.ok(forms.includes(form), form);
+  assert.ok(!forms.includes("I-130") && !forms.includes("DS-260"));
+  for (const entry of checklistSeeds.ENTRIES.filter((e) => e.visaType === "I-140/I-485")) for (const mapping of entry.checklistMappings) assert.ok(mapping.checklistKey === "i907_premium_processing_profile" || byKey[mapping.checklistKey], `${mapping.checklistKey} exists`);
+});

@@ -222,6 +222,14 @@ for (const visaType of FAMILY_VISA_TYPES) {
   ]);
 }
 
+// ---- I-140 + I-485 (employment based, employer + employee): both forms read the same canonical values through the employee's checklists -----------
+set("I-140/I-485", "I-140", [cm("i140_i485_employer_checklist", AUTO, { role: "employer" }), cm("i140_i485_employee_checklist", AUTO, { role: "employee" })]);
+set("I-140/I-485", "I-485", [cm("i485_green_card_employee_checklist", AUTO, { role: "employee" }), cm("i140_i485_employee_checklist", COND, { role: "employee" })]);
+for (const formNumber of ["I-765", "I-131", "I-693"]) set("I-140/I-485", formNumber, [cm("i485_green_card_employee_checklist", COND, { role: "employee" })]);
+set("I-140/I-485", "I-485 Supplement J", [cm("i140_i485_employer_checklist", COND, { role: "employer" }), cm("i485_green_card_employee_checklist", COND, { role: "employee" })]);
+for (const formNumber of ["I-864", "I-864A", "I-864EZ"]) set("I-140/I-485", formNumber, [cm("i485_i864_employee_checklist", COND, { role: "employee" })]);
+set("I-140/I-485", "I-907", [cm("i140_i485_employer_checklist", COND, { role: "employer" }), cm("i140_i485_employee_checklist", COND, { role: "employee" })]);
+
 // ---- I-824 (standalone two-party case): exactly two checklists; principal-immigrant content lives inside the petitioner checklist -------
 set("I-824", "I-824", [
   cm("i824_petitioner_checklist", AUTO, { role: "petitioner" }),

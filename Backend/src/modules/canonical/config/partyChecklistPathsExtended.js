@@ -1813,6 +1813,7 @@ const EXTENDED_ROWS = {
   cos_b2_questionnaire: T11,
   green_card_f1_beneficiary_checklist: T16,
   gc_nvc_f1_beneficiary_checklist: T17,
+  i485_green_card_employee_checklist: T16, // I-140 + I-485: the Green Card checklist (same table)
   i485_green_card_checklist: T16, // single-person I-485 (Adjustment of Status): the Green Card checklist
   green_card_i130_beneficiary_checklist: T16,
   gc_nvc_i130_beneficiary_checklist: T17,

@@ -45,6 +45,8 @@ export const VISA_TYPE_OPTIONS = [
   // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
   { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
   { value: 'i130i485', label: 'I-130 + I-485', canonicalLabel: 'I-130 + I-485' },
+  // I-140 + I-485: employment based (employer + employee)
+  { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
@@ -179,7 +181,7 @@ export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485'
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
 // RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
 export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
-export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
+export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm', 'i140i485'])
 const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID, MTR)']
 
 // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.

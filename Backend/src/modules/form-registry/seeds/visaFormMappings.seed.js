@@ -565,6 +565,25 @@ eb1("EB-1A"); eb1("EB-1B", { supplementJ: true }); eb1("EB-1C", { supplementJ: t
 // EB-1C: G-28 is a Case-Manager-decision form (only when an attorney / accredited representative is on record), like H-1B / COSF1 / F-1 reinstatement.
 add(g28("EB-1C"));
 
+// I-140 + I-485 (employment based, employer + employee): the I-140 petition and the I-485 package, adjustment of status (no DS-260), Supplement J (job offer) and the Affidavit of Support forms
+// (their checklist is the I-864 one) as case-manager decisions - the same rows EB-1B / EB-1C carry, plus I-864.
+{
+  const visa = "I-140/I-485";
+  add(
+    m(visa, "I-140", "Immigrant Petition for Alien Worker", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-140", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
+    i485(visa),
+    i485SupplementJ(visa),
+    i765(visa, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"], notes: "AOS EAD." }),
+    i131(visa, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"], notes: "AOS travel document." }),
+    i693(visa),
+    m(visa, "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS"], formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT, notes: "Only when a relative-sponsored I-485 requires it - a case-manager decision." }),
+    m(visa, "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { processingPaths: ["ADJUSTMENT_OF_STATUS"], parentForm: "I-864", immigrationNature: IMMIGRANT, notes: "Qualifying household member contributes income." }),
+    m(visa, "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS"], formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT, notes: "Sponsor meets I-864EZ criteria." }),
+    i907(visa, { immigrationNature: IMMIGRANT }),
+    g28(visa)
+  );
+}
+
 // ===================== PREMIUM PROCESSING (standalone case) =====================
 // A case opened only to expedite an already-filed petition/application: Form I-907 is the
 // ONLY form on it, created with the case (AUTO_CREATE) and filled from the Form I-907
