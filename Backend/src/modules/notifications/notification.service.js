@@ -373,7 +373,17 @@ async function dispatchPushChannel(notification, payload, actor) {
   }
 }
 
+// TEMPORARY PAUSE (owner request 2026-11-11): the SLA-breach alerts - the "case escalated" notice to the team lead / admins / super admins, "Case SLA breached" to the case
+// managers and "Workflow SLA Breached" to admins - were repeating (one case, several alerts, e-mail + bell + browser push). While their type is paused NOTHING is created for it:
+// no bell entry, no live pop-up, no browser push, no e-mail (an alert's e-mail rides on this same call). Callers already cope with null. All three escalation triggers
+// (eventTriggers.catalog.js) and both sweeps (workflowSla.service.js, workflow.service.js) use the type "workflow_sla_breached".
+// To reopen: set NOTIFICATIONS_PAUSED_TYPES to an empty value (or a different comma separated list of types) - no code change.
+const pausedNotificationTypes = () => new Set(String(process.env.NOTIFICATIONS_PAUSED_TYPES ?? "workflow_sla_breached").split(",").map((type) => type.trim()).filter(Boolean));
+const isPausedNotificationType = (type) => Boolean(type) && pausedNotificationTypes().has(String(type));
+
 async function createNotification(payload, actor, req) {
+  // Paused alert types (see above): checked first, before anything is read or written.
+  if (isPausedNotificationType(payload?.type)) return null;
   // Master switch (env.notificationsSuppressAll): no bell entry, no live pop-up, no push. Callers already cope with null (a person outside the case's team).
   if (env.notificationsSuppressAll) return null;
   // Internal staff are told about a case only when they work it (its case manager(s) + team lead); see caseAudience.js.
@@ -668,6 +678,7 @@ async function dismissCaseNotificationsForUser(caseId, userId) {
 }
 
 module.exports = {
+  isPausedNotificationType,
   resolveCaseBoundUsers,
   addAuditEntry,
   buildAdminFilter,

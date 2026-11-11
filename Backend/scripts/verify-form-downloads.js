@@ -27,7 +27,7 @@ const [partIndex, partCount] = (arg("part") || "0/1").split("/").map(Number);
 async function main() {
   await mongoose.connect(process.env.MONGODB_URI);
   const Template = require("../src/models/USCISFormTemplate");
-  const Renderer = require("../src/modules/form-generation/services/PDFRenderer");
+  const Renderer = require("../src/modules/form-generation/services/GuardedPDFRenderer");
   const Mapper = require("../src/modules/form-generation/services/PDFFieldMapper");
   const Resolver = require("../src/modules/form-mapping/services/MappingResolver");
   const { isProtectedField } = require("../src/modules/form-generation/services/ProtectedFieldPolicy");
@@ -42,7 +42,11 @@ async function main() {
   for (const code of codes) {
     try {
       const template = await Template.findById(latest.get(code)).lean();
-      const source = (await PDFDocument.load(await Renderer.loadTemplateBuffer(template), { ignoreEncryption: true, updateMetadata: false })).getForm();
+      const sourceDoc = await PDFDocument.load(await Renderer.loadTemplateBuffer(template), { ignoreEncryption: true, updateMetadata: false });
+      const source = sourceDoc.getForm();
+      // a form with active supplements is downloaded without the supplements' pages (their values live only in the supplements' own forms): a box missing from the file is then expected
+      const ComponentPageResolver = require("../src/modules/form-generation/services/ComponentPageResolver");
+      const slicedByDesign = Boolean(await ComponentPageResolver.resolvePagesToKeep({}, template, sourceDoc.getPageCount()).catch(() => null));
       const filledData = {};
       const expected = new Map();
       let n = 0;
@@ -70,7 +74,7 @@ async function main() {
         if (reported.has(pdfField)) { failures.push(`${pdfField.split(".").slice(-2).join(".")} (${reported.get(pdfField)})`); continue; }
         let field = null;
         try { field = form.getField(pdfField); } catch (_e) { field = null; }
-        if (!field) { failures.push(`${pdfField.split(".").slice(-2).join(".")} (box missing from the file)`); continue; }
+        if (!field) { if (slicedByDesign) cut += 1; else failures.push(`${pdfField.split(".").slice(-2).join(".")} (box missing from the file)`); continue; }
         let ok = true;
         try {
           if (/CheckBox/.test(kind)) ok = field.isChecked();

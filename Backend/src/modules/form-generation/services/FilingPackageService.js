@@ -67,7 +67,7 @@ class FilingPackageService {
       }
       try {
         const caseForm = await (deps.loadCaseForm || ((id) => require("./PDFGenerationService").loadCaseForm(id, { readOnly: true })))(item.caseFormId);
-        const rendered = await (deps.renderer || require("./PDFRenderer")).renderFiling({ caseForm, template: caseForm.formTemplateId.toObject ? caseForm.formTemplateId.toObject() : caseForm.formTemplateId });
+        const rendered = await (deps.renderer || require("./GuardedPDFRenderer")).renderFiling({ caseForm, template: caseForm.formTemplateId.toObject ? caseForm.formTemplateId.toObject() : caseForm.formTemplateId });
         buffers.set(item, rendered.buffer);
       } catch (error) {
         problems.push({ code: error.code || "FILING_PACKAGE_FORM_NOT_VERIFIED", message: `"${item.title || item.key || item.caseFormId}" could not be produced as a clean, verified copy (${error.message}).` });
