@@ -153,10 +153,11 @@ exports.setupPreview = guard(async (req, res) => {
   res.json({ success: true, ...(await sync.previewSetup()) });
 });
 
-// A stage added in GoHighLevel (e.g. "On Hold") becomes a board column; nothing already mapped changes (refused if anything was renamed or removed).
+// A stage added in GoHighLevel (e.g. "On Hold") becomes a board column and a renamed stage takes its new name (its column key never changes); refused, changing
+// nothing, if a stage or pipeline was removed there. (The sync does the same on its own every pass.)
 exports.addStages = guard(async (req, res) => {
   try {
-    res.json({ success: true, ...(await sync.adoptAddedStages({ user: req.user })) });
+    res.json({ success: true, ...(await sync.adoptStageChangesFromGhl({ user: req.user })) });
   } catch (error) {
     res.status(error.status || 500).json({ success: false, message: error.message });
   }

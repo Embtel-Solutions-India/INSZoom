@@ -21,7 +21,18 @@ async function loadOrBuildConfig({ client } = {}) {
   // A config confirmed before pipelines carried their own stage lists has to be rebuilt (and re-confirmed once).
   const hasPipelineStages = config?.pipelines?.length > 0 && config.pipelines.every((p) => p.stages?.length);
   if (config?.mappingsConfirmedAt && config.stageMappings.length && hasPipelineStages) {
-    const drift = pipelineService.detectDrift(config.stageMappings, pipelines);
+    let drift = pipelineService.detectDrift(config.stageMappings, pipelines);
+    // The board follows GoHighLevel's own stages: a stage ADDED or RENAMED there is adopted here, in the same pass, so the sync is never held up by a stage change
+    // (it used to stop every import, every stage update and every move until an admin confirmed it). A stage/pipeline REMOVED still blocks (needs a human).
+    // GHL_AUTO_ADOPT_STAGES=off restores the old behaviour exactly.
+    if (drift.length && autoAdoptStages()) {
+      try {
+        const adopted = await adoptStageChanges(config, pipelines, drift, { source: "auto" });
+        if (adopted.adopted) drift = pipelineService.detectDrift(config.stageMappings, pipelines);
+      } catch (error) {
+        logger.warn("ghl_stage_auto_adopt_failed", { error: error.message }); // never fatal: the old "needs review" path below still applies
+      }
+    }
     if (drift.length) {
       config.status = "config_mismatch";
       config.statusDetail = JSON.stringify(drift).slice(0, 2000);
@@ -92,6 +103,57 @@ async function adoptAddedStages({ client, user } = {}) {
   await config.save();
   logger.info("ghl_stages_added", { added: plan.additions.map((a) => `${a.ghlPipelineId}:${a.stage.key}`), by: user?._id ? String(user._id) : undefined });
   return { added: plan.additions.map((a) => ({ pipelineId: a.ghlPipelineId, key: a.stage.key, name: a.stage.name })) };
+}
+
+const autoAdoptStages = () => String(process.env.GHL_AUTO_ADOPT_STAGES || "on").toLowerCase() !== "off";
+
+// Applies a stage-only change from GoHighLevel (see pipelineService.planStageSync): new stages become new board columns, renamed stages take their new name
+// while KEEPING their column key, the column order follows GoHighLevel. The confirmation stays; nothing else is touched. Returns { adopted, renamed, added }.
+// `config` is the stored integration document (mutated and saved); nothing is changed when the plan is not ok.
+async function adoptStageChanges(config, pipelines, drift, { user, source = "admin" } = {}) {
+  const plan = pipelineService.planStageSync(config, pipelines, drift);
+  if (!plan.ok) return { adopted: false, reason: plan.reason, blockers: plan.blockers || [], renamed: [], added: [] };
+  for (const rename of plan.renames) {
+    const mapping = config.stageMappings.find((m) => m.ghlPipelineId === rename.ghlPipelineId && m.ghlStageId === rename.ghlStageId);
+    const stored = config.pipelines.find((p) => p.ghlPipelineId === rename.ghlPipelineId);
+    const column = stored?.stages.find((s) => s.key === rename.unifiedStageKey);
+    mapping.ghlStageName = rename.to;
+    mapping.unifiedStageName = rename.to;
+    if (column) column.name = rename.to;
+  }
+  for (const { ghlPipelineId, stage, mapping } of plan.additions) {
+    config.pipelines.find((p) => p.ghlPipelineId === ghlPipelineId).stages.push({ ...stage, order: 0 });
+    config.stageMappings.push(mapping);
+  }
+  const stageIdOf = (pipelineId, key) => config.stageMappings.find((m) => m.ghlPipelineId === pipelineId && m.unifiedStageKey === key)?.ghlStageId;
+  for (const stored of config.pipelines) {
+    for (const stage of stored.stages) {
+      const order = plan.orders.get(`${stored.ghlPipelineId}:${stageIdOf(stored.ghlPipelineId, stage.key)}`);
+      if (order !== undefined) stage.order = order;
+    }
+    stored.stages.sort((a, b) => a.order - b.order);
+  }
+  config.status = "healthy";
+  config.statusDetail = undefined;
+  await config.save();
+  const summary = {
+    renamed: plan.renames.map((r) => ({ pipelineId: r.ghlPipelineId, key: r.unifiedStageKey, from: r.from, to: r.to })),
+    added: plan.additions.map((a) => ({ pipelineId: a.ghlPipelineId, key: a.stage.key, name: a.stage.name })),
+  };
+  logger.info("ghl_stages_synced", { ...summary, source, by: user?._id ? String(user._id) : undefined });
+  return { adopted: true, ...summary };
+}
+
+// The admin's "Add the new stages" action: adopts every stage added or renamed in GoHighLevel (the same step the sync runs on its own). Refuses (and changes
+// nothing) when a stage or pipeline was removed there, or when there is nothing to adopt.
+async function adoptStageChangesFromGhl({ client, user } = {}) {
+  const locationId = env.ghl.locationId;
+  const config = await GHLIntegration.findOne({ locationId });
+  if (!config?.mappingsConfirmedAt) throw Object.assign(new Error("The stage mapping has not been confirmed yet: run setup first."), { status: 409 });
+  const pipelines = await pipelineService.listPipelines(locationId, client);
+  const result = await adoptStageChanges(config, pipelines, pipelineService.detectDrift(config.stageMappings, pipelines), { user, source: "admin" });
+  if (!result.adopted) throw Object.assign(new Error(result.reason), { status: 409 });
+  return result;
 }
 
 async function confirmMappings(user) {
@@ -187,4 +249,4 @@ async function initialSync({ client, user } = {}) {
   return summary;
 }
 
-module.exports = { isEnabled, loadOrBuildConfig, previewSetup, adoptAddedStages, confirmMappings, initialSync };
+module.exports = { isEnabled, loadOrBuildConfig, previewSetup, adoptAddedStages, adoptStageChanges, adoptStageChangesFromGhl, confirmMappings, initialSync };

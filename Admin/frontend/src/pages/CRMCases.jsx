@@ -363,7 +363,10 @@ const CRMCases = ({ caseGroup } = {}) => {
 
   const getCreator = (caseItem) => {
     const creator = caseItem.createdBy || caseItem.creator || {}
-    const name = creator.name || creator.displayName || creator.email || caseItem.createdByName || 'Unknown'
+    const known = creator.name || creator.displayName || creator.email || caseItem.createdByName
+    // a case created from a GoHighLevel opportunity has no staff user as its creator: it is shown as "GHL", not "Unknown"
+    if (!known && caseItem.creationSource === 'ghl') return { name: 'GHL', role: '', isGhl: true }
+    const name = known || 'Unknown'
     const role = creator.role || caseItem.createdByRole || ''
     return { name, role }
   }
@@ -819,7 +822,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="font-medium truncate" title={creator.name}>{creator.name}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {formatRole(creator.role) || 'Creator'}{caseItem.createdAt ? ` - ${formatCreatedDate(caseItem.createdAt)}` : ''}
+                          {formatRole(creator.role) || (creator.isGhl ? 'GoHighLevel' : 'Creator')}{caseItem.createdAt ? ` - ${formatCreatedDate(caseItem.createdAt)}` : ''}
                         </p>
                       </td>
                       <td className="px-3 py-3 align-top">

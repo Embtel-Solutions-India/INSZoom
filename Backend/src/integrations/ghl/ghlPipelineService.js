@@ -143,6 +143,47 @@ function planAddedStages(config, pipelines, drift = detectDrift(config.stageMapp
   return { ok: true, additions, orders };
 }
 
+// Pure. Everything a stage-only change in GoHighLevel needs, so the board can follow GoHighLevel on its own: stages ADDED (new columns) and stages RENAMED
+// (same stage id, new name: the column keeps its key, so every rule that works on the key keeps working, and only the displayed name changes).
+// A stage or pipeline REMOVED in GoHighLevel is never adopted here (cards may sit in it): it still needs the full setup review (returned as `blockers`).
+// A new stage column key is its slug, made unique inside its pipeline (a clash gets _2, _3 ... instead of blocking the sync). Touches nothing itself.
+function planStageSync(config, pipelines, drift = detectDrift(config.stageMappings, pipelines)) {
+  const added = drift.filter((item) => item.type === "stage_added");
+  const renamed = drift.filter((item) => item.type === "stage_renamed");
+  const blockers = drift.filter((item) => item.type !== "stage_added" && item.type !== "stage_renamed");
+  if (blockers.length) return { ok: false, reason: "A pipeline or stage was removed in GoHighLevel: that needs the full setup review", blockers };
+  if (!added.length && !renamed.length) return { ok: false, reason: "Nothing to adopt", blockers: [] };
+  const byPipeline = new Map(pipelines.map((p) => [p.id, p]));
+  const renames = [];
+  for (const item of renamed) {
+    const mapping = (config.stageMappings || []).find((m) => m.ghlPipelineId === item.ghlPipelineId && m.ghlStageId === item.ghlStageId);
+    if (!mapping) return { ok: false, reason: `Mapping not found for the renamed stage "${item.to}"`, blockers: [] };
+    renames.push({ ghlPipelineId: item.ghlPipelineId, ghlStageId: item.ghlStageId, unifiedStageKey: mapping.unifiedStageKey, from: item.from, to: item.to });
+  }
+  const taken = new Map();
+  const keysOf = (pipelineId) => {
+    if (!taken.has(pipelineId)) taken.set(pipelineId, new Set(((config.pipelines || []).find((p) => p.ghlPipelineId === pipelineId)?.stages || []).map((s) => s.key)));
+    return taken.get(pipelineId);
+  };
+  const additions = [];
+  for (const item of added) {
+    const pipeline = byPipeline.get(item.ghlPipelineId);
+    const stage = (pipeline?.stages || []).find((s) => s.id === item.ghlStageId);
+    const stored = (config.pipelines || []).find((p) => p.ghlPipelineId === item.ghlPipelineId);
+    if (!stage || !stored) return { ok: false, reason: `Pipeline or stage not found for "${item.name}"`, blockers: [] };
+    const used = keysOf(item.ghlPipelineId);
+    const base = slug(stage.name) || `stage_${String(stage.id).slice(0, 6).toLowerCase()}`;
+    let key = base;
+    for (let n = 2; used.has(key); n += 1) key = `${base}_${n}`;
+    used.add(key);
+    additions.push({ ghlPipelineId: item.ghlPipelineId, stage: { key, name: stage.name }, mapping: { ghlPipelineId: item.ghlPipelineId, ghlStageId: stage.id, ghlStageName: stage.name, unifiedStageKey: key, unifiedStageName: stage.name } });
+  }
+  // the column order follows the order in GoHighLevel, for the stages already mapped and the new ones alike
+  const orders = new Map();
+  for (const pipeline of pipelines) sortStages(pipeline.stages || []).forEach((stage, index) => orders.set(`${pipeline.id}:${stage.id}`, index));
+  return { ok: true, renames, additions, orders, blockers: [] };
+}
+
 // (pipelineId, stageId) -> unified column, and unified column + pipeline -> GHL stage.
 function resolveUnifiedStage(stageMappings, ghlPipelineId, ghlStageId) {
   return stageMappings.find((m) => m.ghlPipelineId === ghlPipelineId && m.ghlStageId === ghlStageId) || null;
@@ -151,4 +192,4 @@ function resolveGhlStage(stageMappings, ghlPipelineId, unifiedStageKey) {
   return stageMappings.find((m) => m.ghlPipelineId === ghlPipelineId && m.unifiedStageKey === unifiedStageKey) || null;
 }
 
-module.exports = { listPipelines, selectPipelines, buildPipelinePlans, detectDrift, planAddedStages, resolveUnifiedStage, resolveGhlStage, slug };
+module.exports = { listPipelines, selectPipelines, buildPipelinePlans, detectDrift, planAddedStages, planStageSync, resolveUnifiedStage, resolveGhlStage, slug };

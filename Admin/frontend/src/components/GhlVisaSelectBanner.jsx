@@ -14,9 +14,38 @@ import { useAuth } from '../contexts/AuthContext'
 // so it connects to the registry, checklists, forms and case logic like any other case of that visa.
 const CAN_SELECT = ['super_admin', 'admin', 'team_lead']
 
+// The GoHighLevel card has a "Service Type" plus four visa dropdowns (Work Visa, Study Visa, Green Card, Business/Investment); the visa is in whichever one is filled.
+const GHL_FIELD_LABELS = {
+  service_type: 'Service Type',
+  work_visa: 'Work Visa',
+  study_visa: 'Study Visa',
+  green_card: 'Green Card',
+  business__investment: 'Business/Investment',
+}
+const ghlLabel = (key) => GHL_FIELD_LABELS[key] || String(key || '')
+
+// What GHL shows for this card, in GHL's own words (nothing here picks the visa - the team does). '' when there is nothing useful to say.
+export function ghlVisaHint(resolution) {
+  if (!resolution) return ''
+  const field = String(resolution.field || '').trim()
+  const value = String(resolution.value ?? '').trim()
+  if (field && value) {
+    return field === 'service_type'
+      ? `GHL shows "${value}" in its Service Type field.`
+      : `GHL shows "${value}" in its ${ghlLabel(field)} dropdown.`
+  }
+  const status = String(resolution.status || '')
+  if (status === 'none') return 'GHL has no visa chosen in any of its visa dropdowns (Work Visa, Study Visa, Green Card, Business/Investment).'
+  if (status === 'unavailable') return ''
+  const reason = String(resolution.reason || '').replace(/\b(service_type|work_visa|study_visa|green_card|business__investment)\b/g, (key) => ghlLabel(key)).trim()
+  return reason ? `GHL: ${reason.replace(/\.$/, '')}.` : ''
+}
+
 export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
   const { user } = useAuth()
   const pending = caseData?.visaSelectionStatus === 'pending'
+  // what the GoHighLevel card itself says the case type is (its own field and value), so the team knows what to match when choosing the visa
+  const ghlHint = ghlVisaHint(caseData?.integrations?.ghl?.visaResolution)
   const canSelect = CAN_SELECT.includes(user?.role)
   const [selected, setSelected] = useState('')
   const [saving, setSaving] = useState(false)
@@ -67,6 +96,11 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
           <p className="min-w-0 text-amber-800">
             <span className="text-sm font-semibold text-amber-900">Visa selection required</span>
             <span className="block text-xs lg:inline"> <span className="hidden lg:inline">&middot; </span>This case came from GoHighLevel without a visa type. Checklists, forms and questionnaires are set up once a visa type is chosen.</span>
+            {ghlHint ? (
+              <span className="mt-0.5 block text-xs font-medium text-amber-900" data-testid="ghl-visa-hint">
+                {ghlHint} Select the visa type accordingly.
+              </span>
+            ) : null}
           </p>
         </div>
         {canSelect ? (
