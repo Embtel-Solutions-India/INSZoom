@@ -179,13 +179,36 @@ test("nothing else changed: the F1 / K-1 / K-3 family checklists keep their orig
   assert.deepEqual(resolveFamilyChecklistKeys("F1", ""), ["i130_f1_petitioner_checklist", "i130_f1_beneficiary_checklist"]);
 });
 
-test("I-130 + Green Card (I-485): both I-130 checklists AND the Green Card checklist - exactly these three, no I-864 - are assigned, whatever the filing path", () => {
+test("I-130 + Green Card (I-485): both I-130 checklists AND the Green Card checklist - plus the I-864 sponsor checklist - are assigned, whatever the filing path", () => {
   for (const path of ["", "PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR"]) {
     const keys = resolveFamilyChecklistKeys("I-130 + I-485", path);
-    assert.deepEqual(keys, ["i130_i130i485_petitioner_checklist", "i130_i130i485_beneficiary_checklist", "green_card_i130i485_beneficiary_checklist"]);
+    assert.deepEqual(keys, ["i130_i130i485_petitioner_checklist", "i130_i130i485_beneficiary_checklist", "green_card_i130i485_beneficiary_checklist", "i864_i130i485_petitioner_checklist"]);
     for (const key of keys) assert.ok(find(key), `${key} is a registered definition`);
   }
-  assert.equal(new Set(resolveFamilyChecklistKeys("I-130 + I-485", "")).size, 3, "no key twice (idempotent assignment)");
+  assert.equal(new Set(resolveFamilyChecklistKeys("I-130 + I-485", "")).size, 4, "no key twice (idempotent assignment)");
   // I-130 and F1 are unchanged
   assert.deepEqual(resolveFamilyChecklistKeys("F1", ""), ["i130_f1_petitioner_checklist", "i130_f1_beneficiary_checklist"]);
+});
+
+test("I-485 is a single-person case type (Adjustment of Status): the Green Card + I-864 checklists, answered by the applicant (client role), no family / employment variants", () => {
+  const green = find("i485_green_card_checklist");
+  const i864 = find("i485_i864_checklist");
+  assert.ok(green && i864);
+  for (const definition of [green, i864]) {
+    assert.equal(definition.visaType, "Adjustment of Status");
+    assert.equal(definition.checklistRole, "client");
+    assert.equal(definition.isDefault, true);
+    for (const question of definition.questions) assert.ok(!question.visibility.roles.includes("petitioner") && !question.visibility.roles.includes("beneficiary"), `${definition.key}.${question.key} is for the client`);
+    assert.ok(CHECKLIST_PARTY_PATHS[definition.key], "canonical path table registered");
+  }
+  assert.equal(getCaseStructure("Adjustment of Status"), "single");
+  assert.ok(VISA_TYPE_OPTIONS.some((option) => option.value === "adjustmentofstatus" && option.label === "I-485" && option.canonicalLabel === "Adjustment of Status"));
+  assert.ok(!VISA_TYPE_OPTIONS.some((option) => /I-485 \((Employment|Family) Based\)/.test(option.label)), "no duplicate family / employment I-485");
+  const entries = checklistSeeds.ENTRIES.filter((entry) => entry.visaType === "Adjustment of Status");
+  const keysFor = (form) => entries.filter((entry) => entry.formNumber === form).flatMap((entry) => entry.checklistMappings.map((mapping) => mapping.checklistKey));
+  assert.deepEqual(keysFor("I-485"), ["i485_green_card_checklist"]);
+  assert.deepEqual(keysFor("I-864"), ["i485_i864_checklist"]);
+  // the same Green Card questions as the family Green Card checklist
+  assert.deepEqual(green.questions.map((q) => q.key), find("green_card_f1_beneficiary_checklist").questions.map((q) => q.key));
+  assert.equal(resolveFamilyChecklistKeys("I-130 + I-485", "").length, 4, "the I-130 + I-485 case is unchanged");
 });

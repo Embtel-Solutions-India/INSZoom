@@ -44,7 +44,9 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'i824', label: 'I-824', canonicalLabel: 'I-824' },
   // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
   { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
-  { value: 'i130i485', label: 'I-130 + Green Card (I-485)', canonicalLabel: 'I-130 + I-485' },
+  { value: 'i130i485', label: 'I-130 + I-485', canonicalLabel: 'I-130 + I-485' },
+  // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
+  { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },

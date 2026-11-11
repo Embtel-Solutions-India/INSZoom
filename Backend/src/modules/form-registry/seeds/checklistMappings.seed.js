@@ -281,9 +281,15 @@ for (const entry of ENTRIES) {
 // with no visa-specific checklist of its own, e.g. "Re-entry Permit" and
 // "Adjustment of Status" (a generic/unclassified AOS bucket, distinct from
 // the specific EB-*/family rows above).
-for (const visaType of ["Re-entry Permit", "Adjustment of Status"]) {
+for (const visaType of ["Re-entry Permit"]) {
   set(visaType, "I-131", [cm("i131_checklist", EXPLICIT_CM, { notes: "conditional form decision - never auto-assigned to every case" })]);
 }
+// ---- I-485 (the single-person "Adjustment of Status" case): the Green Card checklist + the I-864 checklist, both answered by the applicant -----------
+set("Adjustment of Status", "I-485", [cm("i485_green_card_checklist", AUTO)]);
+set("Adjustment of Status", "I-765", [cm("i485_green_card_checklist", COND)]);
+set("Adjustment of Status", "I-131", [cm("i485_green_card_checklist", COND), cm("i131_checklist", EXPLICIT_CM, { notes: "conditional form decision - never auto-assigned to every case" })]);
+set("Adjustment of Status", "I-693", [cm("i485_green_card_checklist", COND)]);
+set("Adjustment of Status", "I-864", [cm("i485_i864_checklist", COND)]);
 
 // ---- N-400 / N-565 / N-600 (spec §11-13) --------------------------------
 // Real registry visaType strings (confirmed live) are the case-purpose

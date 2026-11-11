@@ -116,7 +116,7 @@ test("a question key means one fact: wherever two checklists share a key they gi
     }
   }
   // 24 checklists of batches 1-3 + the 37 that repeat one of them; the contact / joint sponsor are kept under the petitioner, never a third root
-  assert.equal(Object.keys(CHECKLIST_PARTY_PATHS).length, 83, "every checklist that has a path table (PERM and the documents-only checklist are left out; IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 and their checklists were removed 2026-11-12)");
+  assert.equal(Object.keys(CHECKLIST_PARTY_PATHS).length, 85, "every checklist that has a path table (PERM and the documents-only checklist are left out; IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 and their checklists were removed 2026-11-12)");
   assert.equal(CHECKLIST_PARTY_PATHS.l1b_employer_checklist.employer_companyName?.path ?? Object.values(CHECKLIST_PARTY_PATHS.l1b_employer_checklist)[0].path, CHECKLIST_PARTY_PATHS.l1a_employer_checklist.employer_companyName?.path ?? Object.values(CHECKLIST_PARTY_PATHS.l1a_employer_checklist)[0].path, "a repeated checklist gives its questions the same paths");
   assert.equal(CHECKLIST_PARTY_PATHS.i130_f1_beneficiary_checklist.beneficiary_lastName.path, "beneficiary.lastName", "the family checklist that is left feeds the beneficiary paths");
   assert.ok([...byKey.values()].every((path) => /^(petitioner|beneficiary)\./.test(path)));

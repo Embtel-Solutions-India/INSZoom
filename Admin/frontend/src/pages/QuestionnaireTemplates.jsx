@@ -254,7 +254,7 @@ export default function QuestionnaireTemplates() {
     const removed = (value) => /^(IR[1-5]|CR[12]|F2B|F3|F4)$/.test(norm(value))
     const base = visaPathways.filter((visa) => !removedQuiz(visa.key))
     const known = new Set(base.map((visa) => norm(visa.key)))
-    const categoryFor = (option) => (option.caseStructure === 'family' ? 'family' : option.caseStructure === 'employer_employee' ? 'work' : 'other')
+    const categoryFor = (option) => (/employment based/i.test(option.visaType || '') ? 'work' : option.caseStructure === 'family' ? 'family' : option.caseStructure === 'employer_employee' ? 'work' : 'other')
     const extra = visaOptions
       .filter((option) => option.visaType && !removed(option.visaType) && !known.has(norm(option.visaType)) && option.caseStructure)
       .map((option) => ({ key: option.visaType, label: option.label || option.visaType, category: categoryFor(option) }))

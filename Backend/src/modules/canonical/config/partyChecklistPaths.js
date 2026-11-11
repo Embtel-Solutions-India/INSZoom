@@ -716,6 +716,8 @@ const K1_BENEFICIARY = {
 // L-1A extension repeat L-1A; every family category (CR-1, IR-2 ... F4) repeats the IR-1 I-130 petitioner / beneficiary and I-864 sponsor checklists.
 const FAMILY_CATEGORIES = ["f1", "i130", "i130i485"]; // (CR-1, IR-2 ... F4 were removed 2026-11-12; the IR-1 tables stay as the base the remaining family checklists repeat)
 const SIBLINGS = {
+  // the single-person I-485 (Adjustment of Status) I-864 checklist repeats the family I-864 sponsor checklist
+  i485_i864_checklist: I864_PETITIONER,
   ...Object.fromEntries(["l1b", "l1aext"].flatMap((visa) => [[`${visa}_employer_checklist`, L1A_EMPLOYER], [`${visa}_employee_checklist`, L1A_EMPLOYEE]])),
   l1aext_document_checklist: L1A_DOCUMENT,
   ...Object.fromEntries(FAMILY_CATEGORIES.flatMap((category) => [

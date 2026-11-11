@@ -345,7 +345,7 @@ exports.createFamilyCase = async (req, res, next) => {
       // F2B) where the classification alone doesn't imply "spouse".
       petitionSubType: req.body.relationship || req.body.petitionSubType || "",
       // the combined I-130 + I-485 case type is always an adjustment-of-status filing (it is what assigns the Green Card + I-864 checklists and the I-485 package)
-      processingPath: req.body.processingPath || (/^I-?130\s*\+\s*I-?485$/i.test(String(visaType).trim()) ? "ADJUSTMENT_OF_STATUS" : ""),
+      processingPath: req.body.processingPath || (/^(I-?130\s*\+\s*I-?485)$/i.test(String(visaType).trim()) ? "ADJUSTMENT_OF_STATUS" : ""),
       clientName: beneficiary?.fullName || beneficiaryName || petitionerName || beneficiaryEmail || petitionerEmail || "",
       clientEmail: beneficiaryEmail || undefined,
       user: beneficiaryUser?._id,

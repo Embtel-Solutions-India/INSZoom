@@ -27,3 +27,6 @@ The Green Card (beneficiary) questionnaire from the uploaded checklist **already
 
 ## Deploy
 Restart the backend (code-defined checklists and mappings reconcile at startup).
+
+## SUPERSEDED 2026-11-12 (final plan): I-485 is a single-person case type
+The "Employment-Based Green Card" / "I-485 (Employment Based)" / "I-485 (Family Based)" two-party types were removed. There is ONE **I-485** case type: the registry's existing single-person "Adjustment of Status" (listed as "I-485" under Single applicant). It gets exactly two checklists, answered by the applicant (client role): `i485_green_card_checklist` (the existing Green Card checklist, canonical table = the family Green Card table) and `i485_i864_checklist` (the existing I-864 checklist, canonical table = the family I-864 table). Form rows (I-485, I-765, I-131, I-693, I-864) already existed and are now fed by these checklists. "I-130 + I-485" (renamed from "I-130 + Green Card (I-485)") and I-130 are unchanged. Not verified: that the existing I-485 form mappings read the Green Card answers under the client role; no DB-backed or end-to-end test was run.
