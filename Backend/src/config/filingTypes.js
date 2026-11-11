@@ -204,6 +204,20 @@ const FILING_TYPES = {
     visaType: "I765EAD",
     questionnaireKey: "i765_ead_questionnaire",
   },
+  // ---- Indian Timeline Cases (single-person, no forms): OCI and its subtypes. Case.visaType = "OCI"; the subtype is this key. Not part of the status-change / extension / EAD pickers
+  // (groupedForSelection skips section "indian_timeline"); the Admin "New case" form picks it through the OCI subtype dropdown.
+  OCI_ADULT_FORMER_INDIAN_PASSPORT: {
+    key: "OCI_ADULT_FORMER_INDIAN_PASSPORT",
+    label: "OCI \u2014 Adult Former Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_adult_former_indian_passport_checklist",
+  },
 };
 
 function listFilingTypes() {
@@ -218,7 +232,7 @@ function getFilingType(key) {
 // a current-status -> desired-status picker) vs. standalone entries
 // (rendered as named options), further grouped by category within each.
 function groupedForSelection() {
-  const all = listFilingTypes();
+  const all = listFilingTypes().filter((entry) => entry.section !== "indian_timeline"); // OCI & co. have their own subtype dropdown
   const transitions = all.filter((entry) => entry.isTransition);
   const standalone = all.filter((entry) => !entry.isTransition);
   const byCategory = (entries) => entries.reduce((acc, entry) => {

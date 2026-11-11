@@ -47,6 +47,8 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'i130i485', label: 'I-130 + I-485', canonicalLabel: 'I-130 + I-485' },
   // I-140 + I-485: employment based (employer + employee)
   { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
+  // Indian Timeline Cases section: OCI (its subtype is chosen in the New case form)
+  { value: 'oci', label: 'OCI - Overseas Citizen of India', canonicalLabel: 'OCI' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
@@ -177,17 +179,24 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
   cosb2: 'COS_B2',
   cosh4: 'COS_H4',
 }
+// Indian Timeline Cases: single-person, no forms. Each visa type here has subtypes; the New case form shows a subtype dropdown and the subtype decides the checklist
+// (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
+export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci'])
+export const INDIAN_TIMELINE_SUBTYPES = {
+  oci: [{ value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'OCI \u2014 Adult Former Indian Passport Holder', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' }],
+}
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
 // RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
 export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
 export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm', 'i140i485'])
-const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID, MTR)']
+const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Indian timeline cases', 'Notice responses (RFE, NOIR, NOID, MTR)']
 
 // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.
 export const groupVisaOptions = (options, registryTypes) => {
   const visaGroupOf = (opt) => {
-    if (NOTICE_RESPONSE_TYPES.includes(opt.value)) return 3
+    if (NOTICE_RESPONSE_TYPES.includes(opt.value)) return 4
+    if (INDIAN_TIMELINE_VISA_TYPES.has(opt.value)) return 3
     if (FAMILY_PACKAGE_VISA_TYPES.has(opt.value) || FAMILY_SINGLE_CASE_VISA_TYPES.has(opt.value)) return 1
     if (SINGLE_PARTY_FILING_TYPE_KEYS[opt.value]) return 2
     if (EMPLOYMENT_VISA_TYPES.has(opt.value) || opt.caseStructure === 'employer_employee' || isEmployerEmployeeOption(opt, registryTypes)) return 0
@@ -195,7 +204,7 @@ export const groupVisaOptions = (options, registryTypes) => {
   }
   return (options || [])
     .map((opt, index) => ({ opt, index, rank: visaGroupOf(opt) }))
-    .sort((a, b) => a.rank - b.rank || (a.rank === 3 ? NOTICE_RESPONSE_TYPES.indexOf(a.opt.value) - NOTICE_RESPONSE_TYPES.indexOf(b.opt.value) : a.index - b.index))
+    .sort((a, b) => a.rank - b.rank || (a.rank === 4 ? NOTICE_RESPONSE_TYPES.indexOf(a.opt.value) - NOTICE_RESPONSE_TYPES.indexOf(b.opt.value) : a.index - b.index))
     .map(({ opt, rank }) => ({ ...opt, group: VISA_GROUP_LABELS[rank] }))
 }
 

@@ -5,7 +5,7 @@ import { sortStaff, staffOption } from '../utils/staffOptions'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployeeOption, groupVisaOptions, PIPELINE_CATEGORY_OPTIONS, SINGLE_PARTY_FILING_TYPE_KEYS, FAMILY_PACKAGE_VISA_TYPES, FAMILY_SINGLE_CASE_VISA_TYPES, EMPLOYMENT_VISA_TYPES } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployeeOption, groupVisaOptions, PIPELINE_CATEGORY_OPTIONS, SINGLE_PARTY_FILING_TYPE_KEYS, INDIAN_TIMELINE_SUBTYPES, FAMILY_PACKAGE_VISA_TYPES, FAMILY_SINGLE_CASE_VISA_TYPES, EMPLOYMENT_VISA_TYPES } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -124,6 +124,8 @@ const CreateCaseModal = ({
   const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'
+  // Indian Timeline Cases (OCI ...): a subtype dropdown; the subtype decides the checklist (single-person, no forms)
+  const indianSubtypes = INDIAN_TIMELINE_SUBTYPES[form.visaType] || null
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
   // Filing Path / "filing for their" are no longer asked at creation for any family case type
   const showFilingPathFields = false
@@ -185,6 +187,7 @@ const CreateCaseModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (indianSubtypes && !indianSubtypes.some((subtype) => subtype.value === form.petitionSubType)) return setError('Select the checklist type for this case.')
     if (isEmployerCase) {
       const seen = new Set()
       for (let index = 0; index < employeeRows.length; index += 1) {
@@ -219,7 +222,7 @@ const CreateCaseModal = ({
       const selectedVisaOption = visaOptions.find((opt) => opt.value === form.visaType)
       const visaTypeLabel = selectedVisaOption?.canonicalLabel || selectedVisaOption?.label || form.visaType
 
-      const filingTypeKey = SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType]
+      const filingTypeKey = indianSubtypes ? form.petitionSubType : SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType]
       if (filingTypeKey) {
         // Standalone single-party filing (H-4 Extension/EAD/Extension+EAD,
         // COS to F-2, ...) - one request creates the Case AND auto-assigns
@@ -466,6 +469,26 @@ const CreateCaseModal = ({
               ))}
             </select>
           </div>
+
+          {indianSubtypes && (
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Checklist type *</label>
+              <select
+                required
+                value={form.petitionSubType}
+                onChange={handleChange('petitionSubType')}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="" disabled>Select checklist type</option>
+                {indianSubtypes.map((subtype) => (
+                  <option key={subtype.value} value={subtype.value}>{subtype.label}</option>
+                ))}
+              </select>
+              {indianSubtypes.find((subtype) => subtype.value === form.petitionSubType)?.description && (
+                <p className="mt-1 text-xs text-muted-foreground">{indianSubtypes.find((subtype) => subtype.value === form.petitionSubType).description}</p>
+              )}
+            </div>
+          )}
 
           {needsH1bType && (
             <div>
