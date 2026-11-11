@@ -3660,14 +3660,16 @@ function listVisaOptions() {
   const { VISA_CATEGORIES } = require("../../config/visaCategories");
   const { FILING_TYPES } = require("../../config/filingTypes");
   const options = new Map();
-  const add = (code, label) => {
+  const structures = new Map(); // visa code -> case structure (family / employer_employee / single), so the Questionnaires page can group a checklist under its visa type
+  const add = (code, label, caseStructure) => {
     const normalized = normalizeVisaCode(code);
     if (normalized && !options.has(normalized)) options.set(normalized, label || String(code));
+    if (normalized && caseStructure && !structures.has(normalized)) structures.set(normalized, caseStructure);
   };
-  Object.entries(VISA_CATEGORIES).forEach(([key, value]) => add(key, value.label ? `${key} — ${value.label}` : key));
+  Object.entries(VISA_CATEGORIES).forEach(([key, value]) => add(key, value.label ? `${key} — ${value.label}` : key, value.caseStructure));
   Object.values(FILING_TYPES).forEach((value) => add(value.visaType, value.label ? `${value.visaType} — ${value.label}` : value.visaType));
   VISA_TEMPLATE_DEFINITIONS.forEach((definition) => (definition.visaTypes || [definition.visaType]).forEach((code) => add(code, code)));
-  return [...options.entries()].map(([visaType, label]) => ({ visaType, label })).sort((a, b) => a.visaType.localeCompare(b.visaType));
+  return [...options.entries()].map(([visaType, label]) => ({ visaType, label, ...(structures.has(visaType) ? { caseStructure: structures.get(visaType) } : {}) })).sort((a, b) => a.visaType.localeCompare(b.visaType));
 }
 
 async function getUscisMappings(questionnaireId) {
