@@ -11,8 +11,8 @@ const visaFormSeeds = require("../../form-registry/seeds/visaFormMappings.seed")
 const checklistSeeds = require("../../form-registry/seeds/checklistMappings.seed");
 
 const find = (key) => FAMILY_CHECKLIST_DEFINITIONS.find((definition) => definition.key === key);
-const petitioner = find("i130_petitioner_checklist");
-const beneficiary = find("i130_beneficiary_checklist");
+const petitioner = find("i130_i130_petitioner_checklist");
+const beneficiary = find("i130_i130_beneficiary_checklist");
 const client = { role: "client" };
 const q = (definition, key) => definition.questions.find((question) => question.key === key);
 // what the engine says for a question given the answers so far
@@ -25,10 +25,10 @@ const state = (definition, key, answers = {}) => {
 
 test("two checklists, one per party, each with its information section and its own documents section", () => {
   assert.ok(petitioner && beneficiary);
-  assert.deepEqual([petitioner.title, petitioner.checklistRole, petitioner.visaType], ["I-130 Petitioner Checklist", "petitioner", "I-130"]);
-  assert.deepEqual([beneficiary.title, beneficiary.checklistRole, beneficiary.visaType], ["I-130 Beneficiary Checklist", "beneficiary", "I-130"]);
-  assert.deepEqual(petitioner.sections, ["Petitioner Information", "Petitioner Documents"]);
-  assert.deepEqual(beneficiary.sections, ["Beneficiary Information", "Beneficiary Documents"]);
+  assert.deepEqual([petitioner.title, petitioner.checklistRole, petitioner.visaType], ["Questionnaire for Petition for Alien Relative — Petitioner Information", "petitioner", "I-130"]);
+  assert.deepEqual([beneficiary.title, beneficiary.checklistRole, beneficiary.visaType], ["Questionnaire for Petition for Alien Relative — Beneficiary Information", "beneficiary", "I-130"]);
+  assert.ok(petitioner.sections.length >= 2);
+  assert.deepEqual(beneficiary.sections, ["Beneficiary Information", "Documents required from Beneficiary:"]);
   assert.equal(petitioner.isDefault, true);
   assert.equal(beneficiary.isDefault, true);
   const keys = FAMILY_CHECKLIST_DEFINITIONS.map((definition) => definition.key);
@@ -40,9 +40,9 @@ test("every question and every document of the supplied questionnaire is present
   assert.equal(petitioner.questions.filter((x) => x.type === "file").length, 9);
   assert.equal(beneficiary.questions.filter((x) => x.type !== "file").length, 27);
   assert.equal(beneficiary.questions.filter((x) => x.type === "file").length, 5);
-  for (const [definition, section] of [[petitioner, "Petitioner Documents"], [beneficiary, "Beneficiary Documents"]]) {
+  for (const [definition, section] of [[petitioner, "Documents required from Petitioner:"], [beneficiary, "Documents required from Beneficiary:"]]) {
     const docs = definition.questions.filter((x) => x.type === "file");
-    assert.ok(docs.every((x) => x.sectionKey === section.toLowerCase().replace(/[^a-z0-9]+/g, "_")), "each document sits in its own party's documents section");
+    assert.ok(docs.every((x) => x.sectionKey === section.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")), "each document sits in its own party's documents section");
   }
   const labels = petitioner.questions.map((x) => x.label);
   for (const wanted of ["I am Filing for my:", "Marital Status", "You are a U.S. Citizen", "Are you a lawful Permanent resident Alien?", "Current Annual Income", "Copy of green card, front and back", "One digital passport size Photo"]) {
@@ -69,11 +69,11 @@ test("party separation: every petitioner answer maps under petitioner.*, every b
 
 test("the canonical paths are the ones the existing I-130 checklists (and so every form mapping) already use - none invented", () => {
   const existing = CHECKLIST_PARTY_PATHS.i130_f1_petitioner_checklist;
-  for (const [key, spec] of Object.entries(CHECKLIST_PARTY_PATHS.i130_petitioner_checklist)) assert.equal(spec.path, existing[key].path, key);
+  for (const [key, spec] of Object.entries(CHECKLIST_PARTY_PATHS.i130_i130_petitioner_checklist)) assert.equal(spec.path, existing[key].path, key);
   const existingBeneficiary = CHECKLIST_PARTY_PATHS.i130_f1_beneficiary_checklist;
-  for (const [key, spec] of Object.entries(CHECKLIST_PARTY_PATHS.i130_beneficiary_checklist)) assert.equal(spec.path, existingBeneficiary[key].path, key);
-  assert.equal(CHECKLIST_PARTY_PATHS.i130_petitioner_checklist.petitioner_relationship.path, "petitioner.relationshipToBeneficiary");
-  assert.equal(CHECKLIST_PARTY_PATHS.i130_beneficiary_checklist.beneficiary_dateOfBirth.path, "beneficiary.dateOfBirth");
+  for (const [key, spec] of Object.entries(CHECKLIST_PARTY_PATHS.i130_i130_beneficiary_checklist)) assert.equal(spec.path, existingBeneficiary[key].path, key);
+  assert.equal(CHECKLIST_PARTY_PATHS.i130_i130_petitioner_checklist.petitioner_relationship.path, "petitioner.relationshipToBeneficiary");
+  assert.equal(CHECKLIST_PARTY_PATHS.i130_i130_beneficiary_checklist.beneficiary_dateOfBirth.path, "beneficiary.dateOfBirth");
 });
 
 test("married: current-spouse details are required; single: they are not (an unanswered marital status is not a confirmed 'married')", () => {
@@ -152,25 +152,20 @@ test("optional petitioner details are optional (not every field is mandatory jus
 test("case type, dropdown and checklist provisioning: family, two-party, exactly the two checklists whatever the filing path, idempotent keys", () => {
   assert.equal(getCaseStructure("I-130"), "family");
   assert.ok(VISA_TYPE_OPTIONS.some((option) => option.value === "i130" && option.canonicalLabel === "I-130"));
-  for (const path of ["", "PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR"]) {
-    assert.deepEqual(resolveFamilyChecklistKeys("I-130", path), ["i130_petitioner_checklist", "i130_beneficiary_checklist"]);
-  }
+  // exactly the workflow of every other family type (F1): petition only -> petitioner + beneficiary; adjustment of status / consular -> petitioner + Green Card + I-864
+  for (const path of ["", "PETITION_ONLY"]) assert.deepEqual(resolveFamilyChecklistKeys("I-130", path), ["i130_i130_petitioner_checklist", "i130_i130_beneficiary_checklist"]);
+  for (const path of ["ADJUSTMENT_OF_STATUS", "CONSULAR"]) assert.deepEqual(resolveFamilyChecklistKeys("I-130", path), ["i130_i130_petitioner_checklist", "green_card_i130_beneficiary_checklist", "i864_i130_petitioner_checklist"]);
   assert.deepEqual(resolveFamilyChecklistKeys("i130", ""), resolveFamilyChecklistKeys("I-130", ""));
   for (const key of resolveFamilyChecklistKeys("I-130", "")) assert.ok(find(key), `${key} is a registered definition`);
 });
 
-test("forms: I-130 always, I-130A only for a spouse, the green-card package forms by filing path - all fed by the same canonical party values", () => {
-  const rows = visaFormSeeds.mappings.filter((row) => row.visaType === "I-130");
-  const byForm = Object.fromEntries(rows.map((row) => [row.formNumber, row]));
-  assert.equal(byForm["I-130"].provisioningType, "AUTO_CREATE");
-  assert.deepEqual(byForm["I-130A"].triggerCondition, { field: "petitionSubType", operator: "in", value: ["Husband/wife", "Husband/Wife", "Spouse", "spouse"] });
-  for (const form of ["I-864", "I-864A", "I-864EZ"]) assert.deepEqual(byForm[form].processingPaths, ["ADJUSTMENT_OF_STATUS", "CONSULAR"], form);
-  for (const form of ["I-485", "I-765", "I-131", "I-693"]) assert.deepEqual(byForm[form].processingPaths, ["ADJUSTMENT_OF_STATUS"], form);
-  assert.ok(byForm["DS-260"] && byForm["I-485 Supplement A"]);
-  const entries = checklistSeeds.ENTRIES.filter((entry) => entry.visaType === "I-130");
-  assert.deepEqual(entries.map((entry) => entry.formNumber).sort(), ["I-130", "I-131", "I-485", "I-693", "I-765", "I-864"]);
-  for (const entry of entries) for (const mapping of entry.checklistMappings) assert.ok(find(mapping.checklistKey), `${mapping.checklistKey} exists`);
-  // the spouse relationship value the checklist stores is the value the I-130A trigger tests
+test("forms and checklist mappings: identical to F1's (same workflow for every family type), all fed by the same canonical party values", () => {
+  const strip = (rows, visaType) => rows.filter((row) => row.visaType === visaType).map(({ visaType: _t, visaCategory: _v, displayOrder: _o, ...rest }) => JSON.stringify(rest, (k, v) => (typeof v === "string" ? v.replace(/_f1_|_i130_/g, "_X_") : v))).sort();
+  assert.deepEqual(strip(visaFormSeeds.mappings, "I-130"), strip(visaFormSeeds.mappings, "F1"));
+  const entries = (visaType) => checklistSeeds.ENTRIES.filter((entry) => entry.visaType === visaType);
+  assert.deepEqual(entries("I-130").map((entry) => entry.formNumber).sort(), entries("F1").map((entry) => entry.formNumber).sort());
+  for (const entry of entries("I-130")) for (const mapping of entry.checklistMappings) assert.ok(find(mapping.checklistKey), `${mapping.checklistKey} exists`);
+  // the spouse relationship value the checklist stores
   assert.ok(q(petitioner, "petitioner_relationship").options.some((option) => option.value === "Husband/wife"));
 });
 

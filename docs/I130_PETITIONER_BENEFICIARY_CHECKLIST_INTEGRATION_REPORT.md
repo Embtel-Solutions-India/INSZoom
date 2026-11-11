@@ -33,3 +33,6 @@ Date: 2026-11-12
 
 ## Deploy notes
 Restart the backend (code-defined checklists reconcile at startup). No new env vars.
+
+## Update 2026-11-12 (later): I-130 is no longer standalone
+I-130 now runs through the same family machinery as F1 and "I-130 + I-485": the same filing-path logic (petition only -> petitioner + beneficiary; adjustment of status / consular -> petitioner + Green Card + I-864), the same 11 form rows and checklist mappings, listed under the Family package group. Checklist keys are `i130_i130_*`, `green_card_i130_*`, `i864_i130_*`. The requiredness rules in `i130Spec.js` still apply to I-130's own petitioner/beneficiary checklists only. The earlier standalone keys (`i130_petitioner_checklist`, `i130_beneficiary_checklist`) are gone from code; if the backend had already run with them, two unused templates may remain in the shared database (harmless; not removed, no DB writes).

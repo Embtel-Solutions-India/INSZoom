@@ -4,7 +4,9 @@ const Case = require("../../models/Case");
 const Client = require("../../models/Client");
 const Company = require("../../models/Company");
 const User = require("../../models/User");
-const generateCaseNumber = require("../cases/caseId");
+// every case type gets the same B001, B002 ... number (child cases B001-A ...) from the shared sequence - never the old random CRM-<year>-<number>
+const CaseNumberService = require("../../services/CaseNumberService");
+const generateCaseNumber = () => CaseNumberService.nextPrincipalCaseNumber();
 const caseService = require("../cases/case.service");
 const notificationService = require("../notifications/notification.service");
 const emailService = require("../email/email.service");

@@ -1813,6 +1813,10 @@ const EXTENDED_ROWS = {
   cos_b2_questionnaire: T11,
   green_card_f1_beneficiary_checklist: T16,
   gc_nvc_f1_beneficiary_checklist: T17,
+  green_card_i130_beneficiary_checklist: T16,
+  gc_nvc_i130_beneficiary_checklist: T17,
+  green_card_i130i485_beneficiary_checklist: T16, // the I-130 + I-485 case type repeats the F1 Green Card / NVC checklists
+  gc_nvc_i130i485_beneficiary_checklist: T17,
   gc_nvc_checklist: T18,
   l1a_business_plan_checklist: T19,
   l1b_business_plan_checklist: T19,

@@ -100,8 +100,8 @@ test("regression: existing family checklist keys are unaffected by the GC-NVC ad
       .forEach((key) => assert.ok(FAMILY_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`));
   }
   // each family visa type x 5 checklists (i130 x2, green_card, i864 [sponsor + joint sponsor in one], gc_nvc) + K1 x2 + K3 x2 (IR/CR/F2A..F4 were removed 2026-11-12: only F1 is left, so 9).
-  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, FAMILY_VISA_TYPES.length * 5 + 4 + 2); // + the two I-130 case-type checklists
-  assert.deepEqual(FAMILY_VISA_TYPES, ["F1"]);
+  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, FAMILY_VISA_TYPES.length * 5 + 4);
+  assert.deepEqual(FAMILY_VISA_TYPES, ["F1", "I-130", "I-130 + I-485"]);
 });
 
 test("the I-864 checklist is ONE checklist for the client: the joint sponsor section is gated and never assigned to anyone else", () => {

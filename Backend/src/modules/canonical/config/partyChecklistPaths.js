@@ -714,7 +714,7 @@ const K1_BENEFICIARY = {
 // ── Sibling checklists ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // A checklist that is the same set of questions under another visa / category name (same question keys) shares the table of the checklist it repeats: L-1B and
 // L-1A extension repeat L-1A; every family category (CR-1, IR-2 ... F4) repeats the IR-1 I-130 petitioner / beneficiary and I-864 sponsor checklists.
-const FAMILY_CATEGORIES = ["f1"]; // (CR-1, IR-2 ... F4 were removed 2026-11-12; the IR-1 tables stay as the base the remaining family checklists repeat)
+const FAMILY_CATEGORIES = ["f1", "i130", "i130i485"]; // (CR-1, IR-2 ... F4 were removed 2026-11-12; the IR-1 tables stay as the base the remaining family checklists repeat)
 const SIBLINGS = {
   ...Object.fromEntries(["l1b", "l1aext"].flatMap((visa) => [[`${visa}_employer_checklist`, L1A_EMPLOYER], [`${visa}_employee_checklist`, L1A_EMPLOYEE]])),
   l1aext_document_checklist: L1A_DOCUMENT,
@@ -736,9 +736,6 @@ const EXTENDED = Object.fromEntries(Object.entries(EXTENDED_ROWS).map(([checklis
 ]));
 
 const CHECKLIST_PARTY_PATHS = Object.freeze({
-  // the I-130 case type (its questions keep the keys of the existing I-130 questionnaire, so the same tables apply)
-  i130_petitioner_checklist: Object.freeze(IR1_PETITIONER),
-  i130_beneficiary_checklist: Object.freeze(IR1_BENEFICIARY),
   // batch 1
   h1b_employer_checklist: Object.freeze(H1B_EMPLOYER),
   h1b_employee_checklist: Object.freeze(H1B_EMPLOYEE),

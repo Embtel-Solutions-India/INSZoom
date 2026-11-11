@@ -44,6 +44,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'i824', label: 'I-824', canonicalLabel: 'I-824' },
   // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
   { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
+  { value: 'i130i485', label: 'I-130 + Green Card (I-485)', canonicalLabel: 'I-130 + I-485' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
@@ -172,8 +173,8 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
   cosb2: 'COS_B2',
   cosh4: 'COS_H4',
 }
-export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family'])
-export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824', 'i130']) // I-130 has no Filing Path / package step at creation (its checklists and forms do not depend on it)
+export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow
+export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
 // RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
 export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
 export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])

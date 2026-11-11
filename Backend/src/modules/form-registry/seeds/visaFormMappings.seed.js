@@ -695,12 +695,8 @@ function familyBased(visaType, opts = {}) {
   );
 }
 // IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); only F1 is left.
-["F1"].forEach((v) => familyBased(v, {}));
+["F1", "I-130", "I-130 + I-485"].forEach((v) => familyBased(v, {}));
 // (F4 used to carry I-485 Supplement J here; F4 was removed 2026-11-12.)
-
-// I-130 as its own case type: Form I-130 always; I-130A only when the petitioner is filing for a spouse ("I am filing for my: Husband/wife", stored on Case.petitionSubType);
-// the green-card package forms (I-864, I-864A, I-864EZ, I-485 + Supplement A, DS-260, I-765, I-131, I-693) by the chosen filing path, exactly like every other family type.
-familyBased("I-130", { spouseTrigger: { field: "petitionSubType", operator: "in", value: ["Husband/wife", "Husband/Wife", "Spouse", "spouse"] } });
 
 // ===================== I-824 (STANDALONE TWO-PARTY CASE TYPE) =====================
 // Form I-824 is the case's own USCIS form (AUTO_CREATE). Only G-28 (attorney representation) is a conditional, case-manager decision. Nothing else is assigned

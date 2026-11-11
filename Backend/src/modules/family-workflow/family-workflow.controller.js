@@ -14,7 +14,9 @@ const Case = require("../../models/Case");
 const User = require("../../models/User");
 const Lead = require("../../models/Lead");
 const Questionnaire = require("../../models/Questionnaire");
-const generateCaseNumber = require("../cases/caseId");
+// every case type gets the same B001, B002 ... number (child cases B001-A ...) from the shared sequence - never the old random CRM-<year>-<number>
+const CaseNumberService = require("../../services/CaseNumberService");
+const generateCaseNumber = () => CaseNumberService.nextPrincipalCaseNumber();
 const caseService = require("../cases/case.service");
 const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 const notificationService = require("../notifications/notification.service");
@@ -342,7 +344,8 @@ exports.createFamilyCase = async (req, res, next) => {
       // I-130A's spouse-only trigger can key off it for visa types (F2A/
       // F2B) where the classification alone doesn't imply "spouse".
       petitionSubType: req.body.relationship || req.body.petitionSubType || "",
-      processingPath: req.body.processingPath || "",
+      // the combined I-130 + I-485 case type is always an adjustment-of-status filing (it is what assigns the Green Card + I-864 checklists and the I-485 package)
+      processingPath: req.body.processingPath || (/^I-?130\s*\+\s*I-?485$/i.test(String(visaType).trim()) ? "ADJUSTMENT_OF_STATUS" : ""),
       clientName: beneficiary?.fullName || beneficiaryName || petitionerName || beneficiaryEmail || petitionerEmail || "",
       clientEmail: beneficiaryEmail || undefined,
       user: beneficiaryUser?._id,

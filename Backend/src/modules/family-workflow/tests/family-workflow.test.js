@@ -463,6 +463,6 @@ test("single-case: Admin CreateCaseModal routes K-1/K-3 through the family workf
   const file = path.join(__dirname, "../../../../../Admin/frontend/src/components/CreateCaseModal.jsx");
   const src = fs.readFileSync(file, "utf8");
   const options = fs.readFileSync(path.join(__dirname, "../../../../../Admin/frontend/src/utils/visaOptions.js"), "utf8"); // the set moved here from the modal
-  assert.match(options, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3', 'i824', 'i130'\]\)/); // I-824 is a two-party case created the same way
+  assert.match(options, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3', 'i824'\]\)/); // I-824 is a two-party case created the same way
   assert.ok(src.indexOf("if (showFamilyFields)") < src.indexOf("casesApi.create(payload)"));
 });
