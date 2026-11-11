@@ -736,6 +736,9 @@ const EXTENDED = Object.fromEntries(Object.entries(EXTENDED_ROWS).map(([checklis
 ]));
 
 const CHECKLIST_PARTY_PATHS = Object.freeze({
+  // the I-130 case type (its questions keep the keys of the existing I-130 questionnaire, so the same tables apply)
+  i130_petitioner_checklist: Object.freeze(IR1_PETITIONER),
+  i130_beneficiary_checklist: Object.freeze(IR1_BENEFICIARY),
   // batch 1
   h1b_employer_checklist: Object.freeze(H1B_EMPLOYER),
   h1b_employee_checklist: Object.freeze(H1B_EMPLOYEE),

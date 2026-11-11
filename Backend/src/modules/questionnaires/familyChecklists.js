@@ -17,6 +17,7 @@ const k1 = require("../family-workflow/questionnaires/k1");
 const k3 = require("../family-workflow/questionnaires/k3");
 const familyBasedImmigrantPetition = require("../family-workflow/questionnaires/familyBasedImmigrantPetition");
 const { canonicalMapFor } = require("./familyCanonicalPaths");
+const { applyPetitionerRules: applyI130PetitionerRules, applyBeneficiaryRules: applyI130BeneficiaryRules } = require("./i130Spec");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -249,6 +250,8 @@ function withKey(definition, key) {
 function resolveFamilyChecklistKeys(visaType, processingPath) {
   // I-824: always exactly the petitioner + beneficiary checklists (no filing-path variants, no third principal-immigrant checklist)
   if (visaSlug(String(visaType || "")) === "i824") return ["i824_petitioner_checklist", "i824_beneficiary_checklist"];
+  // I-130 as its own two-party case type: exactly the petitioner + beneficiary checklists, whatever the filing path (the other forms of the case read the same canonical party values)
+  if (visaSlug(String(visaType || "")) === "i130") return ["i130_petitioner_checklist", "i130_beneficiary_checklist"];
   const slug = visaSlug(visaType);
   const i130Petitioner = `i130_${slug}_petitioner_checklist`;
   const i130Beneficiary = `i130_${slug}_beneficiary_checklist`;
@@ -292,6 +295,15 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
   buildFamilyBeneficiaryChecklist(k1, "K1", "Information Required from Beneficiary (Required from Fiancee of US Citizen)", "Documents required from Beneficiary:"),
   buildFamilyPetitionerChecklist(k3, "K3", "Information Required from U.S Sponsor/Petitioner (Required from US Citizen)", "From US Sponsor/ Petitioner:"),
   buildFamilyBeneficiaryChecklist(k3, "K3", "Information Required from Beneficiary (Required from Spouse of US Citizen)", "Documents required from Beneficiary:"),
+  // I-130 (Petition for Alien Relative) as its own case type: the business's verbatim I-130 questionnaire (the same question keys, so every canonical path and form mapping keeps
+  // working) with the supplied requiredness / applicability rules (i130Spec.js). Two checklists, each with its information section and its own documents section.
+  ...(() => {
+    const i130CaseDefinition = withKey(familyBasedImmigrantPetition.i130, "i130");
+    return [
+      applyI130PetitionerRules(buildFamilyPetitionerChecklist(i130CaseDefinition, "I-130", "I-130 Petitioner Checklist", "Petitioner Documents")),
+      applyI130BeneficiaryRules(buildFamilyBeneficiaryChecklist(i130CaseDefinition, "I-130", "I-130 Beneficiary Checklist", "Beneficiary Documents")),
+    ];
+  })(),
   ...FAMILY_VISA_TYPES.flatMap((visaType) => {
     const slug = visaSlug(visaType);
     const i130Definition = withKey(familyBasedImmigrantPetition.i130, `i130_${slug}`);

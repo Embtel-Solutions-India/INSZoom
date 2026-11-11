@@ -222,6 +222,16 @@ for (const visaType of FAMILY_VISA_TYPES) {
   ]);
 }
 
+// ---- I-130 (standalone two-party case type): the petitioner + beneficiary checklists feed the I-130 and every other form of the case -------
+set("I-130", "I-130", [
+  cm("i130_petitioner_checklist", AUTO, { role: "petitioner" }),
+  cm("i130_beneficiary_checklist", AUTO, { role: "beneficiary" }),
+]);
+// the sponsor's details (income, household, assets) are in the petitioner checklist; the beneficiary's identity, address, status and history are in the beneficiary one -
+// reused for the related forms, exactly as K-1 / K-3 reuse theirs (no second checklist asks the same thing twice)
+set("I-130", "I-864", [cm("i130_petitioner_checklist", COND, { role: "petitioner" })]);
+for (const formNumber of ["I-485", "I-765", "I-131", "I-693"]) set("I-130", formNumber, [cm("i130_beneficiary_checklist", COND, { role: "beneficiary" })]);
+
 // ---- I-824 (standalone two-party case): exactly two checklists; principal-immigrant content lives inside the petitioner checklist -------
 set("I-824", "I-824", [
   cm("i824_petitioner_checklist", AUTO, { role: "petitioner" }),

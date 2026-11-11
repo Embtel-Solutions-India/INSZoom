@@ -42,6 +42,8 @@ const VISA_TYPE_OPTIONS = [
   // SB-1 is a single-person case (no petitioner / family subcases); canonicalLabel is the visa type the case is created with.
   // I-824 (Action on an Approved Application or Petition): its own two-party case (Petitioner + Beneficiary checklists), created through the family workflow.
   { value: 'i824', label: 'I-824', canonicalLabel: 'I-824' },
+  // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
+  { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },

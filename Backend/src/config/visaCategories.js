@@ -286,6 +286,10 @@ const VISA_CATEGORIES = {
   // only. Never converted into the underlying petition (I-130, ...) - that approval is referenced evidence, not a form to re-file.
   "I-824": { caseStructure: "family", forms: ["i-824"], label: "I-824" },
 
+  // I-130 (Petition for Alien Relative) as its OWN two-party case: Petitioner + Beneficiary checklists (questionnaires/i130Spec.js); the other forms of the case (I-130A, I-864, I-485 ...)
+  // are provisioned by the form registry (visaFormMappings.seed.js) and filled from the same canonical petitioner.* / beneficiary.* values.
+  "I-130": { caseStructure: "family", forms: ["i-130"], label: "I-130" },
+
   // ─── GREEN CARD / CITIZENSHIP WORKFLOWS (STANDALONE CASE TYPES) ───────────
   "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
   "Conditional Green Card Removal": { caseStructure: "single", forms: ["i-751"], label: "Removal of Conditions on Residence" },

@@ -261,18 +261,15 @@ exports.createFamilyCase = async (req, res, next) => {
     const petitionerEmail = clean(req.body.petitioner?.email || req.body.petitionerEmail || req.body.clientEmail).toLowerCase();
     const petitionerName = req.body.petitioner?.name || req.body.petitionerName || req.body.clientName;
     const petitionerPhone = clean(req.body.petitioner?.phone || req.body.petitionerPhone || req.body.clientPhone);
-    if (!petitionerEmail) return res.status(400).json({ success: false, message: "Petitioner email is required" });
+    // Petitioner / beneficiary contact details are OPTIONAL when staff open a family case (they can be added from the case later): no email = no login account, no invitation, no e-mail.
 
     // Every request check happens BEFORE the first write below. A rejected request (400) used to have already created/updated the
     // petitioner's client account (and later the Beneficiary record / burned a case number), leaving partial data behind on each retry.
     const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
     const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
     const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
-    if (!beneficiaryEmail) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
-    const completionMode = req.body.familyCompletionMode === "petitioner_completes" ? "petitioner_completes" : "invite_beneficiary";
-    if (completionMode === "invite_beneficiary" && !beneficiaryPhone) {
-      return res.status(400).json({ success: false, message: "Beneficiary mobile number is required to send an invitation" });
-    }
+    // an invitation is sent only when the beneficiary's email AND mobile number are both known; otherwise the petitioner completes the case until they are added
+    const completionMode = req.body.familyCompletionMode === "petitioner_completes" || !beneficiaryEmail || !beneficiaryPhone ? "petitioner_completes" : "invite_beneficiary";
     const visaType = req.body.visaType || "K-1";
     // Client-facing wording never says "I-130"/"processingPath" (see
     // Immiglance intake) - it maps its own plain-language choice onto this
@@ -294,7 +291,7 @@ exports.createFamilyCase = async (req, res, next) => {
       return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
     }
 
-    let petitionerUser = await User.findOne({ email: petitionerEmail });
+    let petitionerUser = petitionerEmail ? await User.findOne({ email: petitionerEmail }) : null;
     let petitionerSetupToken = null;
     // A person whose every earlier case was withdrawn (a removed employee / beneficiary) or deleted has their email released for this new case: the leftover account
     // becomes the client the case needs and its links to the withdrawn cases are dropped. An account that still has a live case is left exactly as it was.
@@ -304,7 +301,7 @@ exports.createFamilyCase = async (req, res, next) => {
       petitionerUser.displayName = petitionerUser.displayName || petitionerName;
       if (petitionerPhone && !petitionerUser.phone) petitionerUser.phone = petitionerPhone;
       await petitionerUser.save();
-    } else {
+    } else if (petitionerEmail) {
       petitionerSetupToken = generateOpaqueToken();
       const referralCode = await generateUniqueReferralCode(User);
       [petitionerUser] = await User.create([{
@@ -322,14 +319,14 @@ exports.createFamilyCase = async (req, res, next) => {
       }]);
     }
 
-    const beneficiaryUser = await User.findOne({ email: beneficiaryEmail });
+    const beneficiaryUser = beneficiaryEmail ? await User.findOne({ email: beneficiaryEmail }) : null;
     // the same release for a withdrawn employee / beneficiary whose email is now the family beneficiary (a client who just has no case yet is not re-roled)
     if (beneficiaryUser) await releaseLeftoverAccount(beneficiaryUser, "beneficiary", { fromRoles: ["employee", "employer", "beneficiary"] });
-    const beneficiary = await Beneficiary.findOneAndUpdate(
+    const beneficiary = beneficiaryEmail ? await Beneficiary.findOneAndUpdate(
       { email: beneficiaryEmail },
       { email: beneficiaryEmail, fullName: beneficiaryName, user: beneficiaryUser?._id, type: "family", source: "shared" },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    ) : null;
     const caseNumber = await generateCaseNumber();
     let caseData = await Case.create({
       ...NEW_CASE_FORM_SELECTION,
@@ -346,20 +343,22 @@ exports.createFamilyCase = async (req, res, next) => {
       // F2B) where the classification alone doesn't imply "spouse".
       petitionSubType: req.body.relationship || req.body.petitionSubType || "",
       processingPath: req.body.processingPath || "",
-      clientName: beneficiary.fullName || beneficiaryName || beneficiaryEmail,
-      clientEmail: beneficiaryEmail,
+      clientName: beneficiary?.fullName || beneficiaryName || petitionerName || beneficiaryEmail || petitionerEmail || "",
+      clientEmail: beneficiaryEmail || undefined,
       user: beneficiaryUser?._id,
       beneficiaryUser: beneficiaryUser?._id,
-      petitionerUser: petitionerUser._id,
+      petitionerUser: petitionerUser?._id,
       createdBy: req.user._id,
-      beneficiary: beneficiary._id,
+      beneficiary: beneficiary?._id,
       beneficiaryInvite: { email: beneficiaryEmail, name: beneficiaryName, phone: beneficiaryPhone, status: "", invitedBy: req.user._id },
       familyCompletionMode: completionMode,
       familyWorkflow: { petitionerStatus: "in_progress", beneficiaryStatus: "not_invited", caseManagerStatus: "waiting_for_beneficiary" },
       legacySource: "Immiglance",
     });
-    beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
-    await beneficiary.save();
+    if (beneficiary) {
+      beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
+      await beneficiary.save();
+    }
     if (isI824(visaType)) {
       // underlying approved petition + requested action (optional, staff-verified); link the original case when its number is given
       const details = buildI824Details(req.body.underlyingPetition);
@@ -374,13 +373,15 @@ exports.createFamilyCase = async (req, res, next) => {
       sourceLead.convertedCaseId = caseData._id;
       await sourceLead.save();
     }
-    petitionerUser.primaryCaseId = petitionerUser.primaryCaseId || caseData._id;
-    petitionerUser.caseIds = [...new Set([...(petitionerUser.caseIds || []), caseData._id].map(String))];
-    await petitionerUser.save();
+    if (petitionerUser) {
+      petitionerUser.primaryCaseId = petitionerUser.primaryCaseId || caseData._id;
+      petitionerUser.caseIds = [...new Set([...(petitionerUser.caseIds || []), caseData._id].map(String))];
+      await petitionerUser.save();
+    }
     caseService.addTimelineEvent(caseData, "case", "Family Case Created", `${req.user.name || req.user.displayName || "Staff"} created a family-visa case for petitioner ${petitionerEmail} / beneficiary ${beneficiaryEmail}.`, req.user, { petitionerEmail, beneficiaryEmail });
     await caseData.save();
 
-    if (completionMode === "invite_beneficiary") {
+    if (completionMode === "invite_beneficiary" && beneficiaryEmail) {
       await sendBeneficiaryInvite(caseData, { email: beneficiaryEmail, name: beneficiaryName, phone: beneficiaryPhone }, req.user, req);
     } else {
       caseData.familyWorkflow.beneficiaryStatus = "in_progress";
@@ -410,7 +411,9 @@ exports.createFamilyCase = async (req, res, next) => {
     // "set up your account" email case.controller.js's createCase sends its
     // own new clientUser - fire-and-forget, mirrors that call site exactly
     // (setImmediate + .catch(() =&gt; null), never blocks the response).
-    if (petitionerSetupToken) {
+    if (!petitionerUser) {
+      // no petitioner email given: no account to notify
+    } else if (petitionerSetupToken) {
       setImmediate(async () => {
         await notificationService.createNotification({
           userId: petitionerUser._id,

@@ -125,7 +125,8 @@ const CreateCaseModal = ({
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
-  const showFilingPathFields = showFamilyPackageFields
+  // Filing Path / "filing for their" are no longer asked at creation for any family case type
+  const showFilingPathFields = false
   const filingPathOptions = NO_CONSULAR_VISA_TYPES.has(form.visaType)
     ? FILING_PATH_OPTIONS.filter((opt) => opt.value !== 'CONSULAR')
     : FILING_PATH_OPTIONS
@@ -346,11 +347,11 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyFields ? 'Petitioner Name *' : isEmployerCase ? 'Company / Employer Name *' : 'Client Name *'}
+              {showFamilyFields ? 'Petitioner Name' : isEmployerCase ? 'Company / Employer Name *' : 'Client Name *'}
             </label>
             <input
               type="text"
-              required
+              required={!showFamilyFields}
               value={form.clientName}
               onChange={handleChange('clientName')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -360,11 +361,11 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyFields ? 'Petitioner Email *' : isEmployerCase ? 'Petitioner (Employer) Email *' : 'Client Email *'}
+              {showFamilyFields ? 'Petitioner Email' : isEmployerCase ? 'Petitioner (Employer) Email *' : 'Client Email *'}
             </label>
             <input
               type="email"
-              required
+              required={!showFamilyFields}
               value={form.clientEmail}
               onChange={handleChange('clientEmail')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -518,10 +519,9 @@ const CreateCaseModal = ({
               </>)}
 
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Name *</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Name</label>
                 <input
                   type="text"
-                  required
                   value={form.beneficiaryName}
                   onChange={handleChange('beneficiaryName')}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -530,10 +530,9 @@ const CreateCaseModal = ({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Email *</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Email</label>
                 <input
                   type="email"
-                  required
                   value={form.beneficiaryEmail}
                   onChange={handleChange('beneficiaryEmail')}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -552,14 +551,13 @@ const CreateCaseModal = ({
               )}
 
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Phone *</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Phone</label>
                 <input
                   type="tel"
-                  required
                   value={form.beneficiaryPhone}
                   onChange={handleChange('beneficiaryPhone')}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Required to send an invitation"
+                  placeholder="Needed (with the email) to send an invitation"
                 />
               </div>
             </div>
