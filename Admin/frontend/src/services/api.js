@@ -794,14 +794,35 @@ export const readFormWarnings = (response) => {
   }
 }
 
+// A form download is only handed to the browser's "save" when it really is a PDF: an empty body, a cut-off transfer or a proxy / error page that answered 200 would otherwise
+// be saved as a "form" with the data missing and nobody would know. Throws an error shaped like the server's own (error.response.data.message) so every caller shows it as
+// before. Applies to BOTH download buttons (the forms list and the opened form) because both use the two functions below.
+export const ensureValidPdf = async (response) => {
+  const data = response?.data
+  const size = typeof data?.size === 'number' ? data.size : data?.byteLength
+  let head = ''
+  try {
+    if (typeof Blob !== 'undefined' && data instanceof Blob) head = await data.slice(0, 5).text()
+    else if (data && typeof data.byteLength === 'number') head = String.fromCharCode(...new Uint8Array(data).slice(0, 5))
+  } catch {
+    head = ''
+  }
+  if (!size || size < 100 || head !== '%PDF-') {
+    throw Object.assign(new Error('The download was not a valid PDF'), {
+      response: { status: response?.status, data: { message: 'The download did not finish correctly (the file was empty or not a PDF). Please try again.' } },
+    })
+  }
+  return response
+}
+
 export const formGenerationApi = {
   generatePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/generate`, payload),
   regeneratePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/regenerate`, payload),
   previewPdf: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
-  downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }),
+  downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }).then(ensureValidPdf),
   // The one official download: real, authentic, watermark-free USCIS PDF,
   // no status gate. Replaces the old draftPdf/filingPdf split.
-  downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
+  downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }).then(ensureValidPdf),
 }
 
 export const petitionApi = {

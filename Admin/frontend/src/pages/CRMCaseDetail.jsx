@@ -23,7 +23,7 @@ import ChecklistApprovalCard, { isPremiumChecklist } from '../components/Checkli
 import WrappingSelect from '../components/ui/WrappingSelect'
 import { OtherCasesStrip, AttachToLoginBanner } from '../components/PersonCases'
 import { sortStaff, staffOption } from '../utils/staffOptions'
-import { usersApi, uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
+import { usersApi, uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, invalidateCachedGet, documentsApi, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
 import InformationRequestPanel from '../components/InformationRequestPanel'
@@ -35,6 +35,8 @@ import CaseNotesPanel from '../components/CaseNotesPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import CaseInvoices from '../components/CaseInvoices'
+import CasePackageField from '../components/CasePackageField'
+import { downloadOfficialForm, OFFICIAL_DOWNLOAD_FAILED } from '../utils/officialFormDownload'
 import EmployerPaymentSummary from '../components/EmployerPaymentSummary'
 import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
@@ -2799,11 +2801,13 @@ const CRMCaseDetail = () => {
                     <p className="text-sm text-muted-foreground">Visa Category</p>
                     <p className="font-medium">{caseData.visaCategory}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Package</p>
-                    <p className="font-medium capitalize">{getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}</p>
-                    <p className="text-xs text-muted-foreground">{formatCurrency(caseData.plan?.amount || caseData.packageAmount)}</p>
-                  </div>
+                  <CasePackageField
+                    caseData={caseData}
+                    label={getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}
+                    amountText={formatCurrency(caseData.plan?.amount || caseData.packageAmount)}
+                    userRole={user?.role}
+                    onSaved={() => fetchCaseDetail(true)}
+                  />
                   <div>
                     <p className="text-sm text-muted-foreground">Case Type</p>
                     <p className="font-medium">{caseData.caseType || '—'}</p>
@@ -3932,21 +3936,11 @@ const CRMCaseDetail = () => {
                                 if (downloadingFormId) return
                                 setDownloadingFormId(form._id)
                                 try {
-                                  const response = await formGenerationApi.downloadForm(form._id)
-                                  const blob = new Blob([response.data], { type: 'application/pdf' })
-                                  const url = URL.createObjectURL(blob)
-                                  const link = document.createElement('a')
-                                  link.href = url
-                                  const date = new Date().toISOString().slice(0, 10)
-                                  link.download = `${form.formCode}_${date}.pdf`
-                                  document.body.appendChild(link)
-                                  link.click()
-                                  document.body.removeChild(link)
-                                  URL.revokeObjectURL(url)
-                                  const formWarnings = readFormWarnings(response)
-                                  if (formWarnings.length) setFormActionMessage(`Downloaded. Please review these fields on the PDF: ${formWarnings.join('; ')}`)
+                                  // the same download as "Download Official Form" inside an opened form (utils/officialFormDownload.js): same endpoint, file name and wording
+                                  const { notice } = await downloadOfficialForm({ caseFormId: form._id, formCode: form.formCode, caseId: form.caseId?._id || form.caseId || id })
+                                  if (notice) setFormActionMessage(notice)
                                 } catch (error) {
-                                  setFormActionMessage(error.response?.data?.message || 'Unable to download this form.')
+                                  setFormActionMessage(error.response?.data?.message || OFFICIAL_DOWNLOAD_FAILED)
                                 } finally {
                                   setDownloadingFormId(null)
                                 }
