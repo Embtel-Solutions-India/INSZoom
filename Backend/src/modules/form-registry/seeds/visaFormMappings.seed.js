@@ -694,10 +694,9 @@ function familyBased(visaType, opts = {}) {
     i693(visaType)
   );
 }
-["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"].forEach((v) => familyBased(v, v === "IR-1" || v === "CR-1" ? { spouseTrigger: { field: "caseType", operator: "equals", value: "immigration" } } : {}));
-// F4 (sibling of a U.S. citizen) additionally carries I-485 Supplement J, at the
-// business owner's explicit request. No other family category does.
-add(i485SupplementJ("F4", { provisioningType: LATER, stage: "adjustment_of_status" }));
+// IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); only F1 is left.
+["F1"].forEach((v) => familyBased(v, {}));
+// (F4 used to carry I-485 Supplement J here; F4 was removed 2026-11-12.)
 
 // ===================== I-824 (STANDALONE TWO-PARTY CASE TYPE) =====================
 // Form I-824 is the case's own USCIS form (AUTO_CREATE). Only G-28 (attorney representation) is a conditional, case-manager decision. Nothing else is assigned

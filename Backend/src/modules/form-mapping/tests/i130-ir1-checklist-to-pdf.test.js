@@ -1,6 +1,6 @@
 // Phase 2 regression test (spec Rule 18/19 Test A): proves the real,
 // live-until-this-phase I-130 autofill bug is actually fixed - a case using
-// the i130_ir1_petitioner_checklist/i130_ir1_beneficiary_checklist key
+// the i130_f1_petitioner_checklist/i130_f1_beneficiary_checklist key
 // style (the checklist the registry ACTUALLY assigns for IR1/CR1/CR2/F1-4
 // family-petition categories, distinct from k3's "_info_" key style)
 // reaches the real I-130 CaseForm via the real AutoFillService.generate
@@ -42,7 +42,7 @@ const IR1 = {
   beneficiary: { lastName: "Tran", firstName: "Mai", middleName: "L", dateOfBirth: "1985-09-22", maritalStatus: "married", alienNumber: "A123456789" },
 };
 
-test("Phase 2 fix: a real i130_ir1_petitioner_checklist/i130_ir1_beneficiary_checklist answer reaches I-130's CaseForm.filledData via canonical routing", async (t) => {
+test("Phase 2 fix: a real i130_f1_petitioner_checklist/i130_f1_beneficiary_checklist answer reaches I-130's CaseForm.filledData via canonical routing", async (t) => {
   const ids = { caseId: null, userIds: [] };
   t.after(async () => {
     if (ids.caseId) await Case.deleteOne({ _id: ids.caseId });
@@ -59,7 +59,7 @@ test("Phase 2 fix: a real i130_ir1_petitioner_checklist/i130_ir1_beneficiary_che
 
   const caseDoc = await Case.create({
     caseNumber: `IR1-PHASE2-${ns}`,
-    visaType: "IR-1",
+    visaType: "F1",
     caseType: "family",
     petitionerUser: petitionerUser._id,
     beneficiaryUser: beneficiaryUser._id,
@@ -68,9 +68,9 @@ test("Phase 2 fix: a real i130_ir1_petitioner_checklist/i130_ir1_beneficiary_che
   });
   ids.caseId = caseDoc._id;
 
-  const petitionerQ = await Questionnaire.findOne({ key: "i130_ir1_petitioner_checklist", latestVersion: true });
-  const beneficiaryQ = await Questionnaire.findOne({ key: "i130_ir1_beneficiary_checklist", latestVersion: true });
-  assert.ok(petitionerQ && beneficiaryQ, "sanity: both i130_ir1_* checklists must exist in the registry");
+  const petitionerQ = await Questionnaire.findOne({ key: "i130_f1_petitioner_checklist", latestVersion: true });
+  const beneficiaryQ = await Questionnaire.findOne({ key: "i130_f1_beneficiary_checklist", latestVersion: true });
+  assert.ok(petitionerQ && beneficiaryQ, "sanity: both i130_f1_* checklists must exist in the registry");
 
   await questionnaireService.saveAnswers(
     {

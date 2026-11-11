@@ -420,7 +420,7 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
 test("employer/employee templates are unaffected (the original 15 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2 — are all still defined)", () => {
   // The list has since grown (L-1B, E-2, E-3, O-2, PERM ...), so this guards what the family work must not disturb rather than a total.
   const keys = new Set(EMPLOYMENT_CHECKLIST_DEFINITIONS.map((definition) => definition.key));
-  for (const key of ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_employer_checklist", "l1a_employee_checklist", "l1a_business_plan_checklist", "p_employer_checklist", "p_employee_checklist",
+  for (const key of ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_document_checklist", "p_employer_checklist", "p_employee_checklist",
     "o1_employer_checklist", "o1_employee_checklist", "eb1b_employer_checklist", "eb1b_employee_checklist", "i140_petitioner_checklist", "i140_beneficiary_checklist", "tn_employer_checklist", "tn_employee_checklist"]) {
     assert.ok(keys.has(key), `${key} is still defined`);
   }
@@ -432,7 +432,7 @@ test("employer/employee templates are unaffected (the original 15 — H1B x2, L1
 // caseStructure "family"); it now refuses and points to /family-workflow/cases. ──
 test("single-case: generic createCase refuses family visa types instead of creating a child case", async () => {
   const caseCtrl = require("../../cases/case.controller");
-  for (const visaType of ["K-1", "K-3", "IR-1", "CR-1", "F2A"]) {
+  for (const visaType of ["K-1", "K-3", "F1"]) { // (IR-1, CR-1, F2A were removed 2026-11-12)
     const res = fakeRes();
     await caseCtrl.createCase(
       { user: { _id: "admin1", role: "admin" }, body: { clientName: "Pat", clientEmail: "pat@example.com", visaType } },
@@ -462,6 +462,7 @@ test("single-case: Admin CreateCaseModal routes K-1/K-3 through the family workf
   const path = require("node:path");
   const file = path.join(__dirname, "../../../../../Admin/frontend/src/components/CreateCaseModal.jsx");
   const src = fs.readFileSync(file, "utf8");
-  assert.match(src, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3', 'i824'\]\)/); // I-824 is a two-party case created the same way
+  const options = fs.readFileSync(path.join(__dirname, "../../../../../Admin/frontend/src/utils/visaOptions.js"), "utf8"); // the set moved here from the modal
+  assert.match(options, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3', 'i824'\]\)/); // I-824 is a two-party case created the same way
   assert.ok(src.indexOf("if (showFamilyFields)") < src.indexOf("casesApi.create(payload)"));
 });

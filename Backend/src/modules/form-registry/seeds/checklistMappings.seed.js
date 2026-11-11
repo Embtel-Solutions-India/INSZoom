@@ -195,7 +195,8 @@ set("COSB2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 set("B-1/B-2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 
 // ---- Family-based (spec §6) --------------------------------------------
-const FAMILY_VISA_TYPES = ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"];
+// IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); only F1 is left.
+const FAMILY_VISA_TYPES = ["F1"];
 function familySlug(visaType) {
   return visaType.toLowerCase().replace(/[^a-z0-9]/g, "");
 }

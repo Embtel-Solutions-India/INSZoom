@@ -232,30 +232,7 @@ const DEFINITIONS = [
       mailing: ["cover_letter", "g28", "form", "certification", "support_letter", "exhibit"],
     },
   },
-  {
-    key: "I-130",
-    visaType: "IR-1",
-    visaTypes: ["IR-1", "CR-1"],
-    displayName: "I-130 Petition for Alien Relative",
-    status: "active",
-    version: 1,
-    requiredForms: [{ formCode: "I-130", required: true, supplements: [] }, { formCode: "I-130A", required: false, supplements: [] }],
-    requiredCertifications: [],
-    letterSlots: [
-      { key: "personal_statement", label: "Personal Statement", placement: "front_matter", templateKey: "", required: false },
-    ],
-    exhibitTaxonomy: [
-      { key: "proof_of_status", label: "Proof of Petitioner Status", documentTypes: ["passport", "birth_certificate", "current_visa"], required: true, order: 10 },
-      { key: "proof_of_relationship", label: "Proof of Relationship (Marriage/Birth Certificates, Photos, Joint Accounts)", documentTypes: ["marriage_certificate", "birth_certificate", "photo", "financial_document"], required: true, order: 20 },
-    ],
-    templates: [{ key: "generic_cover_letter", kind: "cover_letter", format: "html", content: GENERIC_COVER_LETTER }],
-    coverLetterTemplateKey: "generic_cover_letter",
-    filingAddressKey: "i130",
-    ordering: {
-      presentation: ["cover_letter", "personal_statement", "form", "exhibit"],
-      mailing: ["cover_letter", "g28", "form", "exhibit"],
-    },
-  },
+  // (the I-130 package for IR-1 / CR-1 was removed 2026-11-12 with those visa types)
   {
     key: "I-140-EB2",
     visaType: "EB2",

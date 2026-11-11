@@ -130,16 +130,16 @@ test("K-1/K-3: I-134 reuses the existing petitioner checklist, CONDITIONAL, neve
 test("Family: Petition Only assigns I-130 petitioner+beneficiary; AOS additionally resolves green-card/I-864 checklists", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();
-  const petitionOnly = await makeCase({ visaType: "IR-1", processingPath: "PETITION_ONLY" });
+  const petitionOnly = await makeCase({ visaType: "F1", processingPath: "PETITION_ONLY" });
   const resolvedPetitionOnly = await visaFormMappingService.resolveChecklistsForCase(petitionOnly);
-  assert.ok(keys(resolvedPetitionOnly.auto).includes("i130_ir1_petitioner_checklist"));
-  assert.ok(keys(resolvedPetitionOnly.auto).includes("i130_ir1_beneficiary_checklist"));
+  assert.ok(keys(resolvedPetitionOnly.auto).includes("i130_f1_petitioner_checklist"));
+  assert.ok(keys(resolvedPetitionOnly.auto).includes("i130_f1_beneficiary_checklist"));
 
-  const aos = await makeCase({ visaType: "IR-1", processingPath: "ADJUSTMENT_OF_STATUS" });
+  const aos = await makeCase({ visaType: "F1", processingPath: "ADJUSTMENT_OF_STATUS" });
   const resolvedAos = await visaFormMappingService.resolveChecklistsForCase(aos);
-  assert.ok(keys(resolvedAos.auto).includes("i130_ir1_petitioner_checklist"));
-  assert.ok(keys(resolvedAos.auto).includes("green_card_ir1_beneficiary_checklist"));
-  assert.ok(keys(resolvedAos.auto).includes("i864_ir1_petitioner_checklist"));
+  assert.ok(keys(resolvedAos.auto).includes("i130_f1_petitioner_checklist"));
+  assert.ok(keys(resolvedAos.auto).includes("green_card_f1_beneficiary_checklist"));
+  assert.ok(keys(resolvedAos.auto).includes("i864_f1_petitioner_checklist"));
 
   await Case.deleteMany({ _id: { $in: [petitionOnly._id, aos._id] } });
 });
@@ -147,13 +147,13 @@ test("Family: Petition Only assigns I-130 petitioner+beneficiary; AOS additional
 test("Family: joint sponsor checklist only activates once a joint sponsor is actually present on the case", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();
-  const noSponsor = await makeCase({ visaType: "CR-1", processingPath: "CONSULAR" });
+  const noSponsor = await makeCase({ visaType: "F1", processingPath: "CONSULAR" });
   const resolvedNo = await visaFormMappingService.resolveChecklistsForCase(noSponsor);
-  assert.ok(!keys(resolvedNo.auto).includes("i864_cr1_joint_sponsor_checklist"));
+  assert.ok(!keys(resolvedNo.auto).includes("i864_f1_joint_sponsor_checklist"));
 
-  const withSponsor = await makeCase({ visaType: "CR-1", processingPath: "CONSULAR", jointSponsorUser: new mongoose.Types.ObjectId() });
+  const withSponsor = await makeCase({ visaType: "F1", processingPath: "CONSULAR", jointSponsorUser: new mongoose.Types.ObjectId() });
   const resolvedYes = await visaFormMappingService.resolveChecklistsForCase(withSponsor);
-  assert.ok(keys(resolvedYes.auto).includes("i864_cr1_joint_sponsor_checklist"));
+  assert.ok(keys(resolvedYes.auto).includes("i864_f1_joint_sponsor_checklist"));
 
   await Case.deleteMany({ _id: { $in: [noSponsor._id, withSponsor._id] } });
 });
@@ -161,10 +161,10 @@ test("Family: joint sponsor checklist only activates once a joint sponsor is act
 test("Family: GC-NVC checklist is EXPLICIT_CM - never auto-assigned solely because the processing path is CONSULAR", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();
-  const consular = await makeCase({ visaType: "CR-1", processingPath: "CONSULAR" });
+  const consular = await makeCase({ visaType: "F1", processingPath: "CONSULAR" });
   const resolved = await visaFormMappingService.resolveChecklistsForCase(consular);
-  assert.ok(!keys(resolved.auto).includes("gc_nvc_cr1_beneficiary_checklist"), "must never be in the auto-assign bucket");
-  assert.ok(keys(resolved.explicitCm).includes("gc_nvc_cr1_beneficiary_checklist"), "must be surfaced as an explicit case-manager action");
+  assert.ok(!keys(resolved.auto).includes("gc_nvc_f1_beneficiary_checklist"), "must never be in the auto-assign bucket");
+  assert.ok(keys(resolved.explicitCm).includes("gc_nvc_f1_beneficiary_checklist"), "must be surfaced as an explicit case-manager action");
   await Case.deleteOne({ _id: consular._id });
 });
 

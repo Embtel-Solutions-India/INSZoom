@@ -268,7 +268,7 @@ test("deleting cases: the person's login survives while any case remains (incl. 
   created.users.push(beneficiary._id);
   const [own, family] = await Case.create([
     { caseId: `PS-${STAMP}`, caseNumber: `PS-${STAMP}`, clientName: "Pat", clientEmail: petitioner.email, visaType: "H-4", caseType: "immigration", status: "active", user: petitioner._id, caseStructure: "single", caseRole: "single" },
-    { caseId: `PF-${STAMP}`, caseNumber: `PF-${STAMP}`, clientName: "Ben", clientEmail: beneficiary.email, visaType: "IR-1", caseType: "immigration", status: "active", user: beneficiary._id, petitionerUser: petitioner._id, caseStructure: "family", caseRole: "principal" },
+    { caseId: `PF-${STAMP}`, caseNumber: `PF-${STAMP}`, clientName: "Ben", clientEmail: beneficiary.email, visaType: "F1", caseType: "immigration", status: "active", user: beneficiary._id, petitionerUser: petitioner._id, caseStructure: "family", caseRole: "principal" },
   ]);
   created.cases.push(own._id, family._id);
   await User.updateOne({ _id: petitioner._id }, { $set: { primaryCaseId: own._id, caseIds: [own._id, family._id] } });

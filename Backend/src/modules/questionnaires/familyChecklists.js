@@ -218,11 +218,12 @@ function buildFamilySponsorChecklist(definition, visaTypeKey, title, petitionerD
 // shared base `key`s - "i130"/"green_card"/"i864" - would otherwise collide
 // across all 12 visa types, exactly the bug fixed earlier this session for
 // the single merged definition).
-const FAMILY_VISA_TYPES = ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"];
+// IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 and their checklists were removed 2026-11-12 (owner request, new checklists to be integrated later); only F1 is left here.
+const FAMILY_VISA_TYPES = ["F1"];
 // IR/CR immediate-relative / conditional-resident visas no longer offer the
 // "Consular Processing" filing path (and therefore never the optional GC-NVC
 // checklist that hangs off it). The F-family visas and SB-1 are unaffected.
-const NO_CONSULAR_VISA_TYPES = new Set(["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5"]);
+const NO_CONSULAR_VISA_TYPES = new Set([]); // (the IR / CR types that used to be listed here were removed)
 function isConsularProcessingDisabled(visaType) {
   return NO_CONSULAR_VISA_TYPES.has(String(visaType || "").trim().toUpperCase());
 }

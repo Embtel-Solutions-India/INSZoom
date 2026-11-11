@@ -39,7 +39,7 @@ const FILING_PATH_OPTIONS = [
 
 // IR/CR visas do not offer Consular Processing (mirrors the backend's
 // isConsularProcessingDisabled in questionnaires/familyChecklists.js).
-const NO_CONSULAR_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5'])
+const NO_CONSULAR_VISA_TYPES = new Set([]) // the IR / CR types that had no Consular Processing path were removed (2026-11-12)
 
 const RELATIONSHIP_OPTIONS =['Husband/wife', 'Parent', 'Brother/Sister', 'Child']
 
