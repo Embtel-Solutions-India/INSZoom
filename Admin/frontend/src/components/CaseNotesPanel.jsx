@@ -16,7 +16,7 @@ const idOf = (value) => String(value?._id || value || '')
 const roleKey = (role) => String(role || '').toLowerCase().replace(/[\s-]+/g, '_')
 const formatWhen = (value) => {
   const date = value ? new Date(value) : null
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
 }
 const errorText = (err, fallback) => err?.response?.data?.message || err?.response?.data?.errors?.[0]?.msg || fallback
 

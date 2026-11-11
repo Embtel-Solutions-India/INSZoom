@@ -41,9 +41,17 @@ exports.download = async (req, res) => {
       const { isBehindCanonical } = require("../services/OfficialFormDownloadService");
       const current = await require("../../../models/CaseForm").findById(req.params.caseFormId).select("caseId versionNumber syncState isLocked status");
       const historical = current && (current.isLocked || ["locked", "filed"].includes(current.status));
-      if (current && !historical && (current.syncState?.stale || await isBehindCanonical(current))) return exports.downloadForm(req, res);
+      // One path for every editable form: it is always built from the current saved values (with the data-completeness check), never a snapshot that may be older.
+      if (current && !historical) return exports.downloadForm(req, res);
     } catch (_error) { /* cannot tell: serve the stored PDF as before */ }
-    const { caseForm, document, buffer } = await PDFGenerationService.getPdfDocument(req.params.caseFormId);
+    let stored;
+    try {
+      stored = await PDFGenerationService.getPdfDocument(req.params.caseFormId);
+    } catch (storedError) {
+      // no stored copy (or it cannot be read): build the form instead of failing the download
+      return exports.downloadForm(req, res);
+    }
+    const { caseForm, document, buffer } = stored;
     await PDFGenerationService.audit("PDF_DOWNLOADED", caseForm, req.user, req, { documentId: document._id });
     sendFile(res, { buffer, fileName: document.originalName || "uscis-form.pdf", mimeType: "application/pdf", disposition: "attachment" });
   } catch (error) {

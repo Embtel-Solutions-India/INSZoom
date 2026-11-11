@@ -73,7 +73,7 @@ export default function ValidationPanel({ validation, onJump }) {
 
       <div className="mt-4 flex items-center gap-1.5 border-t border-border pt-3 text-[0.68rem] text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5" />
-        Validated {validation.validatedAt ? new Date(validation.validatedAt).toLocaleString() : '—'}
+        Validated {validation.validatedAt ? new Date(validation.validatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
       </div>
     </aside>
   )

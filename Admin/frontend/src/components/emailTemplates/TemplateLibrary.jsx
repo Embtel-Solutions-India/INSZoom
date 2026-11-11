@@ -141,7 +141,7 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
                               : <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-muted-foreground">On activation</span>}
                         </td>
                         <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span></td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—'}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                       </tr>
                     )
                   })}

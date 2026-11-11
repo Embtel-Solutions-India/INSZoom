@@ -6,7 +6,7 @@ const VIEW_KEY = "immiglance-forms-view";
 const formatEdition = (value) => {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 };
 
 // "I-129F" -> "I": the letter series USCIS files the form under.

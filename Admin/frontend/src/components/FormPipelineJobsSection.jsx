@@ -45,7 +45,7 @@ export const StateBadge = ({ state }) => {
   return <Badge tone={info.tone} title={info.help}>{info.label}</Badge>
 }
 
-const when = (value) => (value ? new Date(value).toLocaleString() : '-')
+const when = (value) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-')
 
 export const stageLabel = (stage) => STAGE_TEXT[stage] || stage || '-'
 

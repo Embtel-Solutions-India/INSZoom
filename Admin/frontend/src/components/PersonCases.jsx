@@ -9,7 +9,7 @@ import ConfirmModal from './ConfirmModal'
 
 const dateLabel = (value) => {
   const date = value ? new Date(value) : null
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : ''
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''
 }
 const statusLabel = (value) => String(value || '').replace(/_/g, ' ')
 

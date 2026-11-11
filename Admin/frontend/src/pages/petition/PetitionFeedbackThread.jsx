@@ -9,7 +9,7 @@ export const timeLabel = (value) => {
   if (!date || Number.isNaN(date.getTime())) return ''
   const sameDay = date.toDateString() === new Date().toDateString()
   const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  return sameDay ? time : `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`
+  return sameDay ? time : `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, ${time}`
 }
 
 const newClientId = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 60)

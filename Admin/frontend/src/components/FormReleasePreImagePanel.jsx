@@ -20,7 +20,7 @@ const errorMessage = (error, fallback) => {
   const message = error?.response?.data?.message
   return typeof message === 'string' && message.trim() ? message : fallback
 }
-const when = (value) => (value ? new Date(value).toLocaleString() : '-')
+const when = (value) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-')
 
 /** What a restore PREVIEW or RESTORE returned, in plain words. Only counts and field paths are kept - the values the server sends are never read. */
 export function describeRestore(data) {

@@ -29,7 +29,7 @@ function formatAnswerValue(question, value) {
   if (Array.isArray(value)) return value.length ? value.map((item) => (typeof item === 'object' ? JSON.stringify(item) : String(item))).join(', ') : null
   if (question.type === 'date' || question.type === 'datetime') {
     const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString()
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
   return String(value)
 }

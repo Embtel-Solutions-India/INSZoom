@@ -28,7 +28,7 @@ const STATS = [
 ]
 
 // "2026-11-07" -> "Sat, 7 Nov 2026" (the key is a calendar date, so it is formatted in UTC to never shift a day).
-const dayLabel = (key) => new Date(`${key}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+const dayLabel = (key) => new Date(`${key}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 
 function Preview({ items, kind }) {
   const tone = kind === 'plan' ? 'border-amber-400/25 bg-amber-400/[0.07]' : 'border-green-400/25 bg-green-400/[0.07]'

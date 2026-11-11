@@ -389,7 +389,7 @@ const CaseManagerDetails = () => {
                   )}
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
-                    Joined: {new Date(caseManager.createdAt).toLocaleDateString()}
+                    Joined: {new Date(caseManager.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                   {caseManager.department && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -413,7 +413,7 @@ const CaseManagerDetails = () => {
                 {caseManager.lastLogin && (
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground">Last Login</p>
-                    <p className="text-sm font-semibold text-foreground">{new Date(caseManager.lastLogin).toLocaleDateString()}</p>
+                    <p className="text-sm font-semibold text-foreground">{new Date(caseManager.lastLogin).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                 )}
               </div>
@@ -550,7 +550,7 @@ const CaseManagerDetails = () => {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-foreground">{activity.action}</p>
                       {activity.description && <p className="truncate text-xs text-muted-foreground">{activity.description}</p>}
-                      <p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                     </div>
                   </div>
                 ))}
@@ -707,7 +707,7 @@ const CaseManagerDetails = () => {
                       <p className="text-sm text-muted-foreground">{[activity.caseNumber, activity.clientName, activity.clientEmail].filter(Boolean).join(' · ')}</p>
                     ) : activity.description ? <p className="text-sm text-muted-foreground">{activity.description}</p> : null}
                   </div>
-                  <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
+                  <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                 </div>
               ))}
             </div>

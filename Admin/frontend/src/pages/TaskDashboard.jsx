@@ -233,7 +233,7 @@ const TaskDashboard = () => {
                     </p>
                   </div>
                   <div className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                    <p>{task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}</p>
+                    <p>{task.dueDate ? `Due ${new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'No due date'}</p>
                     {task.assignedTo?.name && <p className="mt-1">{task.assignedTo.name}</p>}
                   </div>
                 </button>

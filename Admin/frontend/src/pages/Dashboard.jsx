@@ -100,7 +100,7 @@ const timeAgo = (date) => {
   if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago'
   if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago'
   if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago'
-  return new Date(date).toLocaleDateString()
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const EmptyChartState = ({ label = 'No chart data available' }) => (
@@ -651,7 +651,7 @@ const TeamLeadPanel = ({
                     <td className="py-2.5 pr-4 text-muted-foreground">{c.clientName || c.clientEmail || 'Unknown'}</td>
                     <td className="py-2.5 pr-4 text-muted-foreground">{resolveDisplayVisa(c) || '—'}</td>
                     <td className="py-2.5 pr-4 text-muted-foreground">{c.plan?.tier || c.package || '—'}</td>
-                    <td className="py-2.5 pr-4 text-muted-foreground">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                     <td className="py-2.5 pr-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         ['high', 'urgent', 'Premium Processing'].includes(c.priority)

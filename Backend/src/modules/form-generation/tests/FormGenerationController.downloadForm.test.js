@@ -76,7 +76,12 @@ test("downloadForm: persists the served bytes as a Document, same as the filing-
     await controller.downloadForm(req, res);
 
     assert.equal(res.statusCode, 200);
-    const documentCountAfter = await Document.countDocuments({ caseId: golden.caseId });
+    // The copy is saved AFTER the file has been sent (deferBookkeeping - the user never waits for storage), so wait for it instead of reading the count at once.
+    let documentCountAfter = documentCountBefore;
+    for (let attempt = 0; attempt < 60 && documentCountAfter === documentCountBefore; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      documentCountAfter = await Document.countDocuments({ caseId: golden.caseId });
+    }
     assert.equal(documentCountAfter, documentCountBefore + 1, "a successful official download must be retained as a Document record");
   } finally {
     await golden.cleanup();
@@ -138,7 +143,7 @@ test("downloadForm: stale, editable CaseForm -> AutoFillService.generate(regener
   }
 });
 
-test("downloadForm: fidelity check failure -> 422 with the fidelity error message, no buffer sent, not stored", async (t) => {
+test("downloadForm: strict fidelity check failure -> the download still yields a file, with a warning (a download never fails while the form exists)", async (t) => {
   t.after(async () => { await disconnectTestDB(); });
   await connectTestDB();
   const golden = await buildGoldenH1bCase();
@@ -168,16 +173,17 @@ test("downloadForm: fidelity check failure -> 422 with the fidelity error messag
       throw error;
     };
     try {
-      const documentCountBefore = await Document.countDocuments({ caseId: golden.caseId });
       const req = { params: { caseFormId: String(caseForm._id) }, user: staffUser, ip: "127.0.0.1", headers: {} };
       const res = mockRes();
       await controller.downloadForm(req, res);
 
-      assert.equal(res.statusCode, 422);
-      assert.match(res.body.message, /PDF fidelity check failed/);
-      assert.equal(res.sentBuffer, null, "no PDF buffer must be sent when the fidelity check fails");
-      const documentCountAfter = await Document.countDocuments({ caseId: golden.caseId });
-      assert.equal(documentCountAfter, documentCountBefore, "a failed fidelity check must not store a Document record");
+      // Since the 2026-10-02 download overhaul a failed strict check degrades (next engine / render without the strict check) instead of refusing the download;
+      // the user is told in X-Form-Warnings. (Only the filing-step gate, FilingArtifactPolicy, can still refuse, and only when FORM_PIPELINE_AUTONOMY is on.)
+      assert.equal(res.statusCode, 200, `expected 200, got ${res.statusCode} with body ${JSON.stringify(res.body)}`);
+      assert.ok(res.sentBuffer, "a PDF must still be sent");
+      assert.equal(Buffer.from(res.sentBuffer).subarray(0, 5).toString("latin1"), "%PDF-");
+      const warnings = JSON.parse(decodeURIComponent(res.headers["X-Form-Warnings"] || "[]")).join(" | ");
+      assert.match(warnings, /fidelity|Adobe|accuracy/i, "the user must be told the strict check did not pass");
     } finally {
       engine.renderFiling = originalRenderFiling;
     }

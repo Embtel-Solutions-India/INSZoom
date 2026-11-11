@@ -226,7 +226,7 @@ const GoldenSetReviewSection = () => {
             <p className="text-xs text-muted-foreground mt-1">Right: {summary.counts.right} · Keep blank: {summary.counts.blank ?? 0} · Wrong: {summary.counts.wrong} · Not sure: {summary.counts.unsure} · Not answered: {summary.counts.unanswered}</p>
           </div>
 
-          {summary.signOff && <p className="text-sm" data-testid="signed-off"><Badge tone={summary.signOff.upToDate ? 'green' : 'amber'}>{summary.signOff.upToDate ? 'Signed off' : 'Sign-off out of date'}</Badge> by {summary.signOff.reviewerEmail} on {new Date(summary.signOff.signedAt).toLocaleString()}{summary.signOff.upToDate ? '' : ' - the list changed since, so it needs a new review and sign-off.'}</p>}
+          {summary.signOff && <p className="text-sm" data-testid="signed-off"><Badge tone={summary.signOff.upToDate ? 'green' : 'amber'}>{summary.signOff.upToDate ? 'Signed off' : 'Sign-off out of date'}</Badge> by {summary.signOff.reviewerEmail} on {new Date(summary.signOff.signedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}{summary.signOff.upToDate ? '' : ' - the list changed since, so it needs a new review and sign-off.'}</p>}
 
           <div className="flex flex-wrap gap-2">
             {summary.perForm.map((form) => (

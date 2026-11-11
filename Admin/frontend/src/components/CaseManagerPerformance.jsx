@@ -6,7 +6,7 @@ import { useOptionalSocket } from '../contexts/SocketContext'
 // Weekly performance of one case manager: "Performance this week" (highlighted, with the rating form for admins / team leads), and the past weeks
 // below it as a log with a few figures. managerId = a user id, or 'me' for the signed-in case manager's own ratings.
 
-const formatDay = (value) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+const formatDay = (value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 const weekLabel = (week) => `${formatDay(week.weekStart)} – ${formatDay(week.weekEnd)}`
 
 function Stars({ value, size = 'w-5 h-5', onPick, label }) {
