@@ -357,4 +357,5 @@ uscisFormTemplateSchema.index({ formCode: 1, status: 1, editionDate: -1, effecti
 uscisFormTemplateSchema.index({ "lifecycle.provider": 1, formCode: 1, status: 1 });
 uscisFormTemplateSchema.index({ formCode: "text", title: "text", description: "text", visaTypes: "text" });
 
+require("../modules/form-registry/formCatalogCache").watch(uscisFormTemplateSchema); // any write clears the Form Governance catalog copy
 module.exports = mongoose.model("USCISFormTemplate", uscisFormTemplateSchema);

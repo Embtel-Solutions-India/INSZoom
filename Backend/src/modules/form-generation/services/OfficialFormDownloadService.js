@@ -95,10 +95,20 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
   let result = null;
   let mode = null;
 
+  // Everything the live form view shows must be in the file: a box the saved copy never received is filled from the case's current data, in memory only (see
+  // LiveFormValues.js). Anything that goes wrong here leaves the saved copy as it was.
+  const LiveFormValues = deps.LiveFormValues || require("./LiveFormValues");
+  const live = await withTimeout(LiveFormValues.gapFill({ caseForm, template, user, req }, deps), Number(process.env.FORM_DOWNLOAD_LIVE_VALUES_TIMEOUT_MS || 20000), "Live form values")
+    .catch((error) => ({ filledData: null, filledFieldIds: [], skipped: error.message }));
+  const renderForm = live.filledData ? LiveFormValues.withFilledData(caseForm, live.filledData) : caseForm;
+  if (live.restoredFieldIds?.length) warnings.push(`${live.restoredFieldIds.length} box(es) had been saved as empty by a PDF edit although the case holds a value for them; the value was restored in this download (nothing was changed on the case).`);
+  if (live.filledFieldIds.length) warnings.push(`${live.filledFieldIds.length} box(es) shown on the live form were missing from the saved copy and were filled from the case's current data for this download.`);
+  lap("liveValues");
+
   if (adobeEnabled) {
     try {
       const AdobeFormRenderer = deps.AdobeFormRenderer || require("./AdobeFormRenderer");
-      result = await withTimeout(AdobeFormRenderer.renderFiling({ caseForm, template }), ADOBE_TIMEOUT_MS, "Adobe form fill");
+      result = await withTimeout(AdobeFormRenderer.renderFiling({ caseForm: renderForm, template }), ADOBE_TIMEOUT_MS, "Adobe form fill");
       mode = "adobe";
     } catch (error) {
       warnings.push(`The Adobe form-fill service could not process this form (${error.message}); the form was filled with the standard engine instead.`);
@@ -107,7 +117,7 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
 
   if (!result) {
     try {
-      result = await renderer.renderFiling({ caseForm, template });
+      result = await renderer.renderFiling({ caseForm: renderForm, template });
       mode = "pdf-lib";
     } catch (error) {
       warnings.push(`The form failed its strict accuracy check (${error.message}); it was downloaded without that check, so please review the values.`);
@@ -116,7 +126,7 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
 
   if (!result) {
     try {
-      const rendered = await renderer.render({ caseForm, template, watermark: null, flatten: false });
+      const rendered = await renderer.render({ caseForm: renderForm, template, watermark: null, flatten: false });
       result = { buffer: rendered.buffer, renderReport: rendered.renderReport };
       mode = "pdf-lib-unverified";
     } catch (error) {
@@ -142,6 +152,30 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
   );
   warnings.push(...fieldWarnings(result.renderReport));
 
+  // Data-completeness safety net (FormDataGuard): any saved value that did not reach a form box - orphan values, boxes missing from the PDF, supplement pages, rejected
+  // choices, ... - is recorded in the download log with its value and named in the warning (the file itself stays the form alone - strict owner rule), so no saved value is ever silently lost. Never throws; on any problem the file
+  // is served exactly as built.
+  const recovery = await (deps.FormDataGuard || require("./FormDataGuard")).recover({ caseForm: renderForm, template, result, mode }, deps);
+  if (recovery.buffer) result = { ...result, buffer: recovery.buffer };
+  warnings.push(...recovery.warnings);
+  // the download log keeps the VALUE too, so nothing that has no box on the form is ever lost (the file itself stays the form alone)
+  const unplacedValues = recovery.entries.slice(0, 300).map((entry) => ({ label: entry.label || null, caseField: entry.caseField, pdfField: entry.pdfField || null, reason: entry.reason, value: String(Array.isArray(entry.value) ? entry.value.join(", ") : entry.value).slice(0, 500) }));
+  lap("dataCheck");
+  // Monitoring for every form, present and future (nothing here is form-specific): whenever a download had to rescue a value or found one with no box, one structured log line
+  // names the form, so a new or changed form that starts losing values shows up at once instead of as a complaint. Best-effort; never affects the download.
+  if (live.filledFieldIds.length || live.restoredFieldIds?.length || recovery.entries.length) {
+    try {
+      (deps.logger || require("../../../utils/logger")).warn("form_download_data_safeguard", {
+        formCode: caseForm.componentCode || caseForm.formCode,
+        caseFormId: String(caseForm._id),
+        filledFromLiveView: live.filledFieldIds.length,
+        restoredFromEmptyOverride: live.restoredFieldIds?.length || 0,
+        noBoxOnForm: recovery.entries.length,
+        reasons: [...new Set(recovery.entries.map((entry) => entry.reason))],
+      });
+    } catch (_error) { /* monitoring only */ }
+  }
+
   // Keep a copy on the case and an audit trail - but never fail the download
   // because bookkeeping failed, and (when deferBookkeeping is set) do not make
   // the user wait for it: it runs after the file has been sent. A blank
@@ -166,6 +200,7 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
         warnings: [...warnings, ...problems].slice(0, 20),
         adjustedFieldWrites: result.renderReport?.adjustedFieldWrites || [],
         blankedFieldWrites: result.renderReport?.failedFieldWrites || [],
+        unplacedValues,
       });
     } catch (error) {
       // audit is best-effort here

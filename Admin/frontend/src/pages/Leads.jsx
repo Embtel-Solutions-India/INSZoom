@@ -348,7 +348,7 @@ const Leads = () => {
                         {consultation?.startAt ? (
                           <div className="flex items-center gap-1.5 text-green-700">
                             <Calendar className="w-3.5 h-3.5" />
-                            {new Date(consultation.startAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            {new Date(consultation.startAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">Not booked</span>

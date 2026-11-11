@@ -30,7 +30,7 @@ const dateLabel = (value) => {
 };
 const timeLabel = (value) => {
   const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
 };
 
 const Svg = ({ children, size = 18, ...rest }) => (

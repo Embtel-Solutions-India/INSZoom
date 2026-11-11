@@ -47,7 +47,7 @@ const COLUMNS = {
     ['Total Cases', (r) => r.totalCases],
     ['Open', (r) => r.openCases],
     ['Closed', (r) => r.closedCases, 'text-green-600'],
-    ['Last Case', (r) => (r.lastCaseAt ? new Date(r.lastCaseAt).toLocaleDateString() : '—')],
+    ['Last Case', (r) => (r.lastCaseAt ? new Date(r.lastCaseAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')],
   ],
 }
 

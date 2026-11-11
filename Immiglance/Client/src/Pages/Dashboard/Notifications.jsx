@@ -103,7 +103,7 @@ export default function Notifications() {
 
                     <p className="text-sm text-muted-foreground mt-1">{n.message}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(n.createdAt).toLocaleString()}
+                      {new Date(n.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
                     </p>
                   </div>
 

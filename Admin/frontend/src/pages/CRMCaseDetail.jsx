@@ -167,7 +167,7 @@ const formatOptionalDate = (...values) => {
   for (const value of values) {
     if (!value) continue
     const parsed = new Date(value)
-    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleDateString()
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
   return 'Not available'
 }
@@ -2838,7 +2838,7 @@ const CRMCaseDetail = () => {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Created</p>
-                    <p className="font-medium">{new Date(caseData.createdAt).toLocaleDateString()}</p>
+                    <p className="font-medium">{new Date(caseData.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                   </div>
                 </div>
               </div>
@@ -2856,7 +2856,7 @@ const CRMCaseDetail = () => {
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="text-xs text-muted-foreground">
                           {f.pendingPush ? 'Updating GoHighLevel…' : f.source === 'crm' ? 'Kept in Immiglance (no GoHighLevel card)' : f.source ? 'Synced with GoHighLevel' : 'No figures yet'}
-                          {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString()}` : ''}
+                          {f.updatedAt ? ` · updated ${new Date(f.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
                         </span>
                       </div>
                     </div>
@@ -3236,7 +3236,7 @@ const CRMCaseDetail = () => {
                       <div key={document._id} className="flex items-center justify-between rounded-lg border border-border p-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-foreground">{document.originalName}</p>
-                          <p className="text-xs text-muted-foreground">{displayStatus(document.documentType)} · {new Date(document.createdAt).toLocaleDateString()}</p>
+                          <p className="text-xs text-muted-foreground">{displayStatus(document.documentType)} · {new Date(document.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                         </div>
                         <span className="badge bg-blue-100 text-blue-800">{displayStatus(document.reviewStatus)}</span>
                       </div>
@@ -3251,7 +3251,7 @@ const CRMCaseDetail = () => {
                     {trackingTimeline.length ? trackingTimeline.map((event, index) => (
                       <div key={event._id || `${event.type}-${index}`} className="relative border-l-2 border-blue-200 pl-4">
                         <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-blue-500" />
-                        <p className="text-xs font-semibold text-blue-700">{new Date(event.createdAt || event.occurredAt).toLocaleDateString()}</p>
+                        <p className="text-xs font-semibold text-blue-700">{new Date(event.createdAt || event.occurredAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                         <p className="text-sm font-semibold text-foreground">{event.title || displayStatus(event.type)}</p>
                         {event.description && <p className="text-xs text-muted-foreground">{event.description}</p>}
                       </div>
@@ -3525,7 +3525,7 @@ const CRMCaseDetail = () => {
               <div key={label} className="rounded-lg bg-muted p-3">
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <p className="font-medium text-foreground">
-                  {label === 'Date of Birth' && value ? new Date(value).toLocaleDateString() : value}
+                  {label === 'Date of Birth' && value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : value}
                 </p>
               </div>
             ))}
@@ -3717,7 +3717,7 @@ const CRMCaseDetail = () => {
                         )}
                       </td>
                       {!hideUploadedBy && <td className="py-2 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>}
-                      <td className="py-2 px-4 text-sm text-muted-foreground whitespace-nowrap">{documentUploadTime(doc) ? new Date(documentUploadTime(doc)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</td>
+                      <td className="py-2 px-4 text-sm text-muted-foreground whitespace-nowrap">{documentUploadTime(doc) ? new Date(documentUploadTime(doc)).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</td>
                       <td className="py-2 px-4">
                         <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                           <button
@@ -3912,7 +3912,7 @@ const CRMCaseDetail = () => {
                           <span className={`badge ${getFormStatusColor(form.status)}`}>{form.status?.replace('_', ' ')}</span>
                         </td>
                         <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
-                          {form.lastModifiedAt || form.updatedAt ? new Date(form.lastModifiedAt || form.updatedAt).toLocaleString() : 'Not started'}
+                          {form.lastModifiedAt || form.updatedAt ? new Date(form.lastModifiedAt || form.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Not started'}
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex flex-wrap items-center gap-1.5">

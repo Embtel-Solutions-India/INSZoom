@@ -79,7 +79,13 @@ async function resolveAudienceUsers(audience, ctx, onlyIds, caseScoped = false) 
 //   (emailPolicy.js) - unless an admin switched the email off, or:
 //   - the case / account is demo data, or the address is unusable (placeholder domain)
 //   - a client who has not set a password yet (the invitation email is their one email)
+// TEMPORARY PAUSE (owner request 2026-11-11): the "case escalated" (SLA breach) e-mail to the
+// internal team (team lead / admin / super admin) was sending repeatedly. Only the e-mail is held;
+// the in-app bell + push for the same event still go out. To reopen: set to an empty array.
+const PAUSED_EMAIL_EVENTS = ["case.escalated"];
+
 function emailDecision(trigger, user, custom, ctx) {
+  if (PAUSED_EMAIL_EVENTS.includes(trigger.event)) return { send: false, reason: "paused_by_owner" };
   if (custom && custom.sendEmail === false) return { send: false, reason: "disabled_by_admin" };
   if (!(custom || trigger.emailAuto)) return { send: false, reason: "not_automatic" };
   if (user.isDemoData || ctx.isDemoData) return { send: false, reason: "demo_data" };

@@ -233,9 +233,10 @@ const formatClock = (date) => new Date(date).toLocaleTimeString([], { hour: 'num
 
 const formatTime = (date) => {
   if (!date) return ''
-  return new Date(date).toLocaleString([], {
+  return new Date(date).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
   })
@@ -249,10 +250,10 @@ const formatDayLabel = (date) => {
   const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000)
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
-  return d.toLocaleDateString([], {
+  return d.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
-    year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    year: 'numeric'
   })
 }
 

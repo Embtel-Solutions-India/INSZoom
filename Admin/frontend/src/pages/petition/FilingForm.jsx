@@ -80,7 +80,7 @@ export default function FilingForm({ pkg, onCancel, onRecordFiling, onRecordRece
             <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{METHODS.find((m) => m.value === pkg.filing?.method)?.label || pkg.filing?.method}</span>
               {pkg.filing?.trackingNumber ? ` · ${pkg.filing.trackingNumber}` : ''}
-              {pkg.filing?.shippedAt ? ` · shipped ${new Date(pkg.filing.shippedAt).toLocaleDateString()}` : ''}
+              {pkg.filing?.shippedAt ? ` · shipped ${new Date(pkg.filing.shippedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Receipt Number</label>

@@ -8,7 +8,7 @@ import api from '../services/api'
 const isImage = (type, name) => /^image\//.test(type || '') || /\.(png|jpe?g|gif|webp)$/i.test(name || '')
 const isPdf = (type, name) => /pdf/i.test(type || '') || /\.pdf$/i.test(name || '')
 const formatSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((bytes || 0) / 1024))} KB`)
-const formatWhen = (value) => new Date(value).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const formatWhen = (value) => new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 const fileUrl = (caseId, invoice, download) => `/case-invoices/${caseId}/${invoice._id}/file${download ? '?download=1' : ''}`
 

@@ -9,6 +9,7 @@
     "check": "node --check src/server.js",
     "test": "node --test \"src/**/*.test.js\"",
     "test:safe": "node src/scripts/runSafeTests.js",
+    "verify:form-downloads": "node scripts/verify-form-downloads.js",
     "seed:users": "node src/seeds/seedUsers.js",
     "seed:clients": "node src/seeds/seedClients.js",
     "seed:cases": "node src/seeds/seedCases.js",

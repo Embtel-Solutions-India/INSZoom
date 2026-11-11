@@ -704,7 +704,7 @@ const TaskDetails = () => {
                     <div className="flex items-start justify-between mb-1">
                       <span className="font-medium text-foreground">{comment.author?.name}</span>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(comment.createdAt).toLocaleString()}
+                        {new Date(comment.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{comment.text}</p>

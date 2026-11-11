@@ -7,7 +7,7 @@ const timeLabel = (value) => {
   const date = value ? new Date(value) : null;
   if (!date || Number.isNaN(date.getTime())) return "";
   const sameDay = date.toDateString() === new Date().toDateString();
-  return sameDay ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : date.toLocaleDateString([], { month: "short", day: "numeric" }) + ", " + date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return sameDay ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + ", " + date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 };
 
 const newClientId = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 60);

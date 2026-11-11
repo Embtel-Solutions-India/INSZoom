@@ -15,7 +15,7 @@ export const errorMessage = (error, fallback) => {
   return typeof message === 'string' && message.trim() ? message : fallback
 }
 
-export const when = (value) => (value ? new Date(value).toLocaleString() : '-')
+export const when = (value) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-')
 
 /** "less than a minute", "5 minutes", "3 hours", "2 days" */
 export const formatAge = (ms) => {

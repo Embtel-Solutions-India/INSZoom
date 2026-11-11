@@ -609,6 +609,7 @@ function summarizeCase(caseData) {
     stage: data.stage,
     stageLabel: activeStage?.label || data.stage,
     priority: data.priority,
+    creationSource: data.creationSource || null,
     creator: data.createdBy ? {
       _id: data.createdBy?._id || data.createdBy,
       name: data.createdBy?.name || data.createdBy?.displayName || data.createdBy?.email,

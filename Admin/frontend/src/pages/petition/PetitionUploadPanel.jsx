@@ -332,7 +332,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal, 
                     <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
                       <p className="truncate text-base font-bold tracking-tight text-foreground">{doc.originalName || doc.fileName}</p>
-                      <p className="text-xs text-muted-foreground">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : ''}</p>
+                      <p className="text-xs text-muted-foreground">{doc.createdAt ? new Date(doc.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}</p>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">

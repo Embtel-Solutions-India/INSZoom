@@ -55,8 +55,8 @@ const formatBytes = (bytes) => {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
 }
 
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : 'N/A')
-const formatDateTime = (value) => (value ? new Date(value).toLocaleString() : 'N/A')
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A')
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'N/A')
 
 const getStorageKey = (template) => template?.artifacts?.form?.storageKey || template?.pdfStorageKey || ''
 const getChecksum = (template) => template?.artifacts?.form?.checksum || template?.importMetadata?.checksum || ''
@@ -65,7 +65,7 @@ const isFillable = (template) => getFieldCount(template) > 0
 const getPageCount = (template) =>
   template?.pdfMetadata?.pageCount ?? template?.pdfMetadata?.pages ?? template?.parserMetadata?.pageCount ?? null
 const getEdition = (template) =>
-  template?.editionDate ? new Date(template.editionDate).toLocaleDateString() : (template?.version || 'N/A')
+  template?.editionDate ? new Date(template.editionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : (template?.version || 'N/A')
 const getFormNumber = (template) => template?.formNumber || template?.formCode || 'N/A'
 const getSource = (template) =>
   template?.importMetadata?.source || template?.artifacts?.form?.sourceUrl || template?.officialPdfUrl || 'Unknown'
@@ -885,7 +885,7 @@ const USCISForms = () => {
                     <tr key={template._id} className="border-b border-border">
                       <td className="py-3 px-4 font-medium">{template.formCode}</td>
                       <td className="py-3 px-4">{template.version}</td>
-                      <td className="py-3 px-4">{template.editionDate ? new Date(template.editionDate).toLocaleDateString() : 'N/A'}</td>
+                      <td className="py-3 px-4">{template.editionDate ? new Date(template.editionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
                       <td className="py-3 px-4">
                         <span className={`badge ${getTemplateStatusColor(template.status)}`}>{template.status}</span>
                       </td>
@@ -1245,7 +1245,7 @@ const USCISForms = () => {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {caseForm.createdAt ? new Date(caseForm.createdAt).toLocaleDateString() : 'N/A'}
+                      {caseForm.createdAt ? new Date(caseForm.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
                     </td>
                     <td className="py-3 px-4">
                       <button
@@ -2231,7 +2231,7 @@ const USCISForms = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="font-medium">{new Date(selectedCaseForm.createdAt).toLocaleDateString()}</p>
+                  <p className="font-medium">{new Date(selectedCaseForm.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                 </div>
               </div>
               {selectedCaseForm.filledData && (

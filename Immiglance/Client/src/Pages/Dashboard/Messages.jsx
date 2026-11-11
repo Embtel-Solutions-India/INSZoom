@@ -37,7 +37,7 @@ function fmt(iso) {
   if (diff < 60) return "Just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatTime(iso) {
@@ -59,10 +59,10 @@ function dayLabel(date) {
   const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return d.toLocaleDateString([], {
+  return d.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
-    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined
+    year: "numeric"
   });
 }
 
@@ -417,7 +417,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   const isFailed = Boolean(msg.__failed);
   const readerNames = readers.map((r) => r.userId?.displayName || r.userId?.name).filter(Boolean);
   const tickTitle = isRead
-    ? `Read${readerNames.length ? ` by ${readerNames.join(", ")}` : ""}${readers[0]?.readAt ? ` · ${new Date(readers[0].readAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}`
+    ? `Read${readerNames.length ? ` by ${readerNames.join(", ")}` : ""}${readers[0]?.readAt ? ` · ${new Date(readers[0].readAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}` : ""}`
     : "Sent";
 
   // A reply from the case team arrives with its original message populated.

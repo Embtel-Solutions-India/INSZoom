@@ -79,7 +79,7 @@ export default function AdditionalDocuments({ documents = [], onUpload, onRemove
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">{doc.originalName || doc.fileName || "Document"}</p>
                 <p className="text-xs text-muted-foreground">
-                  {[formatSize(doc.fileSize || doc.size), doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : ""].filter(Boolean).join(" · ")}
+                  {[formatSize(doc.fileSize || doc.size), doc.createdAt ? new Date(doc.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <button

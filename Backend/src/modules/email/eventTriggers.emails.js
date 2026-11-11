@@ -244,7 +244,7 @@ const EVENT_EMAILS = {
     redLine("Case [case.id] has passed its service-level deadline and needs attention."),
     labels([...CASE_LABELS, ["Case Manager", "[casemanager.name]"], ["Current Stage", "[case.stage]"]]),
     p("Please review the case, confirm who is responsible for the next step and clear any blockers. Reassign the case if the current owner cannot act on it promptly."),
-    button("Open Case", "#dc2626"),
+    button("Open Case"),
   ),
   "case.escalated:admin": email(
     "Escalation: Case Deadline Breached — Case [case.id]", null,
@@ -252,7 +252,7 @@ const EVENT_EMAILS = {
     redLine("Case [case.id] has passed its service-level deadline and needs attention."),
     labels([...CASE_LABELS, ["Case Manager", "[casemanager.name]"], ["Team Lead", "[teamlead.name]"], ["Current Stage", "[case.stage]"]]),
     p("The case manager and team lead have been notified. This message is for escalation visibility; step in if the case is not being actioned."),
-    button("Open Case", "#dc2626"),
+    button("Open Case"),
   ),
   "case.escalated:super_admin": email(
     "Critical: Case Deadline Breached — Case [case.id]", null,
@@ -260,7 +260,7 @@ const EVENT_EMAILS = {
     redLine("Case [case.id] has passed its service-level deadline."),
     labels([["Case", "[case.id]"], ["Client", "[client.name]"], ["Current Stage", "[case.stage]"]]),
     p("The responsible case manager and team lead have been notified. You are receiving this because it is a critical, system-level alert."),
-    button("Open Case", "#dc2626"),
+    button("Open Case"),
   ),
 
   // ── System alerts (Super Admin) ────────────────────────────────────────

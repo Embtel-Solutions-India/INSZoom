@@ -25,7 +25,7 @@ const STATUS_LABELS = { submitted: 'Received' }
 const EMPTY_FORM = { recipientId: '', name: '', itemKind: 'document', documentCategory: 'Identity', optionsText: '', description: '' }
 
 const kindLabel = (kind) => REQUEST_TYPES.find((item) => item.value === kind)?.label || 'Request'
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString() : '')
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '')
 
 function AnswerPreview({ request, onOpenFile, busyKey }) {
   const answer = request.answer

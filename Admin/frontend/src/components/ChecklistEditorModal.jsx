@@ -10,19 +10,20 @@ const TYPE_LABELS = {
 }
 const typeLabel = (type) => TYPE_LABELS[type] || String(type || 'text').replace(/_/g, ' ')
 
-// The order the CLIENT sees (mirrors the client portal's checklist): the checklist exactly as it is defined - its own sections in their own
-// order, and inside each section its questions in order, uploads included (there is no separate "Documents" group any more). A question whose
-// section the checklist does not list still shows, in a group of its own after the listed ones. (`inlineDocuments` is kept for callers; every
-// checklist is now arranged this way.)
-// eslint-disable-next-line no-unused-vars
-function arrangeLikeClient(questions, sections, inlineDocuments = true) {
+// The order the CLIENT sees: sections in the questionnaire's own section order, the questions of each section by their
+// order number, and every document-upload question in a final "Documents" step (mirrors the client portal's checklist). A checklist that keeps its uploads inside their own
+// sections (settings.inlineDocuments, the L1A Documentation Checklist) is arranged by section only.
+function arrangeLikeClient(questions, sections, inlineDocuments = false) {
   const byOrder = (a, b) => (a.order || 0) - (b.order || 0)
   const orderedSections = [...(sections || [])].sort(byOrder)
   const known = new Set(orderedSections.map((section) => section.key))
-  const isFile = (question) => question.type === 'file' || question.type === 'file-multiple'
-  const groups = orderedSections.map((section) => ({ key: section.key, title: section.title, items: questions.filter((question) => (question.sectionKey || 'general') === section.key).sort(byOrder) }))
-  const strays = questions.filter((question) => !known.has(question.sectionKey || 'general')).sort(byOrder)
-  if (strays.length) groups.push({ key: 'general', title: strays.every(isFile) ? 'Documents' : 'Other questions', items: strays })
+  const isFile = (question) => !inlineDocuments && (question.type === 'file' || question.type === 'file-multiple')
+  const fields = questions.filter((question) => !isFile(question))
+  const groups = orderedSections.map((section) => ({ key: section.key, title: section.title, items: fields.filter((question) => (question.sectionKey || 'general') === section.key).sort(byOrder) }))
+  const strays = fields.filter((question) => !known.has(question.sectionKey || 'general'))
+  if (strays.length) groups.push({ key: 'general', title: 'Other', items: strays.sort(byOrder) })
+  const documents = questions.filter(isFile).sort(byOrder)
+  if (documents.length) groups.push({ key: '__documents', title: 'Documents', items: documents })
   return groups.filter((group) => group.items.length)
 }
 

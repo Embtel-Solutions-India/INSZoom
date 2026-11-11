@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import ConfirmModal from '../components/ConfirmModal'
 
 const COUNT_LABELS = [['documents', 'documents'], ['caseforms', 'forms'], ['answers', 'answers'], ['messages', 'messages'], ['tasks', 'tasks']]
-const formatDate = (value) => (value ? new Date(value).toLocaleString() : '')
+const formatDate = (value) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')
 
 // Deleted cases wait here for 30 days. An administrator can restore one (the case, its employee cases, the client accounts, documents, answers, forms and
 // the rest come back as they were); after 30 days the copies and the uploaded files are removed for good.
