@@ -16,7 +16,7 @@
 // Every degradation is reported in `warnings` (and `mode`) so the user is
 // told exactly what they got instead of an error or a silent difference.
 const PDFGenerationService = require("./PDFGenerationService");
-const PDFRenderer = require("./PDFRenderer");
+const PDFRenderer = require("./GuardedPDFRenderer"); // PDFRenderer + the no-value-lost safeguards (kept out of PDFRenderer.js on purpose)
 const FilingArtifactPolicy = require("./FilingArtifactPolicy");
 const env = require("../../../config/env");
 

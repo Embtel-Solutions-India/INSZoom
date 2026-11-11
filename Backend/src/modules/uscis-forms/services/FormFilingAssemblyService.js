@@ -13,7 +13,7 @@
 const merge = require("lodash/merge");
 const CaseForm = require("../../../models/CaseForm");
 const FormMappingService = require("../../form-mapping/services/FormMappingService");
-const PDFRenderer = require("../../form-generation/services/PDFRenderer");
+const PDFRenderer = require("../../form-generation/services/GuardedPDFRenderer"); // PDFRenderer + the no-value-lost safeguards
 
 async function assembleFilingPdf(caseId, parentFormCode) {
   const coreCaseForm = await CaseForm.findOne({ caseId, formCode: parentFormCode, componentCode: null }).lean();

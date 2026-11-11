@@ -78,62 +78,6 @@ class PDFRenderer {
     return pdf;
   }
 
-  // One name -> box map per form, built once (pdf-lib's getField() scans every box on each call, which made a 980-box form slow). `exact` is by full name;
-  // `loose` ignores case and stray spaces and holds null for an ambiguous name (two boxes) so it is never guessed.
-  static fieldIndex(form) {
-    this._fieldIndex = this._fieldIndex || new WeakMap();
-    let index = this._fieldIndex.get(form);
-    if (!index) {
-      index = { exact: new Map(), loose: new Map() };
-      for (const field of form.getFields()) {
-        const name = field.getName();
-        if (!index.exact.has(name)) index.exact.set(name, field);
-        const key = String(name).replace(/\s+/g, "").toLowerCase();
-        index.loose.set(key, index.loose.has(key) ? null : field);
-      }
-      this._fieldIndex.set(form, index);
-    }
-    return index;
-  }
-
-  // PDF box names matched ignoring case and stray spaces; an ambiguous name is never guessed.
-  static findFieldIgnoringCase(form, pdfField) {
-    try {
-      return this.fieldIndex(form).loose.get(String(pdfField || "").replace(/\s+/g, "").toLowerCase()) || null;
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  static isSignificantValue(value) {
-    if (value === undefined || value === null || value === false) return false;
-    if (typeof value === "string") return value.trim() !== "" && value.trim().toLowerCase() !== "false";
-    if (Array.isArray(value)) return value.some((item) => this.isSignificantValue(item));
-    return true;
-  }
-
-  // Reads every written box back and returns the ones that did not keep the value. Never throws.
-  static verifyWrites(form, written) {
-    const bad = [];
-    const clean = (text) => String(text ?? "").replace(/\s+/g, "").toLowerCase();
-    for (const mapped of written) {
-      let field;
-      try { field = this.fieldIndex(form).exact.get(mapped.resolvedPdfField || mapped.pdfField); } catch (_error) { continue; }
-      if (!field) continue;
-      const kind = field?.constructor?.name || "";
-      try {
-        if (kind.includes("CheckBox")) { if (field.isChecked() !== Boolean(mapped.value)) bad.push(mapped); continue; }
-        if (!this.isSignificantValue(mapped.value)) continue;
-        const expected = mapped.adjustment ? mapped.adjustment.to : (Array.isArray(mapped.value) ? mapped.value.join(", ") : mapped.value);
-        if (kind.includes("TextField")) { if (clean(field.getText()) !== clean(expected)) bad.push(mapped); continue; }
-        if (kind.includes("RadioGroup") || kind.includes("Dropdown") || kind.includes("OptionList")) {
-          if (![].concat(field.getSelected() || []).length) bad.push(mapped);
-        }
-      } catch (_error) { /* cannot read this box back: not counted as a loss */ }
-    }
-    return bad;
-  }
-
   // formCode is optional (defaults to no per-form crosswalk patterns being
   // consulted) - callers that have it should always pass it; see
   // ProtectedFieldPolicy.js for why this guard exists even though
@@ -147,16 +91,11 @@ class PDFRenderer {
       mappedField.renderError = "protected field — never auto-populated (blocked at render layer)";
       return false;
     }
-    let field = null;
+    let field;
     try {
-      field = this.fieldIndex(form).exact.get(mappedField.pdfField) || null;
+      field = form.getField(mappedField.pdfField);
     } catch (error) {
-      try { field = form.getField(mappedField.pdfField); } catch (_notFound) { field = null; }
-    }
-    // Self-heal: the mapping's box name differs from the PDF's only by upper/lower case or stray spaces -> the same box (only when exactly one box matches).
-    if (!field) {
-      field = this.findFieldIgnoringCase(form, mappedField.pdfField);
-      if (field) mappedField.resolvedPdfField = field.getName();
+      field = null;
     }
     if (!field) return false;
     const value = mappedField.value;
@@ -171,22 +110,6 @@ class PDFRenderer {
         // An empty answer just means "nothing selected" - not an error.
         if (choice.status === "empty") return true;
         if (choice.status === "dropped") {
-          // Self-heal for dropdowns / lists: a value that is not one of the printed choices is added to the list so the entry still reaches the form (radio groups cannot
-          // take a new choice; those are reported and shown on the recovery page).
-          if (!constructorName.includes("RadioGroup") && typeof field.addOptions === "function") {
-            try {
-              const wanted = (Array.isArray(value) ? value : [value]).map((item) => String(item ?? "").trim()).filter(Boolean);
-              const existing = field.getOptions?.() || [];
-              field.addOptions(wanted.filter((item) => !existing.includes(item)));
-              const retry = fitChoiceValue({ value, options: field.getOptions?.() || [] });
-              if (retry.status === "unchanged" || retry.status === "adjusted") {
-                if (constructorName.includes("OptionList")) field.select(retry.values);
-                else field.select(retry.values[0]);
-                mappedField.adjustment = { from: wanted.join(", "), to: retry.values.join(", "), reason: "not one of the form's printed choices; added to the list so the entry is kept" };
-                return true;
-              }
-            } catch (_healError) { /* fall through to the report below */ }
-          }
           mappedField.renderError = choice.reason;
           return false;
         }
@@ -249,30 +172,14 @@ class PDFRenderer {
     const failedFieldWrites = [];
     const adjustedFieldWrites = [];
 
-    // Values that could not be placed on a box are collected (not just counted) so the download can show them instead of silently dropping them - see FormDataGuard.js.
-    const unplacedWrites = [];
-    const written = [];
-    const unplaced = (mappedField, reason) => {
-      if (unplacedWrites.length < 5000 && this.isSignificantValue(mappedField.value)) unplacedWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, value: mappedField.value, reason });
-    };
     Object.values(mappedFields).forEach((mappedField) => {
       if (this.setFormField(form, mappedField, template.formCode)) {
-        written.push(mappedField);
         if (mappedField.adjustment) adjustedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, ...mappedField.adjustment });
       } else {
         unmappedPdfFields.push(mappedField.pdfField);
         if (mappedField.renderError) failedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, message: mappedField.renderError });
-        if (!String(mappedField.renderError || "").startsWith("protected field")) {
-          unplaced(mappedField, !mappedField.renderError ? "pdf_field_missing" : /not one of the choices/.test(mappedField.renderError) ? "choice_not_available" : "write_failed");
-        }
       }
     });
-    // Read every written box back; one that did not keep its value is written once more, and reported if it still differs.
-    try {
-      const mismatched = this.verifyWrites(form, written);
-      mismatched.forEach((mappedField) => this.setFormField(form, mappedField, template.formCode));
-      this.verifyWrites(form, mismatched).forEach((mappedField) => unplaced(mappedField, "readback_mismatch"));
-    } catch (_error) { /* the check itself must never fail a render */ }
     // Text longer than a box normally holds is written in full (limits lifted above); shrink its font
     // so the whole entry is visible in the box instead of clipped. Must run before flatten()/save().
     const shrunkTextFields = await shrinkLongTextToFit(pdf, form);
@@ -337,37 +244,7 @@ class PDFRenderer {
       acroFormRepair = rebuildAcroFormFieldsFromWidgets(pdf);
     }
 
-    // Boxes written above whose page was just removed (a supplement page): their values are not in this file - reported, never silent.
-    if (pagesToKeep) {
-      try {
-        const present = new Set(pdf.getForm().getFields().map((field) => field.getName()));
-        written.forEach((mappedField) => { if (!present.has(mappedField.resolvedPdfField || mappedField.pdfField)) unplaced(mappedField, "removed_with_page"); });
-      } catch (_error) { /* cannot tell: nothing reported */ }
-    }
-
-    // Root cause (confirmed): pdf-lib draws every text box's look with a standard PDF font, which cannot encode characters outside Latin-1/WinAnsi (a Chinese or
-    // Devanagari name, "Ṛ", ...). save() then THROWS, the whole render fails, and the download used to fall all the way back to the BLANK form - every value lost.
-    // The typed value itself is stored in the box (UTF-16) and is unaffected, so: save without drawing the look (viewers rebuild it - NeedAppearances is set), and
-    // list those entries so the exact text is also visible on the recovery page.
-    let output;
-    let appearanceFallback = false;
-    try {
-      output = Buffer.from(await pdf.save());
-    } catch (saveError) {
-      if (!/cannot encode/i.test(String(saveError?.message))) throw saveError;
-      appearanceFallback = true;
-      try {
-        const { StandardFonts } = this.loadPdfLib();
-        const font = await pdf.embedFont(StandardFonts.Helvetica);
-        written.forEach((mappedField) => {
-          if (typeof mappedField.value === "boolean") return;
-          const text = Array.isArray(mappedField.value) ? mappedField.value.join(", ") : String(mappedField.adjustment ? mappedField.adjustment.to : mappedField.value ?? "");
-          if (!text) return;
-          try { font.encodeText(text); } catch (_encodeError) { unplaced(mappedField, "not_displayable"); }
-        });
-      } catch (_error) { /* the save below still keeps every value */ }
-      output = Buffer.from(await pdf.save({ updateFieldAppearances: false }));
-    }
+    let output = Buffer.from(await pdf.save());
     output = await WatermarkService.apply(output, watermark);
     return {
       buffer: output,
@@ -377,8 +254,6 @@ class PDFRenderer {
         unmappedPdfFields,
         failedFieldWrites,
         adjustedFieldWrites,
-        unplacedWrites,
-        appearanceFallback,
         protectedFields,
         flattenedBarcodeFields,
         disabledRichTextFields,

@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const PDFRenderer = require("../services/PDFRenderer");
+const PDFRenderer = require("../services/GuardedPDFRenderer");
 const FormDataGuard = require("../services/FormDataGuard");
 const { prepareOfficialDownload } = require("../services/OfficialFormDownloadService");
 const { useLocalTemplateStorage, storedTemplate } = require("./fixtures/localTemplateStorage");
@@ -85,7 +85,8 @@ test("ROOT CAUSE: a name a PDF font cannot encode no longer fails the render (it
   const pdf = await PDFDocument.load(rendered.buffer);
   assert.equal(pdf.getForm().getTextField("N").getText(), "张伟 Ṛāma"); // the typed value is stored exactly
   assert.equal(pdf.getForm().getTextField("M").getText(), "plain");
-  assert.ok(rendered.renderReport.unplacedWrites.some((w) => w.reason === "not_displayable" && w.caseField === "a.name"));
+  assert.deepEqual(rendered.renderReport.notDisplayableFields, ["N"], "the exact text is stored in the box; only drawing its look is skipped");
+  assert.deepEqual(rendered.renderReport.unplacedWrites, [], "nothing is lost, so nothing is reported as unplaced");
   await fs.unlink(file).catch(() => {});
 });
 

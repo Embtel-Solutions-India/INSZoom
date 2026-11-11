@@ -236,7 +236,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                   <li key={question.key} className="rounded-xl border border-border p-3">
                     <label className="block text-xs font-medium text-muted-foreground">
                       Question
-                      <textarea rows={Math.min(12, Math.max(2, String(label || '').split('\n').length + 1))} value={label} onChange={(event) => setDraft(question, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" />
+                      <textarea rows={2} value={label} onChange={(event) => setDraft(question, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" />
                     </label>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
