@@ -53,10 +53,11 @@ test("resolveFamilyChecklistKeys never includes the GC-NVC checklist, for any pr
   }
 });
 
-const ir1 = gcNvcDefinitionFor("IR-1");
+// the checklist every family visa type shares: its shape is identical for each type, so F1 (the one family type left) stands for all
+const sample = gcNvcDefinitionFor("F1");
 
 test("GC-NVC document list matches the source exactly (6 documents, no invented ones)", () => {
-  const docTypes = ir1.questions.filter((q) => q.type === "file").map((q) => q.key);
+  const docTypes = sample.questions.filter((q) => q.type === "file").map((q) => q.key);
   assert.deepEqual(docTypes.sort(), [
     "gc_nvc_birth_certificate",
     "gc_nvc_marriage_certificate",
@@ -68,25 +69,25 @@ test("GC-NVC document list matches the source exactly (6 documents, no invented 
 });
 
 test("GC-NVC field catalog includes the full DOS security/background question set (53 questions, verbatim)", () => {
-  const securityQuestions = ir1.questions.filter((q) => q.sectionKey === "part_11_security_and_background_information" && q.type === "radio");
+  const securityQuestions = sample.questions.filter((q) => q.sectionKey === "part_11_security_and_background_information" && q.type === "radio");
   assert.equal(securityQuestions.length, 53, "must be exactly the 53 source security/background questions");
   securityQuestions.forEach((q) => assert.deepEqual(q.options.map((o) => o.value), ["Yes", "No"]));
 });
 
 test("GC-NVC checklist has no duplicate question keys", () => {
-  const keys = ir1.questions.map((q) => q.key);
+  const keys = sample.questions.map((q) => q.key);
   const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
   assert.deepEqual(duplicates, []);
 });
 
 test("GC-NVC field catalog spot-check: Part 1/2/12/13 fields present", () => {
-  const keys = new Set(ir1.questions.map((q) => q.key));
+  const keys = new Set(sample.questions.map((q) => q.key));
   ["beneficiary_dsFirstName", "beneficiary_dsPassportNumber", "beneficiary_dsPresentStreet", "beneficiary_dsUsAddressStreet", "beneficiary_dsWantsSsnIssued", "beneficiary_dsPetitionerRelation", "beneficiary_dsPetitionerEmail"]
     .forEach((key) => assert.ok(keys.has(key), `${key} missing from GC-NVC checklist`));
 });
 
 test("GC-NVC checklist visibility is beneficiary-only (never petitioner)", () => {
-  ir1.questions.forEach((q) => {
+  sample.questions.forEach((q) => {
     assert.ok(q.visibility.roles.includes("beneficiary"));
     assert.ok(!q.visibility.roles.includes("petitioner"));
   });
@@ -98,8 +99,9 @@ test("regression: existing family checklist keys are unaffected by the GC-NVC ad
     ["i130_" + slug + "_petitioner_checklist", "i130_" + slug + "_beneficiary_checklist", "green_card_" + slug + "_beneficiary_checklist", "i864_" + slug + "_petitioner_checklist"]
       .forEach((key) => assert.ok(FAMILY_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`));
   }
-  // 12 visa types x 5 checklists (i130 x2, green_card, i864 [sponsor + joint sponsor in one], gc_nvc) + K1 x2 + K3 x2 = 64.
-  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, 64);
+  // each family visa type x 5 checklists (i130 x2, green_card, i864 [sponsor + joint sponsor in one], gc_nvc) + K1 x2 + K3 x2 (IR/CR/F2A..F4 were removed 2026-11-12: only F1 is left, so 9).
+  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, FAMILY_VISA_TYPES.length * 5 + 4 + 2); // + the two single-person I-485 (Adjustment of Status) checklists
+  assert.deepEqual(FAMILY_VISA_TYPES, ["F1", "I-130", "I-130 + I-485"]);
 });
 
 test("the I-864 checklist is ONE checklist for the client: the joint sponsor section is gated and never assigned to anyone else", () => {

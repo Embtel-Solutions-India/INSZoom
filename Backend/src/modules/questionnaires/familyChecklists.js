@@ -17,6 +17,7 @@ const k1 = require("../family-workflow/questionnaires/k1");
 const k3 = require("../family-workflow/questionnaires/k3");
 const familyBasedImmigrantPetition = require("../family-workflow/questionnaires/familyBasedImmigrantPetition");
 const { canonicalMapFor } = require("./familyCanonicalPaths");
+const { applyPetitionerRules: applyI130PetitionerRules, applyBeneficiaryRules: applyI130BeneficiaryRules } = require("./i130Spec");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -218,11 +219,13 @@ function buildFamilySponsorChecklist(definition, visaTypeKey, title, petitionerD
 // shared base `key`s - "i130"/"green_card"/"i864" - would otherwise collide
 // across all 12 visa types, exactly the bug fixed earlier this session for
 // the single merged definition).
-const FAMILY_VISA_TYPES = ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"];
+// IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 and their checklists were removed 2026-11-12 (owner request, new checklists to be integrated later); only F1 is left here.
+// "I-130 + I-485" = the I-130 + Green Card package as its own case type: the same five checklists as F1 (petitioner, beneficiary, Green Card, I-864 sponsor, optional NVC)
+const FAMILY_VISA_TYPES = ["F1", "I-130", "I-130 + I-485"]; // every family type runs the same workflow (petition only / adjustment of status / consular)
 // IR/CR immediate-relative / conditional-resident visas no longer offer the
 // "Consular Processing" filing path (and therefore never the optional GC-NVC
 // checklist that hangs off it). The F-family visas and SB-1 are unaffected.
-const NO_CONSULAR_VISA_TYPES = new Set(["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5"]);
+const NO_CONSULAR_VISA_TYPES = new Set([]); // (the IR / CR types that used to be listed here were removed)
 function isConsularProcessingDisabled(visaType) {
   return NO_CONSULAR_VISA_TYPES.has(String(visaType || "").trim().toUpperCase());
 }
@@ -253,6 +256,9 @@ function resolveFamilyChecklistKeys(visaType, processingPath) {
   const i130Beneficiary = `i130_${slug}_beneficiary_checklist`;
   const greenCardBeneficiary = `green_card_${slug}_beneficiary_checklist`;
   const i864Sponsor = `i864_${slug}_petitioner_checklist`;
+  // The combined "I-130 + Green Card (I-485)" case type: BOTH I-130 checklists (petitioner + beneficiary) AND the Green Card checklist AND the I-864 sponsor checklist, always
+  // - whatever the filing path. (Every other family type keeps the path-based choice below.)
+  if (slug === "i130i485") return [i130Petitioner, i130Beneficiary, greenCardBeneficiary, i864Sponsor];
   if (processingPath === "ADJUSTMENT_OF_STATUS" || processingPath === "CONSULAR") {
     // Deliberately no separate i130Beneficiary here for a Green Card case -
     // greenCardBeneficiary already collects the same beneficiary
@@ -286,11 +292,30 @@ function resolveGcNvcChecklistKey(visaType) {
   return `gc_nvc_${visaSlug(visaType)}_beneficiary_checklist`;
 }
 
+// I-485 is a SINGLE-PERSON case type ("Adjustment of Status" in the registry, listed as "I-485" under Single applicant): one person, one login, the client role. Its two checklists are the
+// existing Green Card checklist and the I-864 checklist, with the same questions and canonical paths as everywhere else - only the role changes to client.
+const I485_VISA_TYPE = "Adjustment of Status";
+const toClientRole = (definition, key, title) => {
+  const asClient = (visibility) => ({ ...visibility, roles: [...new Set((visibility.roles || []).map((role) => (role === "beneficiary" || role === "petitioner" ? "client" : role)))] });
+  return {
+    ...definition,
+    key,
+    title,
+    checklistRole: "client",
+    questions: definition.questions.map((question) => ({ ...question, visibility: asClient(question.visibility || {}) })),
+  };
+};
+const I485_AOS_DEFINITIONS = [
+  toClientRole(buildFamilyBeneficiaryChecklist(withKey(familyBasedImmigrantPetition.greenCard, "green_card_aos"), I485_VISA_TYPE, "Green Card Checklist", "Documents Required:"), "i485_green_card_checklist", "I-485 Green Card Checklist"),
+  toClientRole(buildFamilySponsorChecklist(withKey(familyBasedImmigrantPetition.i864, "i864_aos"), I485_VISA_TYPE, "Affidavit of Support (I-864) — Sponsor/Petitioner and Joint Sponsor", "List of documents from the petitioner:", "Documents Required from Joint Sponsor:"), "i485_i864_checklist", "I-485 Affidavit of Support (I-864) Checklist"),
+];
+
 const FAMILY_CHECKLIST_DEFINITIONS = [
   buildFamilyPetitionerChecklist(k1, "K1", "Information Required from U.S Sponsor/Petitioner (Required from US Citizen)", "From US Sponsor/ Petitioner:"),
   buildFamilyBeneficiaryChecklist(k1, "K1", "Information Required from Beneficiary (Required from Fiancee of US Citizen)", "Documents required from Beneficiary:"),
   buildFamilyPetitionerChecklist(k3, "K3", "Information Required from U.S Sponsor/Petitioner (Required from US Citizen)", "From US Sponsor/ Petitioner:"),
   buildFamilyBeneficiaryChecklist(k3, "K3", "Information Required from Beneficiary (Required from Spouse of US Citizen)", "Documents required from Beneficiary:"),
+  ...I485_AOS_DEFINITIONS,
   ...FAMILY_VISA_TYPES.flatMap((visaType) => {
     const slug = visaSlug(visaType);
     const i130Definition = withKey(familyBasedImmigrantPetition.i130, `i130_${slug}`);
@@ -298,8 +323,9 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
     const i864Definition = withKey(familyBasedImmigrantPetition.i864, `i864_${slug}`);
     const gcNvcDefinition = withKey(familyBasedImmigrantPetition.gcNvc, `gc_nvc_${slug}`);
     return [
-      buildFamilyPetitionerChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Petitioner Information", "Documents required from Petitioner:"),
-      buildFamilyBeneficiaryChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Beneficiary Information", "Documents required from Beneficiary:"),
+      // the I-130 case type additionally carries the supplied requiredness / applicability rules (i130Spec.js); every other family type is unchanged
+      (visaType === "I-130" ? applyI130PetitionerRules : (definition) => definition)(buildFamilyPetitionerChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Petitioner Information", "Documents required from Petitioner:")),
+      (visaType === "I-130" ? applyI130BeneficiaryRules : (definition) => definition)(buildFamilyBeneficiaryChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Beneficiary Information", "Documents required from Beneficiary:")),
       buildFamilyBeneficiaryChecklist(greenCardDefinition, visaType, "Green Card Checklist", "Documents Required:"),
       // ONE I-864 checklist for the client: petitioner/sponsor + (optional) joint sponsor section.
       buildFamilySponsorChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Sponsor/Petitioner and Joint Sponsor", "List of documents from the petitioner:", "Documents Required from Joint Sponsor:"),
@@ -318,4 +344,4 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
   }),
 ];
 
-module.exports = { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, isConsularProcessingDisabled, resolveFamilyChecklistKeys, resolveGcNvcChecklistKey, visaSlug };
+module.exports = { buildFamilyBeneficiaryChecklist, buildFamilySponsorChecklist, withKey, FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, isConsularProcessingDisabled, resolveFamilyChecklistKeys, resolveGcNvcChecklistKey, visaSlug };

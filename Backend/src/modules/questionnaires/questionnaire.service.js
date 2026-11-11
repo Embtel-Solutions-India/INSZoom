@@ -20,6 +20,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("./employmentChecklists");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
+const { I140I485_DEFINITIONS } = require("./i140i485Checklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2432,6 +2433,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   },
   ...EMPLOYMENT_CHECKLIST_DEFINITIONS,
   ...FAMILY_CHECKLIST_DEFINITIONS,
+  ...I140I485_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
@@ -3660,14 +3662,16 @@ function listVisaOptions() {
   const { VISA_CATEGORIES } = require("../../config/visaCategories");
   const { FILING_TYPES } = require("../../config/filingTypes");
   const options = new Map();
-  const add = (code, label) => {
+  const structures = new Map(); // visa code -> case structure (family / employer_employee / single), so the Questionnaires page can group a checklist under its visa type
+  const add = (code, label, caseStructure) => {
     const normalized = normalizeVisaCode(code);
     if (normalized && !options.has(normalized)) options.set(normalized, label || String(code));
+    if (normalized && caseStructure && !structures.has(normalized)) structures.set(normalized, caseStructure);
   };
-  Object.entries(VISA_CATEGORIES).forEach(([key, value]) => add(key, value.label ? `${key} — ${value.label}` : key));
+  Object.entries(VISA_CATEGORIES).forEach(([key, value]) => add(key, value.label ? `${key} — ${value.label}` : key, value.caseStructure));
   Object.values(FILING_TYPES).forEach((value) => add(value.visaType, value.label ? `${value.visaType} — ${value.label}` : value.visaType));
   VISA_TEMPLATE_DEFINITIONS.forEach((definition) => (definition.visaTypes || [definition.visaType]).forEach((code) => add(code, code)));
-  return [...options.entries()].map(([visaType, label]) => ({ visaType, label })).sort((a, b) => a.visaType.localeCompare(b.visaType));
+  return [...options.entries()].map(([visaType, label]) => ({ visaType, label, ...(structures.has(visaType) ? { caseStructure: structures.get(visaType) } : {}) })).sort((a, b) => a.visaType.localeCompare(b.visaType));
 }
 
 async function getUscisMappings(questionnaireId) {

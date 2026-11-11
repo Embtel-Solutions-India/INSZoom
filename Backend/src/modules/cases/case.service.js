@@ -410,25 +410,30 @@ async function resolveStaffListFilter(query, user) {
   return { $or: [direct, { _id: { $in: parentIds } }] };
 }
 
-// The list's colour groups, for ?toneGroup=true: 0 = still being worked on (white), 1 = filed or has an outcome (blue), 2 = on hold (red), 3 = completed
-// (logo colour, last). The same
-// split the Admin list colours its rows by (utils/stageTone.js). A case with its own Pipeline card is grouped by that card's stage; an employer matter
-// (no card of its own) is blue / red only when every active employee card is, otherwise it still has work in progress and stays in group 0.
+// The list's colour groups, for ?toneGroup=true: 0 = still being worked on (white), 1 = in "PWD under process" (soft orange), 2 = filed or has an outcome (blue),
+// 3 = on hold (red), 4 = completed (logo colour, last). So the orange cases sit just above the submitted ones; the chosen sort (ascending / descending) applies INSIDE each group,
+// exactly as it does for the submitted and on-hold cases. The same split the Admin list colours its rows by (utils/stageTone.js). A case with its own Pipeline card is grouped by that
+// card's stage; an employer matter (no card of its own) is orange / blue / red only when every active employee card is, otherwise it still has work in progress and stays in group 0.
 const TONE_BLUE_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "rfe", "status_approved", "status_disapproved", "feedback"];
+// the PWD stage key is the slug of its GoHighLevel name ("PWD under process" -> pwd_under_process); matched as a word so no other stage can be caught by accident
+const TONE_ORANGE_KEY_PATTERN = "(^|_)pwd(_|$)";
 async function toneRankStage() {
   const Case = require("../../models/Case");
   const stageKey = { $ifNull: ["$integrations.ghl.unifiedStageKey", ""] };
   const isHold = { $regexMatch: { input: stageKey, regex: "hold" } };
+  const isOrange = { $regexMatch: { input: stageKey, regex: TONE_ORANGE_KEY_PATTERN } };
   const isBlue = { $in: [stageKey, TONE_BLUE_STAGE_KEYS] };
   let blueParents = [];
   let redParents = [];
+  let orangeParents = [];
   try {
     const rows = await Case.aggregate([
       { $match: { parentCase: { $ne: null }, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } } },
-      { $group: { _id: "$parentCase", total: { $sum: 1 }, blue: { $sum: { $cond: [isBlue, 1, 0] } }, red: { $sum: { $cond: [isHold, 1, 0] } } } },
+      { $group: { _id: "$parentCase", total: { $sum: 1 }, blue: { $sum: { $cond: [isBlue, 1, 0] } }, red: { $sum: { $cond: [isHold, 1, 0] } }, orange: { $sum: { $cond: [isOrange, 1, 0] } } } },
     ]);
     blueParents = rows.filter((row) => row.blue === row.total).map((row) => row._id);
     redParents = rows.filter((row) => row.red === row.total).map((row) => row._id);
+    orangeParents = rows.filter((row) => row.orange === row.total).map((row) => row._id);
   } catch (_error) {
     /* ordering only: without the employee roll-up those matters just stay in the first group */
   }
@@ -438,11 +443,13 @@ async function toneRankStage() {
       _toneRank: {
         $switch: {
           branches: [
-            { case: { $eq: ["$status", "completed"] }, then: 3 },
-            { case: { $and: [hasCard, isHold] }, then: 2 },
-            { case: { $and: [hasCard, isBlue] }, then: 1 },
-            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", redParents] }] }, then: 2 },
-            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", blueParents] }] }, then: 1 },
+            { case: { $eq: ["$status", "completed"] }, then: 4 },
+            { case: { $and: [hasCard, isHold] }, then: 3 },
+            { case: { $and: [hasCard, isBlue] }, then: 2 },
+            { case: { $and: [hasCard, isOrange] }, then: 1 },
+            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", redParents] }] }, then: 3 },
+            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", blueParents] }] }, then: 2 },
+            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", orangeParents] }] }, then: 1 },
           ],
           default: 0,
         },

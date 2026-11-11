@@ -54,7 +54,6 @@ const GETS_SUPPLEMENT_J = [
   ["EB-3 Skilled Worker", "EB-3 skilled worker"],
   ["EB-3 Professional", "EB-3 professional"],
   ["EB-3 Other Worker", "EB-3 other worker"],
-  ["F4", "F4 (added at the business owner's explicit request)"],
 ];
 
 for (const [visaType, label] of GETS_SUPPLEMENT_J) {
@@ -70,11 +69,6 @@ const NO_SUPPLEMENT_J = [
   ["EB-1A", "EB-1A extraordinary ability (no job offer)"],
   ["EB-2 NIW", "EB-2 NIW (job-offer requirement waived)"],
   ["F1", "F1"],
-  ["F2A", "F2A"],
-  ["F2B", "F2B"],
-  ["F3", "F3"],
-  ["IR-1", "IR-1 spouse"],
-  ["CR-1", "CR-1 spouse"],
 ];
 
 for (const [visaType, label] of NO_SUPPLEMENT_J) {
@@ -95,7 +89,7 @@ test("Supplement J is gated on adjustment of status - never provisioned for a co
 
 test("the registry carries Supplement J on exactly the intended case types", () => {
   const types = SEED_ROWS.filter((row) => row.formNumber === "I-485 Supplement J").map((row) => row.visaType).sort();
-  assert.deepEqual(types, ["EB-1B", "EB-1C", "EB-2", "EB-2 PERM", "EB-3", "EB-3 Other Worker", "EB-3 Professional", "EB-3 Skilled Worker", "F4"]);
+  assert.deepEqual(types, ["EB-1B", "EB-1C", "EB-2", "EB-2 PERM", "EB-3", "EB-3 Other Worker", "EB-3 Professional", "EB-3 Skilled Worker"]); // (F4 carried it until F4 was removed 2026-11-12)
   for (const row of SEED_ROWS.filter((r) => r.formNumber === "I-485 Supplement J")) {
     assert.equal(row.formTemplateFormCode, "i-485j");
     assert.equal(row.componentType, "SUPPLEMENT");

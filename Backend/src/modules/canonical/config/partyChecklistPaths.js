@@ -714,8 +714,11 @@ const K1_BENEFICIARY = {
 // ── Sibling checklists ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // A checklist that is the same set of questions under another visa / category name (same question keys) shares the table of the checklist it repeats: L-1B and
 // L-1A extension repeat L-1A; every family category (CR-1, IR-2 ... F4) repeats the IR-1 I-130 petitioner / beneficiary and I-864 sponsor checklists.
-const FAMILY_CATEGORIES = ["cr1", "ir2", "cr2", "ir3", "ir4", "ir5", "f1", "f2a", "f2b", "f3", "f4"];
+const FAMILY_CATEGORIES = ["f1", "i130", "i130i485"]; // (CR-1, IR-2 ... F4 were removed 2026-11-12; the IR-1 tables stay as the base the remaining family checklists repeat)
 const SIBLINGS = {
+  i485_i864_employee_checklist: I864_PETITIONER, // I-140 + I-485: the I-864 checklist repeats the family I-864 table
+  // the single-person I-485 (Adjustment of Status) I-864 checklist repeats the family I-864 sponsor checklist
+  i485_i864_checklist: I864_PETITIONER,
   ...Object.fromEntries(["l1b", "l1aext"].flatMap((visa) => [[`${visa}_employer_checklist`, L1A_EMPLOYER], [`${visa}_employee_checklist`, L1A_EMPLOYEE]])),
   l1aext_document_checklist: L1A_DOCUMENT,
   ...Object.fromEntries(FAMILY_CATEGORIES.flatMap((category) => [
@@ -740,7 +743,6 @@ const CHECKLIST_PARTY_PATHS = Object.freeze({
   h1b_employer_checklist: Object.freeze(H1B_EMPLOYER),
   h1b_employee_checklist: Object.freeze(H1B_EMPLOYEE),
   i907_premium_processing_profile: Object.freeze(I907),
-  i130_ir1_petitioner_checklist: Object.freeze(IR1_PETITIONER),
   // batch 2
   l1a_employer_checklist: Object.freeze(L1A_EMPLOYER),
   l1a_employee_checklist: Object.freeze(L1A_EMPLOYEE),
@@ -749,8 +751,9 @@ const CHECKLIST_PARTY_PATHS = Object.freeze({
   tn_employee_checklist: Object.freeze(TN_EMPLOYEE),
   i140_petitioner_checklist: Object.freeze(I140_PETITIONER),
   i140_beneficiary_checklist: Object.freeze(I140_BENEFICIARY),
-  i130_ir1_beneficiary_checklist: Object.freeze(IR1_BENEFICIARY),
-  i864_ir1_petitioner_checklist: Object.freeze(I864_PETITIONER),
+  // I-140 + I-485: the same I-140 employer / employee questions, so the same paths
+  i140_i485_employer_checklist: Object.freeze(I140_PETITIONER),
+  i140_i485_employee_checklist: Object.freeze(I140_BENEFICIARY),
   // batch 3
   e3_employer_checklist: Object.freeze(E3_EMPLOYER),
   e3_employee_checklist: Object.freeze(E3_EMPLOYEE),

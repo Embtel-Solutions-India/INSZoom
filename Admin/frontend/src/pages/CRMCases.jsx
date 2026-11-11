@@ -241,7 +241,7 @@ const CRMCases = ({ caseGroup } = {}) => {
       }
       if (appliedSearch) params.search = appliedSearch
       params.sortOrder = sortOrder
-      params.toneGroup = true // working cases first, then blue (filed / outcome), then red (on hold); the sort applies inside each group
+      params.toneGroup = true // working cases first, then orange (PWD under process), then blue (filed / outcome), then red (on hold); the sort applies inside each group
 
       const response = await api.get('/cases', { params, signal: controller.signal })
       if (seq !== activeFetchRef.current.seq) return

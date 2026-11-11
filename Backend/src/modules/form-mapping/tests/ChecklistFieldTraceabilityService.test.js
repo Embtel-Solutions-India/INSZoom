@@ -213,11 +213,11 @@ test("Phase 2: I-130's petitioner/beneficiary PDF fields are now canonical-route
   identity.forEach((edge) => assert.match(edge.fallback, /^(person|beneficiary)\.lastName$/));
 });
 
-test("Phase 2: both I-130 checklist styles (k3_* and i130_ir1_*) resolve to the SAME canonical path, so either one reaches the same PDF field - this is the actual bug fix", async (t) => {
+test("Phase 2: both I-130 checklist styles (k3_* and i130_f1_*) resolve to the SAME canonical path, so either one reaches the same PDF field - this is the actual bug fix", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();
   const { questions: k3Questions } = await ChecklistFieldTraceabilityService.canonicalPathsForQuestionnaire("k3_petitioner_checklist");
-  const { questions: ir1Questions } = await ChecklistFieldTraceabilityService.canonicalPathsForQuestionnaire("i130_ir1_petitioner_checklist");
+  const { questions: ir1Questions } = await ChecklistFieldTraceabilityService.canonicalPathsForQuestionnaire("i130_f1_petitioner_checklist");
   const k3LastName = k3Questions.find((q) => q.questionKey === "petitioner_info_lastName");
   const ir1LastName = ir1Questions.find((q) => q.questionKey === "petitioner_lastName");
   assert.equal(k3LastName.canonicalPath, "person.lastName");

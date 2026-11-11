@@ -1,7 +1,7 @@
 import { useState, useRef, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import StatBadge from './StatBadge'
-import { stageToneColor, stageToneKey, caseToneStyle, allEmployeesFiled, TONE_ORDER } from '../../utils/stageTone'
+import { stageToneColor, stageToneKey, caseToneStyle, mixedMatterTone, TONE_ORDER } from '../../utils/stageTone'
 
 const NEUTRAL_SEGMENT = 'rgba(148, 163, 184, 0.55)'
 
@@ -93,7 +93,7 @@ export default function StageSummary({ caseItem, className = '' }) {
     return (
       <StageHoverTip caseItem={caseItem} className={className}>
         <span className="inline-flex flex-col items-stretch gap-1">
-          <StatBadge value={`${breakdown.count} employees`} kind="stage" className="normal-case" style={allEmployeesFiled(caseItem) ? caseToneStyle(caseItem, 'Submitted') : undefined} />
+          <StatBadge value={`${breakdown.count} employees`} kind="stage" className="normal-case" style={mixedMatterTone(caseItem) ? caseToneStyle(caseItem, mixedMatterTone(caseItem) === 'orange' ? 'PWD under process' : 'Submitted') : undefined} />
           {breakdown.stages.some((item) => stageToneColor(item.name)) ? <StageBar stages={breakdown.stages} /> : null}
         </span>
       </StageHoverTip>

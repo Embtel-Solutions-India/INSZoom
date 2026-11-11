@@ -31,6 +31,7 @@ const FILING_TYPE_NAMES = {
   "Naturalization": "N-400 - Naturalization",
   "Certificate of Citizenship": "N-600 - Certificate of Citizenship",
   "Replacement Citizenship Certificate": "N-565 - Replacement Citizenship/Naturalization Document",
+  "I-140/I-485": "I-140 + I-485",
 };
 
 function resolveDisplayVisa(caseData) {

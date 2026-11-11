@@ -37,8 +37,8 @@ async function scenario(t, { visaType, caseType }) {
   const caseDoc = await Case.create({ caseNumber: `E2E-${visaType}-${ns}`, visaType, caseType, petitionerUser: petitioner._id, beneficiaryUser: beneficiary._id, user: petitioner._id, status: "active", checklistApproval: { required: false } });
   made.caseIds.push(caseDoc._id);
 
-  const petitionerQ = await Questionnaire.findOne({ key: "i130_ir1_petitioner_checklist", latestVersion: true });
-  const beneficiaryQ = await Questionnaire.findOne({ key: "i130_ir1_beneficiary_checklist", latestVersion: true });
+  const petitionerQ = await Questionnaire.findOne({ key: "i130_f1_petitioner_checklist", latestVersion: true });
+  const beneficiaryQ = await Questionnaire.findOne({ key: "i130_f1_beneficiary_checklist", latestVersion: true });
   assert.ok(petitionerQ && beneficiaryQ, "the I-130 checklists exist");
   const answer = (questionKey, value) => ({ questionKey, value });
   await questionnaireService.saveAnswers({ questionnaireId: petitionerQ._id, caseId: caseDoc._id, answers: [
@@ -58,7 +58,7 @@ async function scenario(t, { visaType, caseType }) {
 const valueAt = (form, fieldId) => MappingResolver.resolvePath(form.filledData, fieldId) ?? form.fieldValues?.[fieldId];
 
 for (const { visaType, caseType, label } of [
-  { visaType: "IR-1", caseType: "family", label: "the form's own visa family" },
+  { visaType: "F1", caseType: "family", label: "the form's own visa family" },
   { visaType: "H-1B", caseType: "employment", label: "an unrelated visa type" },
 ]) {
   test(`E2E: I-130 added by name to a ${visaType} case (${label}) is created and filled from the case's checklist answers`, async (t) => {

@@ -244,13 +244,30 @@ export default function QuestionnaireTemplates() {
 
   const visibleQuestions = useMemo(() => questions.filter(isActiveQuestion), [questions])
 
+  // The visa types a checklist can belong to: the quiz pathways PLUS every visa type of the case-type registry (visa-options), so a checklist added for a new case type
+  // (I-130, K-1, ...) is grouped under its own visa type and can be chosen when creating one - without anyone editing the quiz list. Visa types removed from the product
+  // (IR/CR/F2A/F2B/F3/F4) are never listed.
+  const effectivePathways = useMemo(() => {
+    const norm = (value) => String(value || '').replace(/[^a-z0-9]+/gi, '').toUpperCase()
+    // quiz pathways are filtered by their exact old key ("F2A"); the registry's own F-2A (student dependent) is a different, kept visa type
+    const removedQuiz = (value) => ['CR-1/IR-1', 'F2A', 'F2B', 'F3', 'F4'].includes(String(value || '').trim()) || /^(IR|CR)-?[1-5]$/i.test(String(value || '').trim())
+    const removed = (value) => /^(IR[1-5]|CR[12]|F2B|F3|F4)$/.test(norm(value))
+    const base = visaPathways.filter((visa) => !removedQuiz(visa.key))
+    const known = new Set(base.map((visa) => norm(visa.key)))
+    const categoryFor = (option) => (/employment based/i.test(option.visaType || '') ? 'work' : option.caseStructure === 'family' ? 'family' : option.caseStructure === 'employer_employee' ? 'work' : 'other')
+    const extra = visaOptions
+      .filter((option) => option.visaType && !removed(option.visaType) && !known.has(norm(option.visaType)) && option.caseStructure)
+      .map((option) => ({ key: option.visaType, label: option.label || option.visaType, category: categoryFor(option) }))
+    return [...base, ...extra]
+  }, [visaPathways, visaOptions])
+
   const visaCategoryByKey = useMemo(() => {
     // Keyed by the dashless-uppercase form ("L-1A" -> "L1A"), because a
     // checklist's visaType is stored that way ("L1A", "O1") and never matched
     // the pathway's own dashed key - which filed L-1/O-1 under "Other".
     const norm = (value) => String(value || '').replace(/[^a-z0-9]+/gi, '').toUpperCase()
     const map = {}
-    visaPathways.forEach((visa) => { map[norm(visa.key)] = visa.category })
+    effectivePathways.forEach((visa) => { map[norm(visa.key)] = visa.category })
     // A bare family code ("O1") takes the category of its first sub-type ("O1A").
     return new Proxy(map, {
       get: (target, key) => {
@@ -261,17 +278,17 @@ export default function QuestionnaireTemplates() {
         return sub ? target[sub] : undefined
       },
     })
-  }, [visaPathways])
+  }, [effectivePathways])
 
   const visasByCategory = useMemo(() => {
     const groups = {}
-    visaPathways.forEach((visa) => {
+    effectivePathways.forEach((visa) => {
       const category = visa.category || 'other'
       if (!groups[category]) groups[category] = []
       groups[category].push(visa)
     })
     return groups
-  }, [visaPathways])
+  }, [effectivePathways])
 
   const roleOptionsForCategory = (category) => ROLE_CONFIG[category] || DEFAULT_ROLE_OPTIONS
 

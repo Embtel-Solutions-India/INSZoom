@@ -23,10 +23,21 @@ const EDITABLE_SCALAR_TYPES = new Set([
   'email', 'phone', 'select', 'multiselect', 'multi_select', 'radio', 'checkbox', 'boolean',
 ])
 
+// A structured answer (an address typed into the client's separate Street / Apt / City / State / Zip / Country boxes) is shown as the text the client wrote, in that order -
+// never as "[object Object]".
+const ADDRESS_PART_ORDER = ['line1', 'street', 'address', 'line2', 'unitNumber', 'apartment', 'city', 'state', 'province', 'postalCode', 'zipCode', 'zip', 'country']
+export function objectAnswerText(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return String(value ?? '')
+  const known = ADDRESS_PART_ORDER.filter((key) => value[key] !== undefined && value[key] !== null && String(value[key]).trim() !== '')
+  const rest = Object.keys(value).filter((key) => !ADDRESS_PART_ORDER.includes(key) && value[key] !== undefined && value[key] !== null && typeof value[key] !== 'object' && String(value[key]).trim() !== '')
+  return [...known, ...rest].map((key) => String(value[key]).trim()).join(', ')
+}
+
 function formatAnswerValue(question, value) {
   if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'object' && !Array.isArray(value)) return objectAnswerText(value) || null
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (Array.isArray(value)) return value.length ? value.map((item) => (typeof item === 'object' ? JSON.stringify(item) : String(item))).join(', ') : null
+  if (Array.isArray(value)) return value.length ? value.map((item) => (item && typeof item === 'object' ? objectAnswerText(item) : String(item))).join(', ') : null
   if (question.type === 'date' || question.type === 'datetime') {
     const parsed = new Date(value)
     return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -77,7 +88,7 @@ const LONG_VALUE_CHARS = 48
 export function isLongQuestion(question, value) {
   if (question.type === 'textarea') return true
   if (String(question.label || '').length > LONG_LABEL_CHARS) return true
-  const text = value === undefined || value === null ? '' : (Array.isArray(value) ? value.join(', ') : String(value))
+  const text = value === undefined || value === null ? '' : (Array.isArray(value) ? value.join(', ') : objectAnswerText(value))
   return text.length > LONG_VALUE_CHARS || text.includes('\n')
 }
 
@@ -166,9 +177,9 @@ function EditableAnswerInput({ question, value, onChange }) {
     return <input type="number" className={inputClass} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />
   }
   if (question.type === 'textarea') {
-    return <textarea className={`${inputClass} h-20`} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+    return <textarea className={`${inputClass} h-20`} value={objectAnswerText(value)} onChange={(event) => onChange(event.target.value)} />
   }
-  return <input type="text" className={inputClass} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+  return <input type="text" className={inputClass} value={objectAnswerText(value)} onChange={(event) => onChange(event.target.value)} />
 }
 
 function RepeatingGroupRows({ question, rows: rawRows, requestControl = null }) {
@@ -188,8 +199,8 @@ function RepeatingGroupRows({ question, rows: rawRows, requestControl = null }) 
           <p className="font-semibold text-foreground mb-1">{question.label} {index + 1}</p>
           <p className="text-muted-foreground">
             {fields.length
-              ? fields.map((field) => row?.[field.key]).filter(Boolean).join(', ') || 'Needed'
-              : Object.values(row || {}).filter(Boolean).join(', ') || 'Needed'}
+              ? fields.map((field) => (row?.[field.key] && typeof row[field.key] === 'object' ? objectAnswerText(row[field.key]) : row?.[field.key])).filter(Boolean).join(', ') || 'Needed'
+              : Object.values(row || {}).map((item) => (item && typeof item === 'object' ? objectAnswerText(item) : item)).filter(Boolean).join(', ') || 'Needed'}
           </p>
         </div>
       ))}

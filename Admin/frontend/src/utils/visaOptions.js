@@ -38,21 +38,17 @@ export const VISA_TYPE_OPTIONS = [
   // checklist+form logic (then the Filing Path selector below decides
   // Petition Only vs the fuller Green Card package). Listed inline with
   // every other visa type, same as before - no separate section/optgroup.
-  { value: 'ir1', label: 'IR-1 (I-130 / Green Card)', canonicalLabel: 'IR-1' },
-  { value: 'cr1', label: 'CR-1 (I-130 / Green Card)', canonicalLabel: 'CR-1' },
-  { value: 'ir2', label: 'IR-2 (I-130 / Green Card)', canonicalLabel: 'IR-2' },
-  { value: 'cr2', label: 'CR-2 (I-130 / Green Card)', canonicalLabel: 'CR-2' },
-  { value: 'ir3', label: 'IR-3 (I-130 / Green Card)', canonicalLabel: 'IR-3' },
-  { value: 'ir4', label: 'IR-4 (I-130 / Green Card)', canonicalLabel: 'IR-4' },
-  { value: 'ir5', label: 'IR-5 (I-130 / Green Card)', canonicalLabel: 'IR-5' },
   { value: 'f1family', label: 'F1 (I-130 / Green Card)', canonicalLabel: 'F1' },
-  { value: 'f2a', label: 'F2A (I-130 / Green Card)', canonicalLabel: 'F2A' },
-  { value: 'f2b', label: 'F2B (I-130 / Green Card)', canonicalLabel: 'F2B' },
-  { value: 'f3', label: 'F3 (I-130 / Green Card)', canonicalLabel: 'F3' },
-  { value: 'f4', label: 'F4 (I-130 / Green Card)', canonicalLabel: 'F4' },
   // SB-1 is a single-person case (no petitioner / family subcases); canonicalLabel is the visa type the case is created with.
   // I-824 (Action on an Approved Application or Petition): its own two-party case (Petitioner + Beneficiary checklists), created through the family workflow.
   { value: 'i824', label: 'I-824', canonicalLabel: 'I-824' },
+  // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
+  { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
+  { value: 'i130i485', label: 'I-130 + I-485', canonicalLabel: 'I-130 + I-485' },
+  // I-140 + I-485: employment based (employer + employee)
+  { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
+  // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
+  { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
@@ -91,6 +87,13 @@ export const VISA_TYPE_OPTIONS = [
 // (GET /cases/visa-types, i.e. config/visaCategories.js - the list createCase validates against). A case type added to the registry
 // therefore shows up here with no frontend change. Family-structure types are skipped: they only exist through the family workflow.
 export const optionKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+
+// Visa types REMOVED from the product on 2026-11-12 (owner request): IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3 and F4. The server no longer sends them, but a server that has not been
+// updated yet (production until it is deployed) still does, and with the family sets above trimmed they would land under "Single applicant". They are never shown, whatever any
+// server returns. (F1 and the student F-1 / F-2 types are different types and stay.)
+export const REMOVED_VISA_KEYS = new Set(['ir1', 'ir2', 'ir3', 'ir4', 'ir5', 'cr1', 'cr2', 'f2a', 'f2b', 'f3', 'f4'])
+export const isRemovedVisaOption = (option) => [option?.value, option?.canonicalLabel].some((key) => key && REMOVED_VISA_KEYS.has(optionKey(key)))
+export const withoutRemovedVisas = (options) => (options || []).filter((option) => !isRemovedVisaOption(option))
 // A single-form filing is listed by its form number ("N-400 - Naturalization", "N-600 - Certificate of Citizenship"), so each
 // form is its own, clearly named entry. Types already named by their form number, and multi-form types, keep their name.
 const formNumber = (formId) => String(formId || '').toUpperCase()
@@ -136,9 +139,9 @@ export function useVisaOptions({ enabled = true } = {}) {
     casesApi.visaTypes()
       .then((res) => {
         if (cancelled) return
-        setRegistryTypes(res.data?.data || [])
+        setRegistryTypes((res.data?.data || []).filter((entry) => !REMOVED_VISA_KEYS.has(optionKey(entry.visaType))))
         // the server's own list (the same in every portal); an older server without it falls back to merging here
-        if (Array.isArray(res.data?.options) && res.data.options.length) setServerOptions(res.data.options)
+        if (Array.isArray(res.data?.options) && res.data.options.length) setServerOptions(withoutRemovedVisas(res.data.options))
       })
       .catch((err) => { console.error('Error fetching case types:', err); if (!cancelled) setError(true) }) // the curated list still works
       .finally(() => { if (!cancelled) setLoaded(true) })
@@ -174,11 +177,11 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
   cosb2: 'COS_B2',
   cosh4: 'COS_H4',
 }
-export const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
+export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
 // RFE / NOIR / NOID / MTR: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
 export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid', 'mtr']
-export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
+export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm', 'i140i485'])
 const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID, MTR)']
 
 // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.

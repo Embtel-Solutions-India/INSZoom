@@ -12,6 +12,13 @@ import {
   AUTOFILL_LABELS,
 } from "../../utils/questionnaireEngine";
 
+// A structured value (an address saved in parts) that reaches a plain text box is shown as the text the client wrote, never as "[object Object]".
+const TEXT_PART_ORDER = ["line1", "street", "address", "line2", "unitNumber", "apartment", "city", "state", "province", "postalCode", "zipCode", "zip", "country"];
+const textOf = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value || "";
+  const keys = [...TEXT_PART_ORDER.filter((key) => key in value), ...Object.keys(value).filter((key) => !TEXT_PART_ORDER.includes(key) && typeof value[key] !== "object")];
+  return keys.map((key) => String(value[key] ?? "").trim()).filter(Boolean).join(", ");
+};
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:bg-secondary disabled:text-muted-foreground";
 
@@ -65,11 +72,11 @@ function RepeatableColumnInput({ question, column, fieldKey, rowIndex, row, disa
     );
   }
   if (column.type === "textarea") {
-    return <textarea id={id} name={name} className={`${className} min-h-24 resize-y`} value={value || ""} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} />;
+    return <textarea id={id} name={name} className={`${className} min-h-24 resize-y`} value={textOf(value)} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} />;
   }
   if (column.type === "select") {
     return (
-      <select id={id} name={name} className={className} value={value || ""} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)}>
+      <select id={id} name={name} className={className} value={textOf(value)} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select...</option>
         {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -214,7 +221,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
   const options = normalizeOptions(question.options);
 
   if (type === "textarea" || type === "rich_text") {
-    return <textarea id={question.key} name={question.key} className={`${INPUT_CLASS} min-h-28 resize-y`} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
+    return <textarea id={question.key} name={question.key} className={`${INPUT_CLASS} min-h-28 resize-y`} disabled={disabled} value={textOf(value)} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
   }
 
   if (type === "select") {
@@ -365,5 +372,5 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
     date: "date",
   }[type] || "text";
 
-  return <input id={question.key} name={question.key} className={INPUT_CLASS} type={inputType} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
+  return <input id={question.key} name={question.key} className={INPUT_CLASS} type={inputType} disabled={disabled} value={textOf(value)} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
 }

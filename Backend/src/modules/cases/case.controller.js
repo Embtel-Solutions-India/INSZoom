@@ -951,7 +951,7 @@ exports.getCases = async (req, res, next) => {
     const skip = (page - 1) * limit;
     timer.mark("pagination_ready", { skip, sort });
 
-    // ?toneGroup=true: working cases first, then blue (filed / outcome), then red (on hold); the chosen sort applies inside each group
+    // ?toneGroup=true: working cases first, then orange (PWD under process), then blue (filed / outcome), then red (on hold); the chosen sort applies inside each group
     let grouped = ["true", "1"].includes(String(req.query.toneGroup));
     let toneStages = [];
     if (grouped) {
@@ -1789,6 +1789,13 @@ exports.updateCase = async (req, res, next) => {
         caseData[field] = req.body[field];
       }
     });
+    // The package can be changed after the case exists (Overview tab): the case's plan record and primary package follow it, because that is what the client portal and the
+    // case page read. Only the package NAME moves: the amount, payment status and any payment already made are never touched here.
+    if (changes.package && caseData.package) {
+      caseData.primaryPackage = caseData.package;
+      if (caseData.plan) caseData.plan.tier = caseData.package;
+      else caseData.plan = { tier: caseData.package };
+    }
     ["petitioner", "petitionerModel", "employer", "organization"].forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         changes[field] = { from: caseData[field], to: req.body[field] };

@@ -29,7 +29,7 @@ test("an unknown visa is refused", async () => {
 
 test("a family visa reshapes the card: the GHL contact becomes the petitioner, beneficiary not identified", async () => {
   const doc = pendingCase();
-  const result = await selectVisa(doc, "IR-1");
+  const result = await selectVisa(doc, "F1");
   assert.equal(result.structure, "family");
   assert.equal(typeof result.afterSave, "function");
   assert.equal(doc.visaSelectionStatus, "selected");
@@ -44,7 +44,7 @@ test("a family visa reshapes the card: the GHL contact becomes the petitioner, b
 
 test("a family visa on a card with no client account is refused cleanly, nothing changed", async () => {
   const doc = pendingCase({ user: undefined });
-  await assert.rejects(() => selectVisa(doc, "IR-1"), { code: "GHL_FAMILY_NEEDS_PETITIONER" });
+  await assert.rejects(() => selectVisa(doc, "F1"), { code: "GHL_FAMILY_NEEDS_PETITIONER" });
   assert.equal(doc.visaSelectionStatus, "pending");
 });
 

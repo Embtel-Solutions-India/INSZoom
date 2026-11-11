@@ -37,21 +37,18 @@ const VISA_TYPE_OPTIONS = [
   // checklist+form logic (then the Filing Path selector below decides
   // Petition Only vs the fuller Green Card package). Listed inline with
   // every other visa type, same as before - no separate section/optgroup.
-  { value: 'ir1', label: 'IR-1 (I-130 / Green Card)', canonicalLabel: 'IR-1' },
-  { value: 'cr1', label: 'CR-1 (I-130 / Green Card)', canonicalLabel: 'CR-1' },
-  { value: 'ir2', label: 'IR-2 (I-130 / Green Card)', canonicalLabel: 'IR-2' },
-  { value: 'cr2', label: 'CR-2 (I-130 / Green Card)', canonicalLabel: 'CR-2' },
-  { value: 'ir3', label: 'IR-3 (I-130 / Green Card)', canonicalLabel: 'IR-3' },
-  { value: 'ir4', label: 'IR-4 (I-130 / Green Card)', canonicalLabel: 'IR-4' },
-  { value: 'ir5', label: 'IR-5 (I-130 / Green Card)', canonicalLabel: 'IR-5' },
+  // (IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 by the owner; their checklists are to be integrated again later. F1 stays.)
   { value: 'f1family', label: 'F1 (I-130 / Green Card)', canonicalLabel: 'F1' },
-  { value: 'f2a', label: 'F2A (I-130 / Green Card)', canonicalLabel: 'F2A' },
-  { value: 'f2b', label: 'F2B (I-130 / Green Card)', canonicalLabel: 'F2B' },
-  { value: 'f3', label: 'F3 (I-130 / Green Card)', canonicalLabel: 'F3' },
-  { value: 'f4', label: 'F4 (I-130 / Green Card)', canonicalLabel: 'F4' },
   // SB-1 is a single-person case (no petitioner / family subcases); canonicalLabel is the visa type the case is created with.
   // I-824 (Action on an Approved Application or Petition): its own two-party case (Petitioner + Beneficiary checklists), created through the family workflow.
   { value: 'i824', label: 'I-824', canonicalLabel: 'I-824' },
+  // I-130 as its own two-party case type (petitioner + beneficiary checklists, every related form from the registry)
+  { value: 'i130', label: 'I-130', canonicalLabel: 'I-130' },
+  { value: 'i130i485', label: 'I-130 + I-485', canonicalLabel: 'I-130 + I-485' },
+  // I-140 + I-485: employment based (employer + employee)
+  { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
+  // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
+  { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },

@@ -15,8 +15,8 @@ router.post(
   "/cases",
   authenticate,
   authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),
-  body("beneficiaryEmail").optional().isEmail().normalizeEmail(),
-  body("beneficiary.email").optional().isEmail().normalizeEmail(),
+  body("beneficiaryEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail(),
+  body("beneficiary.email").optional({ checkFalsy: true }).isEmail().normalizeEmail(),
   validate,
   ctrl.createFamilyCase
 );

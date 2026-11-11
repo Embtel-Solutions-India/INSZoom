@@ -195,7 +195,8 @@ set("COSB2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 set("B-1/B-2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 
 // ---- Family-based (spec §6) --------------------------------------------
-const FAMILY_VISA_TYPES = ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"];
+// IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); only F1 is left.
+const FAMILY_VISA_TYPES = ["F1", "I-130", "I-130 + I-485"];
 function familySlug(visaType) {
   return visaType.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -220,6 +221,14 @@ for (const visaType of FAMILY_VISA_TYPES) {
     cm(`gc_nvc_${slug}_beneficiary_checklist`, EXPLICIT_CM, { role: "beneficiary" }),
   ]);
 }
+
+// ---- I-140 + I-485 (employment based, employer + employee): both forms read the same canonical values through the employee's checklists -----------
+set("I-140/I-485", "I-140", [cm("i140_i485_employer_checklist", AUTO, { role: "employer" }), cm("i140_i485_employee_checklist", AUTO, { role: "employee" })]);
+set("I-140/I-485", "I-485", [cm("i485_green_card_employee_checklist", AUTO, { role: "employee" }), cm("i140_i485_employee_checklist", COND, { role: "employee" })]);
+for (const formNumber of ["I-765", "I-131", "I-693"]) set("I-140/I-485", formNumber, [cm("i485_green_card_employee_checklist", COND, { role: "employee" })]);
+set("I-140/I-485", "I-485 Supplement J", [cm("i140_i485_employer_checklist", COND, { role: "employer" }), cm("i485_green_card_employee_checklist", COND, { role: "employee" })]);
+for (const formNumber of ["I-864", "I-864A", "I-864EZ"]) set("I-140/I-485", formNumber, [cm("i485_i864_employee_checklist", COND, { role: "employee" })]);
+set("I-140/I-485", "I-907", [cm("i140_i485_employer_checklist", COND, { role: "employer" }), cm("i140_i485_employee_checklist", COND, { role: "employee" })]);
 
 // ---- I-824 (standalone two-party case): exactly two checklists; principal-immigrant content lives inside the petitioner checklist -------
 set("I-824", "I-824", [
@@ -280,9 +289,15 @@ for (const entry of ENTRIES) {
 // with no visa-specific checklist of its own, e.g. "Re-entry Permit" and
 // "Adjustment of Status" (a generic/unclassified AOS bucket, distinct from
 // the specific EB-*/family rows above).
-for (const visaType of ["Re-entry Permit", "Adjustment of Status"]) {
+for (const visaType of ["Re-entry Permit"]) {
   set(visaType, "I-131", [cm("i131_checklist", EXPLICIT_CM, { notes: "conditional form decision - never auto-assigned to every case" })]);
 }
+// ---- I-485 (the single-person "Adjustment of Status" case): the Green Card checklist + the I-864 checklist, both answered by the applicant -----------
+set("Adjustment of Status", "I-485", [cm("i485_green_card_checklist", AUTO)]);
+set("Adjustment of Status", "I-765", [cm("i485_green_card_checklist", COND)]);
+set("Adjustment of Status", "I-131", [cm("i485_green_card_checklist", COND), cm("i131_checklist", EXPLICIT_CM, { notes: "conditional form decision - never auto-assigned to every case" })]);
+set("Adjustment of Status", "I-693", [cm("i485_green_card_checklist", COND)]);
+set("Adjustment of Status", "I-864", [cm("i485_i864_checklist", COND)]);
 
 // ---- N-400 / N-565 / N-600 (spec §11-13) --------------------------------
 // Real registry visaType strings (confirmed live) are the case-purpose

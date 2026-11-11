@@ -50,7 +50,7 @@ const {
   IR_BENEFICIARY_MAP,
 } = require("../familyCanonicalPaths");
 
-const IR_VISA_CODES = ["ir1", "ir2", "ir3", "ir4", "ir5", "cr1", "cr2", "f1", "f2a", "f2b", "f3", "f4"];
+const IR_VISA_CODES = ["f1"]; // (ir1..ir5, cr1, cr2, f2a, f2b, f3, f4 were removed 2026-11-12)
 
 async function applyMapForQuestionnaire(key, keyMap) {
   const questionnaire = await Questionnaire.findOne({ key, latestVersion: true }).select("_id").lean();

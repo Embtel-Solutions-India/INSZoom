@@ -91,7 +91,7 @@ const IR_BENEFICIARY_MAP = {
 function canonicalMapFor(definitionKey, party) {
   const key = String(definitionKey || "");
   if (key === "k1" || key === "k3") return party === "petitioner" ? K_PETITIONER_MAP : party === "beneficiary" ? K_BENEFICIARY_MAP : {};
-  if (key.startsWith("i130_")) return party === "petitioner" ? IR_PETITIONER_MAP : party === "beneficiary" ? IR_BENEFICIARY_MAP : {};
+  if (key === "i130" || key.startsWith("i130_")) return party === "petitioner" ? IR_PETITIONER_MAP : party === "beneficiary" ? IR_BENEFICIARY_MAP : {};
   return {};
 }
 

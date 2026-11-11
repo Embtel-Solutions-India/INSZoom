@@ -146,21 +146,6 @@ const VISA_CATEGORIES = {
     forms: ["i-129f"],
     label: "K-3 Spouse of U.S. Citizen (Abroad)",
   },
-  "IR-1": {
-    caseStructure: "family",
-    forms: ["i-130"],
-    label: "IR-1 Immediate Relative Spouse",
-  },
-  "IR-2": {
-    caseStructure: "family",
-    forms: ["i-130"],
-    label: "IR-2 Child of U.S. Citizen",
-  },
-  "IR-5": {
-    caseStructure: "family",
-    forms: ["i-130"],
-    label: "IR-5 Parent of U.S. Citizen",
-  },
   "F-1-FAMILY": {
     caseStructure: "family",
     forms: ["i-130"],
@@ -292,24 +277,22 @@ const VISA_CATEGORIES = {
   "EB-5 Standalone": { caseStructure: "single", forms: ["i-526", "i-485"], label: "EB-5 Immigrant Investor (Standalone)" },
 
   // ─── FAMILY-BASED (ADDITIONAL PREFERENCE CATEGORIES) ──────────────────────
-  "CR-1": { caseStructure: "family", forms: ["i-130"], label: "CR-1 Conditional Resident Spouse" },
-  "CR-2": { caseStructure: "family", forms: ["i-130"], label: "CR-2 Conditional Resident Child" },
-  "IR-3": { caseStructure: "family", forms: ["i-130"], label: "IR-3 Orphan Adopted Abroad" },
-  "IR-4": { caseStructure: "family", forms: ["i-130"], label: "IR-4 Orphan to Be Adopted in the U.S." },
   "K-2": { caseStructure: "family", forms: ["i-539"], label: "K-2 Derivative Child of K-1" },
   "K-4": { caseStructure: "family", forms: ["i-539"], label: "K-4 Derivative Child of K-3" },
   F1: { caseStructure: "family", forms: ["i-130"], label: "F1 Unmarried Son/Daughter of U.S. Citizen" },
-  // Registry-exact "F2A" (no hyphen) — kept alongside the pre-existing
-  // "F-2A" (with hyphen) below rather than replacing it, since an existing
-  // case may already store either string.
-  F2A: { caseStructure: "family", forms: ["i-130"], label: "F2A Spouse/Child of LPR" },
-  F2B: { caseStructure: "family", forms: ["i-130"], label: "F2B Unmarried Son/Daughter of LPR" },
-  F3: { caseStructure: "family", forms: ["i-130"], label: "F3 Married Son/Daughter of U.S. Citizen" },
-  F4: { caseStructure: "family", forms: ["i-130"], label: "F4 Sibling of U.S. Citizen" },
+  // I-130 + Green Card (I-485) as its own case type: petitioner + beneficiary (Green Card) + I-864 sponsor checklists; filing path is always adjustment of status
+  // I-140 + I-485: employment based, employer + employee model; I-140 and I-485 checklists (stored with a slash - see questionnaires/i140i485Checklists.js)
+  "I-140/I-485": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "I-140 + I-485" },
+  "I-130 + I-485": { caseStructure: "family", forms: ["i-130", "i-485"], label: "I-130 + I-485" },
+  // IR-1..IR-5, CR-1, CR-2, F2A, F2B, F3, F4 were removed 2026-11-12 (owner request); F1 and the older F-2A / F-1-FAMILY spellings stay.
 
   // I-824 (Application for Action on an Approved Application or Petition) as its OWN two-party case: Petitioner + Beneficiary checklists, Form I-824
   // only. Never converted into the underlying petition (I-130, ...) - that approval is referenced evidence, not a form to re-file.
   "I-824": { caseStructure: "family", forms: ["i-824"], label: "I-824" },
+
+  // I-130 (Petition for Alien Relative) as its OWN two-party case: Petitioner + Beneficiary checklists (questionnaires/i130Spec.js); the other forms of the case (I-130A, I-864, I-485 ...)
+  // are provisioned by the form registry (visaFormMappings.seed.js) and filled from the same canonical petitioner.* / beneficiary.* values.
+  "I-130": { caseStructure: "family", forms: ["i-130"], label: "I-130" },
 
   // ─── GREEN CARD / CITIZENSHIP WORKFLOWS (STANDALONE CASE TYPES) ───────────
   "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
