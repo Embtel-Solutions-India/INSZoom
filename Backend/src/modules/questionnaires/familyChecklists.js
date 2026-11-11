@@ -256,6 +256,9 @@ function resolveFamilyChecklistKeys(visaType, processingPath) {
   const i130Beneficiary = `i130_${slug}_beneficiary_checklist`;
   const greenCardBeneficiary = `green_card_${slug}_beneficiary_checklist`;
   const i864Sponsor = `i864_${slug}_petitioner_checklist`;
+  // The combined "I-130 + Green Card (I-485)" case type: BOTH I-130 checklists (petitioner + beneficiary) AND the Green Card checklist - exactly these three, no I-864 sponsor checklist - always
+  // - whatever the filing path. (Every other family type keeps the path-based choice below.)
+  if (slug === "i130i485") return [i130Petitioner, i130Beneficiary, greenCardBeneficiary];
   if (processingPath === "ADJUSTMENT_OF_STATUS" || processingPath === "CONSULAR") {
     // Deliberately no separate i130Beneficiary here for a Green Card case -
     // greenCardBeneficiary already collects the same beneficiary

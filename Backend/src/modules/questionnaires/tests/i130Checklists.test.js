@@ -178,3 +178,14 @@ test("nothing else changed: the F1 / K-1 / K-3 family checklists keep their orig
   assert.equal(find("i130_f1_beneficiary_checklist").questions.length, 32);
   assert.deepEqual(resolveFamilyChecklistKeys("F1", ""), ["i130_f1_petitioner_checklist", "i130_f1_beneficiary_checklist"]);
 });
+
+test("I-130 + Green Card (I-485): both I-130 checklists AND the Green Card checklist - exactly these three, no I-864 - are assigned, whatever the filing path", () => {
+  for (const path of ["", "PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR"]) {
+    const keys = resolveFamilyChecklistKeys("I-130 + I-485", path);
+    assert.deepEqual(keys, ["i130_i130i485_petitioner_checklist", "i130_i130i485_beneficiary_checklist", "green_card_i130i485_beneficiary_checklist"]);
+    for (const key of keys) assert.ok(find(key), `${key} is a registered definition`);
+  }
+  assert.equal(new Set(resolveFamilyChecklistKeys("I-130 + I-485", "")).size, 3, "no key twice (idempotent assignment)");
+  // I-130 and F1 are unchanged
+  assert.deepEqual(resolveFamilyChecklistKeys("F1", ""), ["i130_f1_petitioner_checklist", "i130_f1_beneficiary_checklist"]);
+});
