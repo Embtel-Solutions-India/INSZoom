@@ -42,7 +42,7 @@ test("an EMPLOYER-FILLED employee case (nobody invited) goes to the employer onl
   assert.equal(data.clientName, "Acme Inc", "the greeting names the employer");
   assert.equal(data.beneficiaryName, "Ravi Kumar", "and the e-mail says whose case it is");
   const template = require("../../../modules/email/templates/case-submitted-client");
-  assert.ok(template.bodyLines(data).join(" ").includes("The case for Ravi Kumar has been submitted"));
+  assert.ok(template.bodyLines(data).join(" ").includes("The case for <strong>Ravi Kumar</strong> has been submitted"));
 });
 
 test("an invited employee WITH an active login: the employee AND the employer both get it; the employee's copy is the original wording", async () => {

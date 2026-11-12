@@ -285,4 +285,4 @@ async function sendFedexNumberNotice({ caseId, trackingNumber, previous, user })
   }
 }
 
-module.exports = { recipientsFor, notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, sendReceiptNumberNotice, SUBMITTED_STAGE_KEY };
+module.exports = { recipientsFor, dataFor, notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, sendReceiptNumberNotice, SUBMITTED_STAGE_KEY };

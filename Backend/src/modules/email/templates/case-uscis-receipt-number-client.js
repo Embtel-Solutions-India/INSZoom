@@ -10,7 +10,7 @@ function bodyLines(data = {}) {
   return [
     `Hi ${data.clientName || "there"},`,
     ...receiptLines(data),
-    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Track My Case</a>`,
+    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">View My Case</a>`,
     "Regards,<br>The Immiglance Team",
   ];
 }
