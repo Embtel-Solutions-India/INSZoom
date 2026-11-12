@@ -14,7 +14,7 @@
 // structured sub-form, not a generic one, and isn't part of this pass.
 
 import { useState } from 'react'
-import { Pencil, X, Loader2, Paperclip, ScanLine } from 'lucide-react'
+import { Pencil, X, Loader2, Paperclip, ScanLine, Eye, Download, Trash2 } from 'lucide-react'
 import { questionnairesApi } from '../services/api'
 import ItemRequestControl from './ItemRequestControl'
 
@@ -312,10 +312,10 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requ
               <Paperclip className="h-3.5 w-3.5 shrink-0" />
               <span className="font-medium text-foreground">{String(question.label || '').split('\n')[0]} {index + 1}</span>
               <span className="min-w-0 break-all text-xs">{file.originalName}{formatFileSize(file.size) ? ` · ${formatFileSize(file.size)}` : ''}</span>
-              <span className="ml-auto flex shrink-0 items-center gap-2 text-xs font-semibold">
-                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, false)} className="hover:underline disabled:opacity-50">View</button>
-                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, true)} className="hover:underline disabled:opacity-50">Download</button>
-                {onRemove && <button type="button" disabled={busyKey === file.storageKey} onClick={() => removeEntry(file)} className="text-red-600 hover:underline disabled:opacity-50">Remove</button>}
+              <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-semibold">
+                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, false)} aria-label={`View ${file.originalName || 'document'}`} title="View" className="rounded p-1 text-primary hover:bg-primary-50 hover:text-primary-700 active:bg-primary-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"><Eye className="h-4 w-4" /></button>
+                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, true)} aria-label={`Download ${file.originalName || 'document'}`} title="Download" className="rounded p-1 text-primary hover:bg-primary-50 hover:text-primary-700 active:bg-primary-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"><Download className="h-4 w-4" /></button>
+                {onRemove && <button type="button" disabled={busyKey === file.storageKey} onClick={() => removeEntry(file)} aria-label={`Delete ${file.originalName || 'document'}`} title="Delete" className="rounded p-1 text-red-600 hover:bg-red-50 hover:text-red-800 active:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button>}
               </span>
             </li>
           ))}

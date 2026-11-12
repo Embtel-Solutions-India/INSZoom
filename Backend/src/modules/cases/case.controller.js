@@ -3018,6 +3018,36 @@ exports.setEmployeeIdentity = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/cases/:id/employer-identity   { name?, email? }
+ * The employer of an employer matter, for the internal team: the company name and contact email that are still MISSING (the same prompt an employee case gets). Only a missing
+ * value is written - an existing name is changed through the case rename, an existing login's email through the account - so nothing already held is overwritten. Staff only.
+ */
+exports.setEmployerIdentity = async (req, res, next) => {
+  try {
+    const principal = await Case.findById(req.params.id);
+    if (!principal) return res.status(404).json({ success: false, message: "Case not found" });
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role) || req.user.role === "case_manager";
+    if (!isStaff || !caseService.canAccessCase(req.user, principal)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+    const { employerContact, validateEmployerIdentityInput } = require("./employee-identity");
+    const before = employerContact(principal.toObject());
+    if (!before) return res.status(400).json({ success: false, message: "This is not an employer matter" });
+    const employees = await Case.find({ parentCase: principal._id, caseRole: "employee", status: { $ne: "removed" } }).select("employeeIdentity pendingEmployee clientEmail").lean();
+    const checked = validateEmployerIdentityInput(req.body || {}, { employeeEmails: employees.map((employee) => employeeContact({ ...employee, caseRole: "employee" })?.email) });
+    if (checked.message) return res.status(400).json({ success: false, code: "INVALID_EMPLOYER_IDENTITY", message: checked.message });
+    const changed = {};
+    if (checked.identity.name && before.missingName) { principal.clientName = checked.identity.name; changed.name = checked.identity.name; }
+    if (checked.identity.email && before.missingEmail) { principal.clientEmail = checked.identity.email; changed.email = checked.identity.email; }
+    if (!Object.keys(changed).length) return res.status(409).json({ success: false, code: "NOTHING_MISSING", message: "The employer's name and email are already set." });
+    await principal.save();
+    await caseService.writeAuditLog("employer_identity_updated", principal, req.user, { ...changed, previous: { name: before.name, email: before.email } }, req);
+    try { require("../realtime/caseLiveUpdates").notifyCaseDataChanged([principal._id], ["name", "answers"], { actor: req.user, reason: "employer_identity_updated" }); } catch { /* a live signal never fails the save */ }
+    return res.status(200).json({ success: true, employerContact: employerContact(principal.toObject()) });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
  * PATCH /api/cases/:id/name   { name } for an employer matter (the company) | { firstName, middleName?, lastName } for a person | dryRun?: true
  * The internal team renames a case: the new name replaces the old one everywhere it is held (see caseRename.service.js). Staff only; the person must be able to open the case.
  */

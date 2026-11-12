@@ -156,6 +156,8 @@ router.get("/:id/assignment-history", authenticate, authorizeRoles(...staffRoles
 router.patch("/:principalId/data-entry-mode", authenticate, ctrl.setDataEntryMode);
 router.post("/:principalId/invite-employee", authenticate, ctrl.inviteEmployee);
 router.patch("/:principalId/employees/:childCaseId/identity", authenticate, ctrl.setEmployeeIdentity);
+// the employer of an employer matter: its missing name / email (staff roles are checked inside)
+router.patch("/:id/employer-identity", authenticate, ctrl.setEmployerIdentity);
 // the internal team renames a case (staff roles are checked inside the service)
 router.get("/:id/name", authenticate, ctrl.getCaseNameInfo);
 router.patch("/:id/name", authenticate, ctrl.renameCase);

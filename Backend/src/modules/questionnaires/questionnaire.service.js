@@ -3164,6 +3164,26 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
+  // A checklist the case manager removed / rejected for this case is not shown to staff either (the checklist list and Required Documents already skip it; this per-role read used to
+  // keep serving it, so its panel stayed on the case page). Staff only: a client never sees a removed (never approved) checklist - the approval gate below already refuses it.
+  if (!isClientSideUser(user) && !activeReference?.staffRequest) {
+    const removedHere = [...(referenceCase.checklistApproval?.removed || []), ...(caseData.checklistApproval?.removed || [])];
+    const removedId = `${String(questionnaire.key || "").split("__case_")[0]}|${targetRole || questionnaire.checklistRole || ""}`;
+    if (removedHere.some((item) => item.checklistId === removedId)) {
+      return {
+        case: caseData,
+        questionnaire: null,
+        questions: [],
+        documentQuestions: [],
+        fieldQuestions: [],
+        answers: [],
+        responseId: null,
+        checklistRemoved: true,
+        participant: participantService.participantSnapshot(requestedParticipant),
+        progress: { percent: 0, answeredRequired: 0, totalRequired: 0 },
+      };
+    }
+  }
   if (needsGate(referenceCase) && isClientSideUser(user) && !(await isApprovedIncludingParent(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest }))) {
     const error = new Error("Your case manager is still preparing this checklist. You will be notified when it is ready.");
     error.status = 403;

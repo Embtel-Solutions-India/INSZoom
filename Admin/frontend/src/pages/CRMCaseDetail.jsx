@@ -38,7 +38,7 @@ import CaseInvoices from '../components/CaseInvoices'
 import CasePackageField from '../components/CasePackageField'
 import { downloadOfficialForm, OFFICIAL_DOWNLOAD_FAILED } from '../utils/officialFormDownload'
 import EmployerPaymentSummary from '../components/EmployerPaymentSummary'
-import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
+import { EmployeeIdentityNotice, EmployerIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
   Trash2,
@@ -2101,6 +2101,11 @@ const CRMCaseDetail = () => {
   )
 
   const getChecklistItems = () => {
+    // The case's checklists were removed / rejected, or customised for this case (a case-specific copy), and they ask for no document: the case's ORIGINAL per-visa document list
+    // (Case.checklistItems, written at creation) is no longer what the case asks for, so it is not shown as "pending" documents.
+    const removedChecklists = [...(caseData?.checklistApproval?.removed || []), ...(caseData?.parentCase?.checklistApproval?.removed || [])]
+    const customised = checklistsProgress.some((item) => item.caseSpecific && !item.staffRequest)
+    if ((removedChecklists.length || customised) && !checklistDocumentGroups.length) return []
     const ownItems = Array.isArray(caseData?.checklistItems) ? caseData.checklistItems :
       Array.isArray(caseData?.documentChecklist) ? caseData.documentChecklist :
       []
@@ -2333,6 +2338,8 @@ const CRMCaseDetail = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}
+            {/* employer matter without a company name or email: the same request, for the employer */}
+            {caseData.caseRole === 'principal' && <EmployerIdentityNotice caseData={caseData} onSaved={() => fetchCaseDetail(true)} />}
             {caseData.caseRole === 'employee' && (
               <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
             )}
