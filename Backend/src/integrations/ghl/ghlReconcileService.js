@@ -61,6 +61,9 @@ async function reconcilePipeline(pipeline, config, client, summary) {
       if (!existing) {
         // its case was deleted but the card is still in GHL: nothing to import (and no GHL calls to spend on it)
         if ((await isOrphanedLink(config.locationId, opportunity.id)) || (await require("./ghlCaseOutbound").isDeletionPending(opportunity.id))) { result.orphaned += 1; continue; }
+        // a card Immiglance itself created (it carries the case's marker) is linked to its case, never imported as a second one - the same check the webhook makes
+        const own = await require("./ghlAuxOutbound").adoptOwnOpportunity({ opportunity, config, pipeline, mapping, client }).catch(() => null);
+        if (own) { result.unchanged += 1; continue; }
         const contact = await resolveContact(opportunity, client);
         const visaResolution = await visaService.resolveForOpportunity({ opportunity, config, client, pipelineCategory: pipeline.category });
         const outcome = await createCaseFromOpportunity({

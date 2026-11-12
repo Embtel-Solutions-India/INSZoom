@@ -224,53 +224,68 @@ async function processAuxJob(job, { client } = {}) {
   return { status: "done" };
 }
 
-// Same retry policy as a stage move: transient errors back off and retry; anything else (or too many tries) is flagged
-// on the card, shown to admins as FAILED, and an admin is alerted. Nothing the user did is ever rolled back.
+// Retry policy (2026-11-13): a change is NEVER given up on. Every error - a timeout, a 429, a 5xx, a bad request, a missing contact - backs off (10 s, 30 s, 2 min, 10 min, then every 30 min) and is tried again,
+// for as long as it takes; the first 8 tries are quiet, after that the card is flagged "needs attention" and admins are told ONCE (not on every retry). The single exception is a card that GHL says no
+// longer exists: that is a deletion made in GHL, so it is not retried - the case follows it into the recycle bin (see ghlDeletedInGhl.js).
+const ATTENTION_AFTER = MAX_ATTEMPTS;
+
+// A 404 on an existing card: ask GHL itself. Gone for sure -> flag the case (the deletion path takes it to the recycle bin); anything else is NOT proof, so it is retried like any error.
+async function cardIsGone(opportunityId, error) {
+  if (!(error instanceof GHLApiError && error.status === 404) || !opportunityId) return false;
+  try {
+    return await require("./ghlDeletedInGhl").opportunityIsGone(opportunityId, getWorkerClient());
+  } catch (_lookupError) {
+    return false;
+  }
+}
+
+const EXISTING_CARD_JOBS = new Set(["stage", "rename", "set_status", "push_finance"]);
+
 async function handleAuxFailure(job, error) {
   const message = String(error.message || error).slice(0, 300);
-  const retryable = error instanceof GHLApiError ? error.retryable : true;
-  const attemptCap = job.type === "delete_opportunity" ? 200 : MAX_ATTEMPTS; // a delete is retried (about every 30 min once backed off) for days
-  if ((retryable || job.type === "delete_opportunity") && job.attempts < attemptCap) {
-    const delay = error.retryAfterMs ?? backoffMs(job.attempts);
-    await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
-    logger.warn("ghl_employee_sync_retry_scheduled", { jobId: String(job._id), type: job.type, attempt: job.attempts, status: error.status, delayMs: delay });
-    return { status: "retry" };
+  if (EXISTING_CARD_JOBS.has(job.type)) {
+    const caseRow = await Case.findById(job.caseId).select("integrations.ghl.opportunityId").lean();
+    if (await cardIsGone(job.opportunityId || caseRow?.integrations?.ghl?.opportunityId, error)) return cardDeletedInGhl(job, message);
   }
-  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "failed", completedAt: new Date(), lockedUntil: null, lastError: message } });
-  // an edited payment amount that could not be sent: stop holding back GoHighLevel's own figures and say why (the edit itself stays here)
-  if (job.type === "push_finance") await Case.updateOne({ _id: job.caseId }, { $set: { "finance.pendingPush": false, "finance.pushError": message } }).catch(() => null);
-  await Case.updateOne(
-    { _id: job.caseId },
-    { $set: { "integrations.ghl.flags.needsAttention": true, "integrations.ghl.sync.state": "failed", "integrations.ghl.sync.lastError": message, ...(error.status === 404 ? { "integrations.ghl.flags.deletedInGhl": true } : {}) } }
-  );
-  logger.error("ghl_employee_sync_failed", { jobId: String(job._id), caseId: String(job.caseId), type: job.type, status: error.status, error: message });
-  await alertAdmins(job, message);
-  return { status: "failed" };
+  if (job.type === "push_finance" && job.attempts >= ATTENTION_AFTER) {
+    // an edited payment amount that could not be sent: stop holding back GoHighLevel's own figures and say why (the edit itself stays here; the job keeps trying)
+    await Case.updateOne({ _id: job.caseId }, { $set: { "finance.pendingPush": false, "finance.pushError": message } }).catch(() => null);
+  }
+  const delay = error.retryAfterMs ?? backoffMs(job.attempts);
+  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
+  logger.warn("ghl_employee_sync_retry_scheduled", { jobId: String(job._id), type: job.type, attempt: job.attempts, status: error.status, delayMs: delay });
+  if (job.attempts >= ATTENTION_AFTER) await flagNeedsAttention(job, message);
+  return { status: "retry" };
+}
+
+// After the quiet retries: the case shows the problem, an admin is told once, and the job keeps going.
+async function flagNeedsAttention(job, message) {
+  const flagged = await Case.updateOne(
+    { _id: job.caseId, "integrations.ghl.flags.needsAttention": { $ne: true } },
+    { $set: { "integrations.ghl.flags.needsAttention": true, "integrations.ghl.sync.state": "failed", "integrations.ghl.sync.lastError": message } }
+  ).catch(() => ({ modifiedCount: 0 }));
+  if (flagged?.modifiedCount) await alertAdmins(job, message); // only the first time this case needs attention
+  else await Case.updateOne({ _id: job.caseId }, { $set: { "integrations.ghl.sync.lastError": message } }).catch(() => null);
+}
+
+// The card is gone in GHL: not a failure to retry. The job ends; the case is flagged and follows the card into the recycle bin.
+async function cardDeletedInGhl(job, message) {
+  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "superseded", completedAt: new Date(), lockedUntil: null, lastError: "The card was deleted in GoHighLevel" } });
+  await require("./ghlDeletedInGhl").flagDeletedInGhl(job.caseId).catch(() => null);
+  await Case.updateOne({ _id: job.caseId }, { $set: { "integrations.ghl.sync.lastError": "The card was deleted in GoHighLevel: the case moves to the recycle bin" } }).catch(() => null);
+  logger.warn("ghl_card_deleted_in_ghl_detected", { jobId: String(job._id), caseId: String(job.caseId), type: job.type, message });
+  return { status: "superseded" };
 }
 
 async function handleSendFailure(job, error) {
   const message = String(error.message || error).slice(0, 300);
-  const retryable = error instanceof GHLApiError ? error.retryable : true;
-
-  if (retryable && job.attempts < MAX_ATTEMPTS) {
-    const delay = error.retryAfterMs ?? backoffMs(job.attempts);
-    await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
-    await settleCase(job, { "integrations.ghl.sync.attempts": job.attempts, "integrations.ghl.sync.lastError": message });
-    logger.warn("ghl_outbound_retry_scheduled", { jobId: String(job._id), attempt: job.attempts, status: error.status, delayMs: delay });
-    return { status: "retry" };
-  }
-
-  // Permanent: a 404 means the opportunity is gone in GHL; other 4xx/exhausted retries need a human.
-  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "failed", completedAt: new Date(), lockedUntil: null, lastError: message } });
-  await settleCase(job, {
-    "integrations.ghl.sync.state": "failed",
-    "integrations.ghl.sync.lastError": message,
-    "integrations.ghl.flags.needsAttention": true,
-    ...(error.status === 404 ? { "integrations.ghl.flags.deletedInGhl": true } : {}),
-  });
-  logger.error("ghl_outbound_failed", { jobId: String(job._id), caseId: String(job.caseId), status: error.status, error: message });
-  await alertAdmins(job, message);
-  return { status: "failed" };
+  if (await cardIsGone(job.opportunityId, error)) return cardDeletedInGhl(job, message);
+  const delay = error.retryAfterMs ?? backoffMs(job.attempts);
+  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
+  await settleCase(job, { "integrations.ghl.sync.attempts": job.attempts, "integrations.ghl.sync.lastError": message });
+  logger.warn("ghl_outbound_retry_scheduled", { jobId: String(job._id), attempt: job.attempts, status: error.status, delayMs: delay });
+  if (job.attempts >= ATTENTION_AFTER) await flagNeedsAttention(job, message);
+  return { status: "retry" };
 }
 
 async function alertAdmins(job, message) {
@@ -354,4 +369,4 @@ async function retryJob(jobId) {
   return { status: "queued" };
 }
 
-module.exports = { getWorkerClient, assertCanWorkCase, moveCaseStage, processDueJobs, processJob, claimJob, processJobSoon, retryJob, MAX_ATTEMPTS };
+module.exports = { getWorkerClient, assertCanWorkCase, moveCaseStage, processDueJobs, processJob, claimJob, processJobSoon, retryJob, MAX_ATTEMPTS, handleSendFailure, handleAuxFailure };

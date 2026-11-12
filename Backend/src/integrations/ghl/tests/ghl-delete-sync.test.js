@@ -20,7 +20,7 @@ function stub({ flagged = [], opportunity = async () => ({ id: "O1" }), caseDoc 
   deletion.requestCaseDeletion = async (doc, actor, options) => { calls.deletions.push({ doc, options }); return {}; };
   return calls;
 }
-test.beforeEach(() => { process.env.GHL_DELETE_CASES_REMOVED_IN_GHL = "true"; }); // the deleting is opt-in; these tests exercise it when on
+test.beforeEach(() => { process.env.GHL_DELETE_CASES_REMOVED_IN_GHL = "true"; }); // on by default since 2026-11-13; set explicitly here
 test.afterEach(() => {
   Case.find = saved.find; Case.updateOne = saved.updateOne; Case.findById = saved.findById; Case.countDocuments = saved.count;
   opportunityService.getOpportunity = saved.getOpportunity; deletion.requestCaseDeletion = saved.request;
@@ -82,13 +82,22 @@ test("an employee deleted in GHL updates the employer matter's employee count; d
   assert.equal(off.deletions.length, 0);
 });
 
-test("DEFAULT: with the switch unset no case is ever deleted automatically - a real case must never be removed", async () => {
+test("DEFAULT (since 2026-11-13): with the switch unset a card removed in GHL deletes its case INTO the recycle bin; with the bin off nothing is ever deleted automatically", async () => {
   delete process.env.GHL_DELETE_CASES_REMOVED_IN_GHL;
-  assert.equal(deleted.isEnabled(), false);
+  assert.equal(deleted.isEnabled(), true, "on by default");
   const calls = stub({ flagged: [item(60)], opportunity: gone });
   const result = await deleted.deleteCasesRemovedInGhl({ now: NOW });
-  assert.deepEqual({ checked: result.checked, deleted: result.deleted }, { checked: 0, deleted: 0 });
-  assert.equal(calls.deletions.length, 0);
+  assert.deepEqual({ checked: result.checked, deleted: result.deleted }, { checked: 1, deleted: 1 });
+  assert.equal(calls.deletions.length, 1);
+  assert.ok(!calls.deletions[0]?.options?.skipRecycleBin, "never a hard delete: the case goes to the recycle bin");
+
+  process.env.RECYCLE_BIN_ENABLED = "false";
+  assert.equal(deleted.isEnabled(), false, "recycle bin off -> no automatic deleting");
+  const off = stub({ flagged: [item(60)], opportunity: gone });
+  const none = await deleted.deleteCasesRemovedInGhl({ now: NOW });
+  assert.deepEqual({ checked: none.checked, deleted: none.deleted }, { checked: 0, deleted: 0 });
+  assert.equal(off.deletions.length, 0);
+  delete process.env.RECYCLE_BIN_ENABLED;
 });
 
 test("the GHL lookup is called with the client itself (or nothing), never an options object - that mistake made every lookup throw and no deletion was ever seen", async () => {
