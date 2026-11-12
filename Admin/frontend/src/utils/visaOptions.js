@@ -183,7 +183,8 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 // (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
 export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci'])
 export const INDIAN_TIMELINE_SUBTYPES = {
-  oci: [{ value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen by birth and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },
+  oci: [{ value: 'OCI_MINOR_FOREIGN_CITIZEN_NEVER_HELD', label: 'Minor Foreign citizen and never held Indian passport', description: 'For minor foreign citizens who have never held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
+    { value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen by birth and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },
     { value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'Adult Foreign citizen and held Indian passport', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' }],
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow

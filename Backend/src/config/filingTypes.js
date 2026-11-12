@@ -230,6 +230,18 @@ const FILING_TYPES = {
     visaType: "OCI",
     questionnaireKey: "oci_adult_foreign_citizen_by_birth_checklist",
   },
+  OCI_MINOR_FOREIGN_CITIZEN_NEVER_HELD: {
+    key: "OCI_MINOR_FOREIGN_CITIZEN_NEVER_HELD",
+    label: "Minor Foreign citizen and never held Indian passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_minor_foreign_citizen_never_held_passport_checklist",
+  },
 };
 
 function listFilingTypes() {
