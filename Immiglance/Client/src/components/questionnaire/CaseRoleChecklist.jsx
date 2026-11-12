@@ -31,7 +31,7 @@ import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   const {
     questionnaire, initialLoading, refreshing, error, notReleased, sections, questionsBySection, answers, answerByKey,
-    prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult,
+    prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, fetchFileBlob, commitAll, handleAutofillResult,
     overallCompletion, missingRequiredCount, dirty, saveState, lastSavedAt, statusMessage, responseId,
   } = qa;
   const [submitting, setSubmitting] = useState(false);
@@ -170,6 +170,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
                     onFileChange={(uploadedFiles) => saveFiles(question, uploadedFiles)}
                     files={answerByKey.get(key)?.files}
                     onRemoveFile={(file) => removeFile(question, file)}
+                    getFileBlob={fetchFileBlob ? (file, options) => fetchFileBlob(question, file, options) : undefined}
                   />
                   {!readOnly && (
                     <PrefillBadge

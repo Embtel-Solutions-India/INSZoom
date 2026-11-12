@@ -841,6 +841,12 @@ export const questionnairesApi = {
       throw error;
     }
   },
+  // The stored bytes of one answer file, for the in-app full-screen viewer (components/AttachmentViewer.jsx). Same download route and authorization as viewAnswerFile.
+  fetchAnswerFileBlob: async (id, { responseId, questionKey, storageKey }, options = {}) => {
+    const query = new URLSearchParams({ responseId, questionKey, storageKey, inline: "true" }).toString();
+    const response = await api.get(`/questionnaires/${id}/answers/files/download?${query}`, options.signal ? { signal: options.signal } : undefined);
+    return response.blob();
+  },
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
 };
 

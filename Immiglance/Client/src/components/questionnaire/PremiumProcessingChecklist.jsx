@@ -90,6 +90,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
                       onFileChange={(uploadedFiles) => qa.saveFiles(question, uploadedFiles)}
                       files={qa.answerByKey?.get(key)?.files}
                       onRemoveFile={(file) => qa.removeFile(question, file)}
+                      getFileBlob={qa.fetchFileBlob ? (file, options) => qa.fetchFileBlob(question, file, options) : undefined}
                     />
                   </div>
                 );

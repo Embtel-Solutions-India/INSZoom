@@ -282,6 +282,11 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     }
   }, [caseId, disabled, questionnaire, responseId, refetch]);
 
+  const fetchFileBlob = useCallback(async (question, file, options = {}) => {
+    if (!questionnaire?._id || !file?.storageKey) throw new Error("This document cannot be opened from here.");
+    return questionnairesApi.fetchAnswerFileBlob(questionnaire._id, { responseId, questionKey: questionKey(question), storageKey: file.storageKey }, options);
+  }, [questionnaire, responseId]);
+
   // Removes one entry from a file question's answer (server soft-deletes the
   // matching Documents record too), then refetches so the row re-renders.
   const removeFile = useCallback(async (question, file) => {
@@ -360,6 +365,8 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     saveAnswer,
     saveFiles,
     removeFile,
+    // the bytes of one uploaded file of a question (any uploader - the client or the internal team), for the full-screen viewer
+    fetchFileBlob,
     commitAll,
     handleAutofillResult,
     refetch,

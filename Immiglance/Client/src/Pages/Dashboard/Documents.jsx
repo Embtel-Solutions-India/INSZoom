@@ -819,6 +819,7 @@ export default function Documents() {
                 onFileChange={(uploadedFiles) => src.saveFiles(question, uploadedFiles)}
                 files={src.answerByKey?.get(key)?.files}
                 onRemoveFile={(file) => src.removeFile(question, file)}
+                getFileBlob={src.fetchFileBlob ? (file, options) => src.fetchFileBlob(question, file, options) : undefined}
               />
               <PrefillBadge
                 meta={src.prefillMeta[key]}

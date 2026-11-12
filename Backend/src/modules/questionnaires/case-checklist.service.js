@@ -374,6 +374,40 @@ function cleanOptions(options) {
     .filter((option) => option.label);
 }
 
+// The Question a case manager adds to ONE case's copy of a checklist. It borrows the section / visibility / layout of a sibling question (so it lands in the same place and is
+// shown to the same people - the client portal, the detailed questionnaire panel and, for an upload, Required Documents all read the checklist's questions), but never the
+// sibling's document identity: an uploaded file is filed under documentType = fileConstraints.requireDocumentCategory || metadata.documentType || evidenceCategory || key
+// (documentTypeForQuestion), so a copied evidenceCategory / fileConstraints made every added upload count as the sibling's document. An added upload is its own document type (its key).
+function buildCustomQuestionPayload(base, { label, type, patch = {}, key, order, copy }) {
+  const { _id, __v, createdAt, updatedAt, mapping, uscisMappings, ...rest } = base;
+  const isFile = type === "file";
+  return {
+    ...rest,
+    key,
+    label,
+    description: String(patch.description || ""),
+    helpText: String(patch.description || ""),
+    type,
+    required: Boolean(patch.required),
+    options: type === "radio" || type === "select" ? cleanOptions(patch.options?.length ? patch.options : type === "radio" ? ["Yes", "No"] : []) : [],
+    order,
+    uscisMappings: [],
+    validationRules: [],
+    conditionalLogic: { mode: "all", rules: [], groups: [] },
+    showIf: undefined,
+    repeatable: false,
+    repeatableConfig: undefined,
+    fileConstraints: undefined,
+    evidenceCategory: isFile ? "supporting_document" : undefined,
+    metadata: { customForCase: true, ...(isFile ? { documentType: key, category: "supporting_document" } : {}) },
+    active: true,
+    isActive: true,
+    questionnaire: copy._id,
+    questionnaireKey: copy.key,
+    questionnaireVersion: copy.version,
+  };
+}
+
 async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, patch = {} } = {}, user, req) {
   if (!["update", "add", "remove", "restore"].includes(op)) throw httpError(400, "op must be update, add, remove or restore");
   // the case the checklist is managed on (the principal, for a child case's shared checklist): its copy is edited and every child sees it
@@ -387,30 +421,8 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
     const siblings = await Question.find({ questionnaire: copy._id }).sort({ order: -1 }).lean();
     const base = siblings.find((item) => item.sectionKey === patch.sectionKey && item.active !== false) || siblings.find((item) => item.active !== false) || siblings[0];
     if (!base) throw httpError(409, "This checklist has no section to add a question to");
-    const { _id, __v, createdAt, updatedAt, mapping, uscisMappings, ...rest } = base;
     const key = `custom_${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-    const created = await Question.create({
-      ...rest,
-      key,
-      label,
-      description: String(patch.description || ""),
-      helpText: String(patch.description || ""),
-      type,
-      required: Boolean(patch.required),
-      options: type === "radio" || type === "select" ? cleanOptions(patch.options?.length ? patch.options : type === "radio" ? ["Yes", "No"] : []) : [],
-      order: (siblings[0]?.order || 0) + 1,
-      uscisMappings: [],
-      validationRules: [],
-      conditionalLogic: { mode: "all", rules: [], groups: [] },
-      showIf: undefined,
-      repeatable: false,
-      metadata: { customForCase: true },
-      active: true,
-      isActive: true,
-      questionnaire: copy._id,
-      questionnaireKey: copy.key,
-      questionnaireVersion: copy.version,
-    });
+    const created = await Question.create(buildCustomQuestionPayload(base, { label, type, patch, key, order: (siblings[0]?.order || 0) + 1, copy }));
     await broadcastEdited(caseId, user);
     return { questionnaireId: copy._id, question: created };
   }
@@ -470,4 +482,4 @@ async function broadcastEdited(caseId, user) {
   broadcastChecklistsChanged([principal, ...children], "edited", user);
 }
 
-module.exports = { approveChecklists, inheritParentApprovals, removeChecklist, forkChecklist, editChecklist, listRemovedQuestions, baseKey };
+module.exports = { buildCustomQuestionPayload, approveChecklists, inheritParentApprovals, removeChecklist, forkChecklist, editChecklist, listRemovedQuestions, baseKey };
