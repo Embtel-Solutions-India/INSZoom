@@ -14,7 +14,7 @@ function bodyLines(data = {}) {
     data.beneficiaryName
       ? `Congratulations! The case for <strong>${data.beneficiaryName}</strong> has been submitted. This is a big step, and it would not have been possible without the timely documents and information provided.`
       : "Congratulations! Your case has been submitted. This is a big step, and it would not have been possible without your timely documents and information.",
-    "USCIS will send a receipt notice once it has your filing. Processing times vary, and your case manager will tell you as soon as there is any update.",
+    "USCIS will send a receipt notice once it has your filing. Your case manager will tell you as soon as there is any update.",
     ...fedexLines(data),
     `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Track My Case</a>`,
     "Regards,<br>The Immiglance Team",
