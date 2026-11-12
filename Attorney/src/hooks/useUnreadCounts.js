@@ -23,12 +23,14 @@ export default function useUnreadCounts() {
     }
     load()
     const interval = setInterval(load, 30_000)
-    if (!connected) return () => { cancelled = true; clearInterval(interval) }
+    window.addEventListener('attorney:unread-changed', load)
+    if (!connected) return () => { cancelled = true; clearInterval(interval); window.removeEventListener('attorney:unread-changed', load) }
     const unsubFeedback = subscribe('feedback:new', load)
     return () => {
       cancelled = true
       clearInterval(interval)
       unsubFeedback()
+      window.removeEventListener('attorney:unread-changed', load)
     }
   }, [connected, subscribe])
 

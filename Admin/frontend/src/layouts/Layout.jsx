@@ -185,9 +185,7 @@ const Layout = () => {
                 <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
                 <span className="truncate">{item.label}</span>
                 {item.path === '/messages' && unreadMessageCount > 0 && (
-                  <span className={`ml-auto min-w-[1.15rem] h-[1.15rem] px-1 flex items-center justify-center text-[10px] font-semibold rounded-full ${
-                    active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                  }`}>
+                  <span className="ml-auto min-w-[1.15rem] h-[1.15rem] px-1 flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground">
                     {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                   </span>
                 )}

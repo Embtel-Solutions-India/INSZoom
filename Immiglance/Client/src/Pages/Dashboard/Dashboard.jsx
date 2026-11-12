@@ -13,6 +13,7 @@ import { PLAN_LABELS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
 import { effectiveMilestones } from "../../utils/milestones";
 import PetitionShipmentCard from "../../components/PetitionShipmentCard";
+import UscisReceiptCard from "../../components/UscisReceiptCard";
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 const fmtDate = (iso) =>
@@ -801,6 +802,9 @@ export default function Dashboard() {
 
         {/* the FedEx tracking number of the filed petition, once our team has entered it (renders nothing otherwise) */}
         <PetitionShipmentCard shipment={activeCaseData.filingShipment} shipments={activeCaseData.filingShipments} />
+
+        {/* "Track your case": the USCIS receipt number of an online filing, with Copy and a link to the USCIS case-status website (renders nothing without one) */}
+        <UscisReceiptCard receipt={activeCaseData.filingReceipt} receipts={activeCaseData.filingReceipts} />
 
         {/* ── KPI tiles ── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
