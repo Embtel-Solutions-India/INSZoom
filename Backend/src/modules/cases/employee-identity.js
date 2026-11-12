@@ -38,9 +38,39 @@ function validateIdentityInput(input, { blockedEmails = [], siblingEmails = [] }
   return { identity };
 }
 
+// Who the EMPLOYER of an employer matter is: the company name and the contact email, held on the principal case (clientName / clientEmail). Like employeeContact, it says what is
+// still missing so the internal team is asked for it - the same prompt an employee case gets, for the employer side.
+const isEmployerMatter = (principal) => principal?.caseRole === "principal" && principal?.caseStructure === "employer_employee";
+function employerContact(principal) {
+  if (!isEmployerMatter(principal)) return null;
+  const name = cleanName(principal.clientName);
+  const email = cleanEmail(principal.clientEmail);
+  return { name, email, missingName: !name, missingEmail: !email, complete: Boolean(name && email) };
+}
+
+// A typed employer identity ({ name?, email? }): the email must be valid and not one of the matter's employees' addresses.
+function validateEmployerIdentityInput(input, { employeeEmails = [] } = {}) {
+  const identity = {};
+  if (input?.name !== undefined) {
+    const name = cleanName(input.name);
+    if (name.length > 160) return { message: "The name is too long." };
+    if (name) identity.name = name;
+  }
+  if (input?.email !== undefined) {
+    const email = cleanEmail(input.email);
+    if (email) {
+      if (!EMAIL_PATTERN.test(email)) return { message: "Enter a valid email address." };
+      if (employeeEmails.map(cleanEmail).filter(Boolean).includes(email)) return { message: "That email is already used for an employee - use the employer's own address." };
+      identity.email = email;
+    }
+  }
+  if (!Object.keys(identity).length) return { message: "Enter the employer's name or email." };
+  return { identity };
+}
+
 // An employee case whose file the employer still holds: the case's login is not the employee's own (an invited employee has role "employee").
 // The name and email typed for such an employee only say who they are - they are never a delivery address, so nothing is emailed to them until the
 // employer / staff actually invites them.
 const isUninvitedEmployee = (child, ownerUser) => child?.caseRole === "employee" && ownerUser?.role !== "employee";
 
-module.exports = { isUninvitedEmployee, employeeContact, validateIdentityInput, cleanEmail, cleanName };
+module.exports = { isUninvitedEmployee, employeeContact, employerContact, validateEmployerIdentityInput, isEmployerMatter, validateIdentityInput, cleanEmail, cleanName };

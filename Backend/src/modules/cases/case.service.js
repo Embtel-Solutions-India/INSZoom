@@ -1,5 +1,5 @@
 const AuditLog = require("../../models/AuditLog");
-const { employeeContact } = require("./employee-identity");
+const { employeeContact, employerContact } = require("./employee-identity");
 const Appointment = require("../../models/Appointment");
 const Beneficiary = require("../../models/Beneficiary");
 const Case = require("../../models/Case");
@@ -668,6 +668,8 @@ function serializeCaseForUser(caseData, user) {
   const data = caseData?.toObject ? caseData.toObject({ virtuals: true }) : { ...(caseData || {}) };
   const contact = employeeContact(data); // who an employee case is (name + email), whichever field holds it - additive, nothing existing changes
   if (contact) data.employeeContact = contact;
+  const employer = employerContact(data); // the employer matter's own name + email (and what is still missing) - additive
+  if (employer) data.employerContact = employer;
   const role = normalizeRole(user?.role);
   // payment figures (GoHighLevel Value / USCIS Fee / QB Amount Paid) are internal: Admin-portal staff only - never a client, employer, employee, beneficiary or attorney
   if (!["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr"].includes(role)) delete data.finance;

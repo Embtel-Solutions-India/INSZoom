@@ -38,7 +38,7 @@ import CaseInvoices from '../components/CaseInvoices'
 import CasePackageField from '../components/CasePackageField'
 import { downloadOfficialForm, OFFICIAL_DOWNLOAD_FAILED } from '../utils/officialFormDownload'
 import EmployerPaymentSummary from '../components/EmployerPaymentSummary'
-import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
+import { EmployeeIdentityNotice, EmployerIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
   Trash2,
@@ -2333,6 +2333,8 @@ const CRMCaseDetail = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}
+            {/* employer matter without a company name or email: the same request, for the employer */}
+            {caseData.caseRole === 'principal' && <EmployerIdentityNotice caseData={caseData} onSaved={() => fetchCaseDetail(true)} />}
             {caseData.caseRole === 'employee' && (
               <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
             )}
