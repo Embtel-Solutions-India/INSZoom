@@ -2101,6 +2101,11 @@ const CRMCaseDetail = () => {
   )
 
   const getChecklistItems = () => {
+    // The case's checklists were removed / rejected, or customised for this case (a case-specific copy), and they ask for no document: the case's ORIGINAL per-visa document list
+    // (Case.checklistItems, written at creation) is no longer what the case asks for, so it is not shown as "pending" documents.
+    const removedChecklists = [...(caseData?.checklistApproval?.removed || []), ...(caseData?.parentCase?.checklistApproval?.removed || [])]
+    const customised = checklistsProgress.some((item) => item.caseSpecific && !item.staffRequest)
+    if ((removedChecklists.length || customised) && !checklistDocumentGroups.length) return []
     const ownItems = Array.isArray(caseData?.checklistItems) ? caseData.checklistItems :
       Array.isArray(caseData?.documentChecklist) ? caseData.documentChecklist :
       []
