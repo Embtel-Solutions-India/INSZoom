@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import EntryFileList from "../checklist/EntryFileList";
+import AttachmentViewer from "../AttachmentViewer";
 import { documentIntelligenceApi } from "../../services/api";
 import { isColumnHidden, isColumnRequired, validateRepeatingGroupRows } from "../../utils/repeatingGroup";
 import { IconSparkles } from "../../utils/iconComponents";
@@ -216,7 +217,8 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
 // The one field+file+repeating-group renderer for every question type a
 // Questionnaire template can define. Used exclusively by
 // QuestionnaireRenderer — nothing else should hand-code per-type question JSX.
-export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange, files, onRemoveFile, onViewFile }) {
+export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange, files, onRemoveFile, onViewFile, getFileBlob }) {
+  const [viewing, setViewing] = useState(null); // an uploaded file open in the full-screen viewer
   const type = normalizeType(question);
   const options = normalizeOptions(question.options);
 
@@ -349,8 +351,13 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
           busy={Boolean(saving)}
           onAdd={(picked) => onFileChange(picked)}
           onRemove={(entry) => onRemoveFile?.(entry.raw)}
-          onView={onViewFile ? (entry) => onViewFile(entry.raw) : undefined}
+          onView={onViewFile
+            ? (entry) => onViewFile(entry.raw)
+            : (getFileBlob
+              ? (entry) => { if (!entry.raw?.storageKey) return Promise.reject(new Error("This document cannot be opened from here.")); const raw = entry.raw; setViewing({ name: entry.name, size: entry.size, mimeType: entry.mimeType, getBlob: ({ signal } = {}) => getFileBlob(raw, { signal }) }); return Promise.resolve(); }
+              : undefined)}
         />
+        {viewing && <AttachmentViewer name={viewing.name} size={viewing.size} mimeType={viewing.mimeType} getBlob={viewing.getBlob} onClose={() => setViewing(null)} />}
         {!entries.length && Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-muted-foreground">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
       </div>
     );

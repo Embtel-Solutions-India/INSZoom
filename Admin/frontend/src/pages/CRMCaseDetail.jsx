@@ -665,9 +665,9 @@ const CRMCaseDetail = () => {
   ].map((panel) => String(panel?.questionnaire?._id || '')).filter(Boolean))
   const fixedPanelsLoading = [employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire, jointSponsorQuestionnaire, greenCardRenewalQuestionnaire]
     .some((panel) => panel?.loading)
+  // staff 'special request' checklists (Request information) are listed here too, so a requested question is answered / seen in the detailed sections below as well as in the request panel
   const extraApprovedChecklists = fixedPanelsLoading ? [] : checklistsProgress.filter((item) => (
-    !item.staffRequest
-    && !shownQuestionnaireIds.has(String(item.questionnaireId))
+    !shownQuestionnaireIds.has(String(item.questionnaireId))
     && !(isPrincipalContainer && item.targetRole === 'employee')
   ))
   // Required Documents are built from the SAME checklists the detailed panels above show: every checklist on the case (approved or

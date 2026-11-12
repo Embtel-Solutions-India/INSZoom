@@ -61,6 +61,12 @@ const SEND_RETRY_DELAYS_MS = [0, 1000, 2000, 4000, 8000, 15000] // only for the 
 // question. The first change gives this case its own copy of the checklist; the shared template and every other case
 // are never touched. (Answers a client or staff member already gave are edited in the answer panels, and stay
 // attached when a question is edited or removed.)
+// An added / reworded / removed question changes what the detailed questionnaire, Required Documents and the Documents tab list (and what the client sees): the case page listens for this
+// and re-reads them all (the same event a saved answer raises), so the change shows everywhere without a reload.
+const announceChecklistEdited = (caseId) => {
+  try { window.dispatchEvent(new CustomEvent('case-answers-changed', { detail: { caseId: String(caseId || '') } })) } catch { /* never block an edit */ }
+}
+
 export default function ChecklistEditorModal({ caseId, checklist, onClose, onSaved }) {
   const [questions, setQuestions] = useState([])
   const [sections, setSections] = useState([])
@@ -126,6 +132,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       if (body.questionKey) setDrafts((current) => { const next = { ...current }; delete next[body.questionKey]; return next })
       await load(true)
       await onSaved?.()
+      announceChecklistEdited(caseId)
       return true
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not save this change.')
@@ -145,6 +152,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
         try {
           await questionnairesApi.editCaseChecklist(caseId, { checklistId: checklist.checklistId, ...body, background: true })
+          announceChecklistEdited(caseId)
           return null
         } catch (err) {
           const status = err.response?.status
