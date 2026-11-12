@@ -40,6 +40,11 @@ exports.getLegacyDashboardStats = async (req, res, next) => {
       casesByVisaType: caseVisa,
       topCaseManager: topCaseManager?.staff?.name || topCaseManager?.staff?.displayName || "N/A",
       topCaseManagerScore: topCaseManager?.score || 0,
+      // the first two case managers on the leaderboard, best first (the card shows both)
+      topCaseManagers: dashboard.teamPerformance
+        .filter((item) => item.role === "case_manager")
+        .slice(0, 2)
+        .map((item) => ({ name: item.staff?.name || item.staff?.displayName || "N/A", score: item.score || 0 })),
       dashboard,
     });
   } catch (error) {

@@ -82,7 +82,7 @@ function rowIdentity(caseData) {
 }
 
 const LIST_SORT_FIELDS = ["name", "activeCasesCount", "completedCasesCount", "totalRevenue", "currentWorkload", "performanceRating", "status"];
-const NOT_ACTIVE_CASE_STATUSES = ["closed", "archived", "approved", "denied", "completed"];
+const NOT_ACTIVE_CASE_STATUSES = ["closed", "archived", "approved", "denied", "completed", "rejected", "cancelled", "removed", "withdrawn"]; // same set the leaderboard treats as not open
 const PENDING_CASE_STATUSES = ["pending_assignment", "assigned", "pending_approval"];
 
 // Per-manager case, task and payment figures in three grouped queries (no N+1).

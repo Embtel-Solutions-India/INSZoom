@@ -11,10 +11,12 @@
 const Case = require("../../models/Case");
 const Task = require("../../models/Task");
 const User = require("../../models/User");
+const { withCountable } = require("../cases/countableCase");
+const { completedCaseMatch, onHoldCaseMatch, COMPLETED_STAGE_KEYS } = require("../cases/caseManagerAccess");
 const Feedback = require("../../models/Feedback");
 
 const CLOSED_STATUSES = ["closed", "approved", "completed"];
-const ENDED_STATUSES = ["rejected", "cancelled", "archived", "removed"];
+const ENDED_STATUSES = ["rejected", "denied", "cancelled", "archived", "removed", "withdrawn"]; // a withdrawn employee case is stored as "removed"
 const NOT_OPEN_STATUSES = [...CLOSED_STATUSES, ...ENDED_STATUSES];
 const BOARDS = ["case_managers", "team_leads", "attorneys", "clients"];
 const PERIODS = ["today", "this_week", "this_month", "all_time"];
@@ -35,6 +37,14 @@ function periodStart(period, now = new Date()) {
   }
   return start;
 }
+
+// CLOSED = the case sits in a finished pipeline stage: Submitted, Receipt tracking, Approved, Disapproved / Rejected or Feedback (completedCaseMatch, the same rule as the
+// dashboard cards). "Closed in the period" uses the time of its last pipeline move (falling back to its last update) because cases have no separate closed-on date.
+const stageClosedMatch = (start) => withCountable({
+  ...completedCaseMatch(),
+  status: { $nin: ENDED_STATUSES },
+  ...(start ? { $or: [{ "integrations.ghl.sync.changedAt": { $gte: start } }, { "integrations.ghl.sync.changedAt": { $exists: false }, updatedAt: { $gte: start } }] } : {}),
+});
 
 const displayName = (user) => user.name || user.displayName || user.email || "Unknown";
 const toMap = (rows, valueKey = "n") => new Map(rows.map((row) => [String(row._id), row[valueKey]]));
@@ -68,13 +78,16 @@ async function staffBoard({ role, field }, period, now) {
   if (!users.length) return [];
   const ids = users.map((user) => user._id);
   const start = periodStart(period, now);
-  const closedMatch = { status: { $in: CLOSED_STATUSES }, ...(start ? { updatedAt: { $gte: start } } : {}) };
+  // Cases are counted per person: an employer matter is only a container, its employee cases are the work (same rule as every dashboard count).
+  // OPEN (active) = not closed out AND not in a pipeline stage that is finished or paused: Submitted, Receipt tracking, Approved, Disapproved, Feedback, On Hold.
+  const openMatch = withCountable({ status: { $nin: NOT_OPEN_STATUSES }, $nor: [completedCaseMatch(), onHoldCaseMatch()] });
+  const closedMatch = stageClosedMatch(start);
   const taskDoneMatch = { assignedTo: { $in: ids }, status: "completed", ...(start ? { updatedAt: { $gte: start } } : {}) };
 
   const [open, closed, totalClosed, tasksDone, overdue] = await Promise.all([
-    casesGroupedByStaff(field, ids, { status: { $nin: NOT_OPEN_STATUSES } }),
+    casesGroupedByStaff(field, ids, openMatch),
     casesGroupedByStaff(field, ids, closedMatch),
-    casesGroupedByStaff(field, ids, { status: { $in: CLOSED_STATUSES } }),
+    casesGroupedByStaff(field, ids, stageClosedMatch(null)),
     Task.aggregate([{ $match: taskDoneMatch }, { $group: { _id: "$assignedTo", n: { $sum: 1 } } }]),
     Task.aggregate([{ $match: { assignedTo: { $in: ids }, status: { $nin: ["completed", "cancelled"] }, dueDate: { $lt: now } } }, { $group: { _id: "$assignedTo", n: { $sum: 1 } } }]),
   ]);
@@ -154,16 +167,27 @@ async function attorneyBoard(period, now) {
 async function clientBoard(period, now) {
   const start = periodStart(period, now);
   const rows = await Case.aggregate([
-    { $match: { parentCase: null, caseRole: { $nin: ["employee", "beneficiary"] }, status: { $ne: "removed" } } },
+    // Counted per person, like every dashboard count: an employer's cases are its EMPLOYEE cases (the employer matter itself is only a container and is not counted).
+    // An employee case carries the employer's login, so its cases roll up to the employer client.
+    { $match: withCountable({ caseRole: { $ne: "beneficiary" }, status: { $nin: ["removed", "withdrawn"] }, "integrations.ghl.opportunityStatus": { $ne: "abandoned" } }) },
+    // an employee case belongs to its EMPLOYER (the client), even when the employee has a login of their own: group by the employer matter's account
+    { $lookup: { from: Case.collection.name, localField: "parentCase", foreignField: "_id", pipeline: [{ $project: { user: 1, clientName: 1, clientEmail: 1 } }], as: "employerMatter" } },
+    { $addFields: { employerMatter: { $first: "$employerMatter" }, isEmployee: { $eq: ["$caseRole", "employee"] } } },
     {
       $group: {
-        _id: { $ifNull: ["$user", { $toLower: { $ifNull: ["$clientEmail", "unknown"] } }] },
-        clientName: { $first: "$clientName" },
-        clientEmail: { $first: "$clientEmail" },
+        _id: {
+          $cond: [
+            "$isEmployee",
+            { $ifNull: ["$employerMatter.user", { $toString: "$parentCase" }] },
+            { $ifNull: ["$user", { $toLower: { $ifNull: ["$clientEmail", "unknown"] } }] },
+          ],
+        },
+        clientName: { $first: { $cond: ["$isEmployee", "$employerMatter.clientName", "$clientName"] } },
+        clientEmail: { $first: { $cond: ["$isEmployee", "$employerMatter.clientEmail", "$clientEmail"] } },
         totalCases: { $sum: 1 },
         casesInPeriod: { $sum: start ? { $cond: [{ $gte: ["$createdAt", start] }, 1, 0] } : 1 },
-        openCases: { $sum: { $cond: [{ $in: ["$status", NOT_OPEN_STATUSES] }, 0, 1] } },
-        closedCases: { $sum: { $cond: [{ $in: ["$status", CLOSED_STATUSES] }, 1, 0] } },
+        openCases: { $sum: { $cond: [{ $or: [{ $in: ["$status", NOT_OPEN_STATUSES] }, { $in: [{ $ifNull: ["$integrations.ghl.unifiedStageKey", ""] }, COMPLETED_STAGE_KEYS] }, { $regexMatch: { input: { $ifNull: ["$integrations.ghl.unifiedStageKey", ""] }, regex: "hold", options: "i" } }] }, 0, 1] } },
+        closedCases: { $sum: { $cond: [{ $in: [{ $ifNull: ["$integrations.ghl.unifiedStageKey", ""] }, COMPLETED_STAGE_KEYS] }, 1, 0] } },
         lastCaseAt: { $max: "$createdAt" },
       },
     },
@@ -172,9 +196,11 @@ async function clientBoard(period, now) {
   const users = userIds.length ? await User.find({ _id: { $in: userIds } }).select("name displayName email").lean() : [];
   const byId = new Map(users.map((user) => [String(user._id), user]));
 
-  return rank(
+  // sorted by TOTAL cases (most first); ties by cases in the period, then name
+  const byTotal = (a, b) => b.totalCases - a.totalCases || b.casesInPeriod - a.casesInPeriod || String(a.name).localeCompare(String(b.name));
+  return (
     rows
-      .filter((row) => row.casesInPeriod > 0 || !start)
+      // every client with cases is listed (ranked by TOTAL cases); the period only fills the "Cases (period)" column and the score
       .map((row) => {
         const user = byId.get(String(row._id));
         return {
@@ -189,6 +215,8 @@ async function clientBoard(period, now) {
           score: row.casesInPeriod,
         };
       })
+      .sort(byTotal)
+      .map((row, index) => ({ rank: index + 1, ...row }))
   );
 }
 

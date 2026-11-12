@@ -766,11 +766,22 @@ export default function QuestionnaireTemplates() {
           <div className="relative">
             <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              className="input-field pl-9 text-sm"
+              className="input-field pl-9 pr-9 text-sm"
               placeholder="Search checklists"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSearchQuery('') }}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
