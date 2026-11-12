@@ -340,6 +340,7 @@ async function runAuxJob(job, { client } = {}) {
   if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
   if (job.type === "delete_opportunity") return require("./ghlCaseOutbound").runDeleteOpportunity(job, client);
   if (job.type === "push_finance") return require("./ghlFinance").runPushFinance(job, client);
+  if (job.type === "push_invoice_url") return require("./ghlFinance").runPushInvoiceUrl(job, client);
   if (job.type === "restore_opportunity") return require("./ghlRestore").runRestoreOpportunity(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }

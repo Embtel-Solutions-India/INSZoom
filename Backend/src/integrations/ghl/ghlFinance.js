@@ -15,6 +15,7 @@ const MONEY_FIELD_KEYS = {
   uscis_fee: "opportunity.uscis_fee",
   qb_amount_paid: "opportunity.qb_amount_paid",
   qb_invoice_no: "opportunity.qb_invoice_no",
+  invoice_url: "opportunity.invoice_url", // the card's "Invoice URL": read into the case's Invoices popup (see syncInvoiceUrl)
 };
 const FIELD_CACHE_MS = 6 * 60 * 60 * 1000;
 let fieldCache = null; // { ids, at }
@@ -118,14 +119,72 @@ async function completeOpportunity(opportunity, client) {
   return full ? { ...full, ...Object.fromEntries(Object.entries(opportunity || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")) } : opportunity;
 }
 
+// ---- the invoice URL -----------------------------------------------------------------------------------------------------------------------------------------------------------------
+// GoHighLevel's "Invoice URL" field (one link) is read into the case's invoice links; the team can add more here. See models/Case.js invoiceLinks. Pure parsing, never throws.
+/** The text of the card's Invoice URL field ("" when empty). */
+const invoiceUrlFromOpportunity = (opportunity, ids = {}) => String(customFieldValue(opportunity?.customFields, ids.invoice_url) ?? "").trim();
+
+/** Pure. Every valid http(s) link in a text (separated by spaces / new lines), without duplicates. Anything else is ignored. */
+function parseInvoiceUrls(raw) {
+  const seen = new Set();
+  const out = [];
+  for (const piece of String(raw ?? "").split(/\s+/)) {
+    if (!piece) continue;
+    try {
+      const url = new URL(piece);
+      if (!["http:", "https:"].includes(url.protocol) || seen.has(url.href)) continue;
+      seen.add(url.href);
+      out.push(piece);
+    } catch (_error) { /* not a link */ }
+  }
+  return out;
+}
+
+/** Pure. What is written into the card's Invoice URL field for a list of links: all of them, one per line (or only the newest when GHL refused several). "" for an empty list. */
+function serializeInvoiceUrls(urls = [], single = false) {
+  const list = urls.map((item) => (typeof item === "string" ? item : item.url)).filter(Boolean);
+  if (!list.length) return "";
+  return single ? list[list.length - 1] : list.join("\n");
+}
+
+const sameLinks = (a, b) => a.length === b.length && a.every((url) => b.includes(url));
+
+/**
+ * Both directions (2026-11-13), the card's Invoice URL field and the case's list mirror each other:
+ *   - the field changed in GoHighLevel -> the list follows (a link removed there is removed here; a link that was never written to the card, for example one added while the card did not exist yet, is kept);
+ *   - the list changed here (add / remove) -> `pending` is set and a job writes it to the field (see runPushInvoiceUrl); meanwhile the card's older value never overwrites the local change.
+ * Never throws.
+ */
+async function syncInvoiceUrl(caseDoc, opportunity, ids) {
+  try {
+    if (!caseDoc?._id || !ids?.invoice_url) return { changed: false };
+    const raw = invoiceUrlFromOpportunity(opportunity, ids);
+    const row = await Case.findById(caseDoc._id).select("+invoiceLinks").lean();
+    const links = row?.invoiceLinks || {};
+    if (links.pending !== undefined && links.pending !== null) return { changed: false, skipped: "push_pending" }; // a local change (even "empty the field") is on its way to the card
+    if (raw === String(links.ghlValue || "")) return { changed: false };
+    const fromCard = parseInvoiceUrls(raw);
+    const written = parseInvoiceUrls(links.ghlValue || "");
+    const known = new Map((links.urls || []).map((item) => [item.url, item]));
+    const neverWritten = (links.urls || []).filter((item) => !fromCard.includes(item.url) && !written.includes(item.url)); // added here, not on the card (yet)
+    const urls = [...fromCard.map((url) => known.get(url) || { url, addedAt: new Date(), source: "ghl" }), ...neverWritten];
+    await Case.updateOne({ _id: caseDoc._id }, { $set: { "invoiceLinks.urls": urls, "invoiceLinks.ghlValue": raw } }, { timestamps: false });
+    return { changed: true };
+  } catch (error) {
+    logger.warn("ghl_invoice_url_sync_failed", { caseId: String(caseDoc?._id), error: error.message });
+    return { changed: false, error: error.message };
+  }
+}
+
 // For one case and its opportunity: read the figures and record them. Never throws.
 async function syncCaseFinance(caseDoc, opportunity, { client } = {}) {
   try {
     if (!caseDoc?._id || !opportunity) return { changed: false };
-    // an edit made in Immiglance is still on its way to GoHighLevel: GoHighLevel's older figures must not overwrite it
+    // an edit made in Immiglance is still on its way to GoHighLevel: GoHighLevel's older figures must not overwrite it (and nothing is asked of GHL meanwhile)
     if (caseDoc.finance?.pendingPush) return { changed: false, skipped: "push_pending" };
     const full = await completeOpportunity(opportunity, client);
     const ids = await moneyFieldIds(client);
+    await syncInvoiceUrl(caseDoc, full, ids); // the card's Invoice URL -> the case's invoice links (own try/catch: never affects the money below)
     const when = full?.lastStatusChangeAt || full?.updatedAt || full?.dateUpdated || new Date();
     return await applyFinance(caseDoc, financeFromOpportunity(full, ids), { when: new Date(when), addedAt: full?.createdAt || full?.dateAdded || null });
   } catch (error) {
@@ -169,4 +228,34 @@ async function runPushFinance(job, client) {
   return "done";
 }
 
-module.exports = { runPushFinance, parseMoney, financeFromOpportunity, hasMoney, applyFinance, syncCaseFinance, moneyFieldIds, sameFinance, MONEY_FIELD_KEYS, _resetFieldCache: () => { fieldCache = null; } };
+// The links added or removed in Immiglance are written to the card's Invoice URL field - all of them, one per line. If GHL refuses several links in that field (it is a single-link field), only the
+// NEWEST link is written, from then on for this case; the list here keeps them all. Retried like every other GHL write; sends again if the list changed while it was sending.
+async function runPushInvoiceUrl(job, client) {
+  const opportunities = require("./ghlOpportunityService");
+  for (let round = 0; round < 3; round += 1) {
+    const row = await Case.findById(job.caseId).select("integrations.ghl.opportunityId +invoiceLinks").lean();
+    const opportunityId = row?.integrations?.ghl?.opportunityId;
+    const links = row?.invoiceLinks || {};
+    if (links.pending === undefined || links.pending === null || !opportunityId) return round === 0 ? "skipped" : "done";
+    const ids = await moneyFieldIds(client);
+    if (!ids.invoice_url) throw permanentError('The "Invoice URL" field was not found in GoHighLevel, so the link could not be sent');
+    let value = links.pending;
+    let single = Boolean(links.single);
+    const write = (text) => opportunities.updateOpportunity(opportunityId, { customFields: [{ id: ids.invoice_url, field_value: text }] }, client);
+    try {
+      await write(value);
+    } catch (error) {
+      const several = parseInvoiceUrls(value).length > 1;
+      if (!(several && error instanceof GHLApiError && [400, 422].includes(error.status))) throw error;
+      single = true; // GHL accepts one link only
+      value = serializeInvoiceUrls(parseInvoiceUrls(value), true);
+      await write(value);
+    }
+    // clear the marker only if the list was not edited meanwhile; otherwise send again
+    const cleared = await Case.updateOne({ _id: job.caseId, "invoiceLinks.pending": links.pending }, { $set: { "invoiceLinks.ghlValue": value, ...(single ? { "invoiceLinks.single": true } : {}) }, $unset: { "invoiceLinks.pending": "" } }, { timestamps: false });
+    if (cleared.modifiedCount === 1 || cleared.matchedCount === 1) return "done";
+  }
+  return "done";
+}
+
+module.exports = { runPushInvoiceUrl, syncInvoiceUrl, parseInvoiceUrls, serializeInvoiceUrls, invoiceUrlFromOpportunity, runPushFinance, parseMoney, financeFromOpportunity, hasMoney, applyFinance, syncCaseFinance, moneyFieldIds, sameFinance, MONEY_FIELD_KEYS, _resetFieldCache: () => { fieldCache = null; } };

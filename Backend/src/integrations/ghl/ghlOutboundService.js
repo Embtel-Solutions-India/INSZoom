@@ -240,7 +240,7 @@ async function cardIsGone(opportunityId, error) {
   }
 }
 
-const EXISTING_CARD_JOBS = new Set(["stage", "rename", "set_status", "push_finance"]);
+const EXISTING_CARD_JOBS = new Set(["stage", "rename", "set_status", "push_finance", "push_invoice_url"]);
 
 async function handleAuxFailure(job, error) {
   const message = String(error.message || error).slice(0, 300);

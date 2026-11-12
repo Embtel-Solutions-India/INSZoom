@@ -56,6 +56,12 @@ function isUnchanged({ existing, opportunity, mapping, moneyIds }) {
     const incoming = finance.financeFromOpportunity(opportunity, moneyIds);
     if (existing.finance ? !finance.sameFinance(existing.finance, incoming) : finance.hasMoney(incoming)) return false;
   }
+  // the card's Invoice URL (shown in the case's Invoices popup): a change, or a link still being written to the card, takes the full path
+  if (moneyIds?.invoice_url) {
+    const finance = require("./ghlFinance");
+    if (finance.invoiceUrlFromOpportunity(opportunity, moneyIds) !== String(existing.invoiceLinks?.ghlValue || "")) return false;
+    if (existing.invoiceLinks?.pending !== undefined && existing.invoiceLinks?.pending !== null) return false;
+  }
   return true;
 }
 
@@ -63,7 +69,7 @@ function isUnchanged({ existing, opportunity, mapping, moneyIds }) {
 async function loadLinkedCases(locationId, opportunities) {
   const links = await GHLCaseLink.find({ locationId, opportunityId: { $in: opportunities.map((o) => o.id) } }).select("opportunityId caseId createdAt").lean();
   if (!links.length) return { linked: new Map(), orphaned: new Set() };
-  const cases = await Case.find({ _id: { $in: links.map((l) => l.caseId) } }).select("caseRole clientName clientEmail user finance integrations.ghl").lean();
+  const cases = await Case.find({ _id: { $in: links.map((l) => l.caseId) } }).select("caseRole clientName clientEmail user finance integrations.ghl +invoiceLinks").lean();
   const byId = new Map(cases.map((c) => [String(c._id), c]));
   const linked = new Map();
   const orphaned = new Set();

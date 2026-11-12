@@ -1200,6 +1200,21 @@ const caseSchema = new mongoose.Schema(
     // What the filing's FedEx shipment cost, in US dollars. INTERNAL ONLY: `select: false` means no query returns it unless it asks for "+fedexAmount", so it can never leak
     // to a client, employer, employee or attorney through a case payload. Read / written only by TrackingService for internal-team roles.
     fedexAmount: { type: Number, min: 0, select: false },
+    // The case's invoice links (the "Invoice URL" of its GoHighLevel card plus any the team adds here). INTERNAL ONLY, like fedexAmount: `select: false` keeps it out of every payload unless asked for
+    // with "+invoiceLinks". urls: the list shown in the Invoices popup (source "ghl" = read from the card, "crm" = added here); ghlValue = the card's field as last seen (to spot a change);
+    // pending = a link added here that is still being written into an EMPTY GHL field.
+    invoiceLinks: {
+      select: false,
+      type: new mongoose.Schema(
+        {
+          urls: [{ _id: false, url: { type: String, required: true }, addedAt: Date, addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, source: { type: String, enum: ["ghl", "crm"], default: "crm" } }],
+          ghlValue: { type: String, default: "" },
+          pending: String, // the Invoice URL text still to be written to the card (set by every local add / remove)
+          single: Boolean, // GHL refused several links in its Invoice URL field once: only the newest link is written to the card from then on (the list here keeps them all)
+        },
+        { _id: false }
+      ),
+    },
     // Payment figures read from the case's GoHighLevel card (integrations/ghl/ghlFinance.js), ALL IN US DOLLARS (never cents):
     //   totalAmount = the card's Value (the company's own fees, USCIS fees not included), uscisFee = USCIS Fee, amountPaid = QB Amount Paid.
     // The Admin payment analytics read only these. Internal: never sent to client-side roles (case.service serializeCaseForUser).
