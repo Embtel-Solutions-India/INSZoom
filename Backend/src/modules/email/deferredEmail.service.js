@@ -29,12 +29,13 @@ function planRelease(items, now = new Date(), spacingMs = SPACING_MS) {
     .map((item, index) => ({ id: item._id, sendAfter: new Date(now.getTime() + index * spacingMs) }));
 }
 
-async function enqueue({ user, templateKey, data, caseId, triggeredBy, event }) {
-  const dedupeKey = dedupeKeyFor({ userId: user._id, templateKey, caseId, event, data });
+// `to` (optional) addresses someone OTHER than `user`: the e-mail is released when `user` activates, but goes to `to` (used for the employer's copy of an employee's submitted e-mail).
+async function enqueue({ user, to, templateKey, data, caseId, triggeredBy, event }) {
+  const dedupeKey = dedupeKeyFor({ userId: user._id, templateKey, caseId, event, data }) + (to ? `:${String(to).toLowerCase()}` : "");
   const existing = await DeferredEmail.findOne({ dedupeKey, status: { $in: ["waiting", "scheduled"] } }).select("_id").lean();
   if (existing) return { queued: true, duplicate: true, id: existing._id };
   const created = await DeferredEmail.create({
-    userId: user._id, to: user.email, templateKey, data, caseId, triggeredBy: triggeredBy?._id || triggeredBy, event, status: "waiting", dedupeKey,
+    userId: user._id, to: to || user.email, templateKey, data, caseId, triggeredBy: triggeredBy?._id || triggeredBy, event, status: "waiting", dedupeKey,
   });
   return { queued: true, id: created._id };
 }

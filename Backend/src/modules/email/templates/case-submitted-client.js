@@ -11,7 +11,9 @@ const { fedexLines } = require("./fedexSection");
 function bodyLines(data = {}) {
   return [
     `Hi ${data.clientName || "there"},`,
-    "Congratulations! Your case has been submitted. This is a big step, and it would not have been possible without your timely documents and information.",
+    data.beneficiaryName
+      ? `Congratulations! The case for ${data.beneficiaryName} has been submitted. This is a big step, and it would not have been possible without the timely documents and information provided.`
+      : "Congratulations! Your case has been submitted. This is a big step, and it would not have been possible without your timely documents and information.",
     "USCIS will send a receipt notice once it has your filing. Processing times vary, and your case manager will tell you as soon as there is any update.",
     ...fedexLines(data),
     `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Track My Case</a>`,

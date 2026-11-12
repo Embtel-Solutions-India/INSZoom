@@ -26,6 +26,46 @@ async function recipientFor(caseDoc) {
   return user;
 }
 
+// ---- who gets the e-mail (2026-11-13) ------------------------------------------------------------------------------------------------------------------------------------------------
+//   single / family case                 -> the client (the petitioner for a family case): unchanged
+//   employee case, EMPLOYER-FILLED        -> the employer only (nobody invited the employee, the case still carries the employer's login)
+//   employee case, employee INVITED + ACTIVE login (a password is set)      -> the employee AND the employer
+//   employee case, employee INVITED, login NOT active yet                   -> held in the queue; when the employee activates, it goes to the employee AND the employer
+//   employer matter                      -> nobody (its employees are the cases)
+// An employer copy is addressed to the employer and says "the case for <employee>". Nothing here sends: it only decides (see sendOnTeamChoice).
+const hasActiveLogin = (user) => Boolean(user?.password) && user.isActive !== false;
+const USER_FIELDS = "name displayName email role isActive +password";
+
+async function recipientsFor(caseDoc) {
+  if (caseDoc.caseRole !== "employee") {
+    const user = await recipientFor(caseDoc);
+    return { recipients: user ? [{ user, kind: "client" }] : [], waitingOn: null };
+  }
+  const parent = caseDoc.parentCase ? await Case.findById(caseDoc.parentCase).select("user clientName petitionerName").lean() : null;
+  const employer = parent?.user ? await User.findById(parent.user).select(USER_FIELDS).lean() : null;
+  const employerOk = employer?.email && employer.isActive !== false ? employer : null;
+  // the employee's own login: the invite sets employeeUser; a case taken over by the employee carries their own account as its user
+  const employeeId = caseDoc.employeeUser || (caseDoc.user && (!parent || String(parent.user) !== String(caseDoc.user)) ? caseDoc.user : null);
+  const employee = employeeId ? await User.findById(employeeId).select(USER_FIELDS).lean() : null;
+  const employeeOk = employee?.email && employee.isActive !== false ? employee : null;
+  const beneficiaryName = String(caseDoc.clientName || employee?.name || "").trim() || undefined;
+  const employerRecipient = employerOk ? { user: employerOk, kind: "employer", beneficiaryName } : null;
+  if (!employeeOk) return { recipients: employerRecipient ? [employerRecipient] : [], waitingOn: null }; // employer-filled: the employer only
+  const recipients = [{ user: employeeOk, kind: "employee" }, ...(employerRecipient ? [employerRecipient] : [])];
+  return { recipients, waitingOn: hasActiveLogin(employeeOk) ? null : employeeOk }; // not active yet: all of it waits for the employee
+}
+
+/** The merged data of one recipient's e-mail: the greeting names the recipient; the employer's copy names the employee. */
+function dataFor(caseDoc, recipient, extra) {
+  const name = recipient.user.name || recipient.user.displayName;
+  return {
+    clientName: recipient.kind === "employer" ? name : (caseDoc.clientName || name),
+    caseNumber: caseDoc.caseNumber,
+    ...(recipient.kind === "employer" && recipient.beneficiaryName ? { beneficiaryName: recipient.beneficiaryName } : {}),
+    ...extra,
+  };
+}
+
 async function sendSubmittedNotice({ caseDoc, previousKey }) {
   try {
     const key = caseDoc?.integrations?.ghl?.unifiedStageKey;
@@ -85,7 +125,7 @@ async function recordChoice(caseId, user, send, outcome, method) {
       doc,
       "case",
       send ? "Client informed of submission" : "Client not informed of submission",
-      send ? (outcome?.sent ? "The case-completion e-mail was sent to the client" : "The team chose to e-mail the client, but no e-mail was sent") : "The team chose not to e-mail the client about the submission",
+      send ? (outcome?.sent ? "The case-completion e-mail was sent" : outcome?.queued ? "The case-completion e-mail is queued: it goes out when the invited employee activates their login" : "The team chose to e-mail the client, but no e-mail was sent") : "The team chose not to e-mail the client about the submission",
       user,
       { source: "submitted_notice_choice", send, sent: Boolean(outcome?.sent), reason: outcome?.reason || null, ...(method ? { method } : {}) }
     );
@@ -115,29 +155,76 @@ async function sendOnTeamChoice({ caseId, send, user, method }) {
     // once per case: either version (online / FedEx) already sent stops a second one
     const already = await EmailLog.findOne({ templateKey: { $in: [TEMPLATE, ONLINE_TEMPLATE] }, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
     if (already) return { sent: false, reason: "already_sent" };
-    const client = await recipientFor(caseDoc);
-    if (!client) return { sent: false, reason: "no_client_login" };
-    const { sendTemplateEmail } = require("../../modules/email/email.service");
+    const plan = await recipientsFor(caseDoc);
+    if (!plan.recipients.length) return { sent: false, reason: "no_client_login" };
     const filing = caseDoc.immigrationLifecycle?.tracking?.filing;
-    const result = await sendTemplateEmail(online ? ONLINE_TEMPLATE : TEMPLATE, {
-      to: client.email,
-      caseId: caseDoc._id,
-      userId: client._id,
-      recipientRole: client.role,
-      triggeredBy: user?._id, // EmailLog.triggeredBy is a User id: the case manager who chose to send it
-      // FedEx: the number, when the team has already entered it, goes inside this e-mail; without one the FedEx part is left out and the number follows in its own e-mail later.
-      // Online: the USCIS receipt number takes the place of the FedEx section and is shown only when it has been entered.
-      data: online
-        ? { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, receiptNumber: filing?.receiptNumber || undefined }
-        : { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: filing?.trackingNumber || undefined },
-    });
-    const outcome = { sent: Boolean(result?.sent), reason: result?.reason };
+    const template = online ? ONLINE_TEMPLATE : TEMPLATE;
+    // FedEx: the number, when the team has already entered it, goes inside this e-mail; without one the FedEx part is left out and the number follows in its own e-mail later.
+    // Online: the USCIS receipt number takes the place of the FedEx section and is shown only when it has been entered.
+    const extra = online ? { receiptNumber: filing?.receiptNumber || undefined } : { trackingNumber: filing?.trackingNumber || undefined };
+    // The employer (or any recipient with an active login) is e-mailed right away. Only the invited employee whose login is not active yet WAITS in the queue (deferredEmail.service) and is e-mailed when they activate.
+    const queuedRecipients = plan.waitingOn ? plan.recipients.filter((recipient) => recipient.kind === "employee") : [];
+    const sendNow = plan.recipients.filter((recipient) => !queuedRecipients.includes(recipient));
+    const { sendTemplateEmail } = require("../../modules/email/email.service");
+    const results = [];
+    for (const recipient of sendNow) {
+      results.push(await sendTemplateEmail(template, {
+        to: recipient.user.email,
+        caseId: caseDoc._id,
+        userId: recipient.user._id,
+        recipientRole: recipient.user.role,
+        triggeredBy: user?._id, // EmailLog.triggeredBy is a User id: the case manager who chose to send it
+        data: dataFor(caseDoc, recipient, extra),
+      }));
+    }
+    if (queuedRecipients.length) {
+      const deferred = require("../../modules/email/deferredEmail.service");
+      for (const recipient of queuedRecipients) {
+        await deferred.enqueue({ user: plan.waitingOn, to: recipient.user.email, templateKey: template, data: dataFor(caseDoc, recipient, extra), caseId: caseDoc._id, triggeredBy: user?._id, event: "case_submitted" });
+      }
+    }
+    const anySent = results.some((result) => result?.sent);
+    const outcome = queuedRecipients.length
+      ? { sent: anySent, queued: true, reason: anySent ? "employee_queued_until_activation" : "queued_until_activation", recipients: sendNow.map((recipient) => recipient.kind) }
+      : { sent: anySent, reason: anySent ? undefined : results[0]?.reason, recipients: sendNow.map((recipient) => recipient.kind) };
     await recordChoice(caseId, user, true, outcome, method);
     return outcome;
   } catch (error) {
     logger.warn("ghl_submitted_notice_choice_failed", { caseId: String(caseId), error: error.message });
     return { sent: false, reason: "error" };
   }
+}
+
+// A number added while the submitted e-mail is still WAITING in the queue (the invited employee has not activated yet) goes into that waiting e-mail instead, so it is not lost.
+async function updateWaitingSubmitted(caseId, template, field, value) {
+  try {
+    const DeferredEmail = require("../../models/DeferredEmail");
+    const result = await DeferredEmail.updateMany({ caseId, templateKey: template, status: { $in: ["waiting", "scheduled"] } }, { $set: { [`data.${field}`]: value } });
+    return Boolean(result?.modifiedCount);
+  } catch (_error) {
+    return false;
+  }
+}
+
+// The follow-up e-mails (the FedEx / receipt number added later) go to the same people as the submitted e-mail - except an invited employee whose login is not active yet.
+async function sendFollowUp(template, caseDoc, user, extra) {
+  const plan = await recipientsFor(caseDoc);
+  const recipients = plan.recipients.filter((recipient) => recipient.kind !== "employee" || hasActiveLogin(recipient.user));
+  if (!recipients.length) return { sent: false, reason: "no_client_login" };
+  const { sendTemplateEmail } = require("../../modules/email/email.service");
+  const results = [];
+  for (const recipient of recipients) {
+    results.push(await sendTemplateEmail(template, {
+      to: recipient.user.email,
+      caseId: caseDoc._id,
+      userId: recipient.user._id,
+      recipientRole: recipient.user.role,
+      triggeredBy: user?._id,
+      data: dataFor(caseDoc, recipient, extra),
+    }));
+  }
+  const anySent = results.some((result) => result?.sent);
+  return { sent: anySent, reason: anySent ? undefined : results[0]?.reason };
 }
 
 const RECEIPT_TEMPLATE = "case-uscis-receipt-number-client";
@@ -157,21 +244,11 @@ async function sendReceiptNumberNotice({ caseId, receiptNumber, previous, user }
     if (!caseDoc) return { sent: false, reason: "case_not_found" };
     if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
     const submittedSent = await EmailLog.findOne({ templateKey: ONLINE_TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
-    if (!submittedSent) return { sent: false, reason: "submitted_email_not_sent" };
+    const updatedQueued = await updateWaitingSubmitted(caseDoc._id, ONLINE_TEMPLATE, "receiptNumber", number); // the employee's still-queued copy gets the number too
+    if (!submittedSent) return updatedQueued ? { sent: false, reason: "queued_email_updated" } : { sent: false, reason: "submitted_email_not_sent" };
     const alreadyThisNumber = await EmailLog.findOne({ templateKey: RECEIPT_TEMPLATE, caseId: caseDoc._id, "data.receiptNumber": number, status: { $in: ["sent", "queued"] } }).select("_id").lean();
     if (alreadyThisNumber) return { sent: false, reason: "already_sent" };
-    const client = await recipientFor(caseDoc);
-    if (!client) return { sent: false, reason: "no_client_login" };
-    const { sendTemplateEmail } = require("../../modules/email/email.service");
-    const result = await sendTemplateEmail(RECEIPT_TEMPLATE, {
-      to: client.email,
-      caseId: caseDoc._id,
-      userId: client._id,
-      recipientRole: client.role,
-      triggeredBy: user?._id,
-      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, receiptNumber: number },
-    });
-    return { sent: Boolean(result?.sent), reason: result?.reason };
+    return await sendFollowUp(RECEIPT_TEMPLATE, caseDoc, user, { receiptNumber: number });
   } catch (error) {
     logger.warn("receipt_number_notice_failed", { caseId: String(caseId), error: error.message });
     return { sent: false, reason: "error" };
@@ -197,25 +274,15 @@ async function sendFedexNumberNotice({ caseId, trackingNumber, previous, user })
     if (!caseDoc) return { sent: false, reason: "case_not_found" };
     if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
     const submittedSent = await EmailLog.findOne({ templateKey: TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
-    if (!submittedSent) return { sent: false, reason: "submitted_email_not_sent" };
+    const updatedQueued = await updateWaitingSubmitted(caseDoc._id, TEMPLATE, "trackingNumber", number); // the employee's still-queued copy gets the number too
+    if (!submittedSent) return updatedQueued ? { sent: false, reason: "queued_email_updated" } : { sent: false, reason: "submitted_email_not_sent" };
     const alreadyThisNumber = await EmailLog.findOne({ templateKey: FEDEX_TEMPLATE, caseId: caseDoc._id, "data.trackingNumber": number, status: { $in: ["sent", "queued"] } }).select("_id").lean();
     if (alreadyThisNumber) return { sent: false, reason: "already_sent" };
-    const client = await recipientFor(caseDoc);
-    if (!client) return { sent: false, reason: "no_client_login" };
-    const { sendTemplateEmail } = require("../../modules/email/email.service");
-    const result = await sendTemplateEmail(FEDEX_TEMPLATE, {
-      to: client.email,
-      caseId: caseDoc._id,
-      userId: client._id,
-      recipientRole: client.role,
-      triggeredBy: user?._id,
-      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: number },
-    });
-    return { sent: Boolean(result?.sent), reason: result?.reason };
+    return await sendFollowUp(FEDEX_TEMPLATE, caseDoc, user, { trackingNumber: number });
   } catch (error) {
     logger.warn("fedex_number_notice_failed", { caseId: String(caseId), error: error.message });
     return { sent: false, reason: "error" };
   }
 }
 
-module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, sendReceiptNumberNotice, SUBMITTED_STAGE_KEY };
+module.exports = { recipientsFor, notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, sendReceiptNumberNotice, SUBMITTED_STAGE_KEY };

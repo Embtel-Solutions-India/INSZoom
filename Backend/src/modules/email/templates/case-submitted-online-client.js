@@ -9,7 +9,9 @@ function subject(data = {}) {
 function bodyLines(data = {}) {
   return [
     `Hi ${data.clientName || "there"},`,
-    "Congratulations! Your case has been submitted online. This is a big step, and it would not have been possible without your timely documents and information.",
+    data.beneficiaryName
+      ? `Congratulations! The case for ${data.beneficiaryName} has been submitted online. This is a big step, and it would not have been possible without the timely documents and information provided.`
+      : "Congratulations! Your case has been submitted online. This is a big step, and it would not have been possible without your timely documents and information.",
     validReceipt(data)
       ? "Processing times vary, and your case manager will tell you as soon as there is any update."
       : "USCIS will send a receipt notice once it has your filing. Processing times vary, and your case manager will tell you as soon as there is any update.",

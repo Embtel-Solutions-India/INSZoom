@@ -10,6 +10,7 @@ const REASONS = {
   no_client_login: 'This case has no client login to e-mail, so nothing was sent.',
   employer_matter: 'This is an employer matter, so nothing was sent. Move the employee cases instead.',
   not_at_submitted: 'The case is no longer at Submitted (FedEx), so nothing was sent.',
+  queued_until_activation: 'The invited employee has not activated their login yet. Their e-mail is queued and goes out when they activate; the employer has been e-mailed.',
 }
 
 export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = '', method = 'fedex', onDone }) {
