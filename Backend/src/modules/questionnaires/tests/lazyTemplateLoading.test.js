@@ -39,9 +39,10 @@ test("server start-up does not reconcile questionnaire templates", () => {
 test("GET /questionnaires/defaults lists template metadata only: no Question query, no reconciliation", async (t) => {
   const { calls, stub } = stubModels(t);
   let selected = "";
-  stub(Questionnaire, "find", () => {
+  stub(Questionnaire, "find", (query) => {
     calls.questionnaireFind += 1;
-    const chain = { select(fields) { selected = fields; return chain; }, sort() { return chain; }, lean: async () => [{ key: "perm_employee_information" }] };
+    // the built-in presence query (key $in) reports every checklist stored; the listing query returns the one row
+    const chain = { select(fields) { if (!query?.key) selected = fields; return chain; }, sort() { return chain; }, lean: async () => (query?.key?.$in ? query.key.$in.map((key) => ({ key })) : [{ key: "perm_employee_information" }]) };
     return chain;
   });
   let body;
@@ -113,4 +114,21 @@ test("resolving a case's checklists never runs the global reconcile", async (t) 
   stub(Questionnaire, "findOne", () => ({ sort: () => ({ lean: async () => null }) }));
   await service.resolveCaseQuestionnaires("case1");
   assert.equal(calls.questionFind.length, 0, "no Question.find for a case whose visa has no built-in template");
+});
+
+test("GET /questionnaires/defaults creates a built-in checklist that no case has used yet, and only that one (the new checklists always appear on the page)", async (t) => {
+  const { calls, stub } = stubModels(t);
+  const missingKey = "indian_etourist_business_visa_checklist";
+  const created = [];
+  stub(Questionnaire, "create", async (doc) => { created.push(doc.key); return { ...doc, _id: `id-${doc.key}`, version: 1, status: "draft", auditHistory: [], save: async () => {}, toObject() { return this; } }; });
+  stub(Questionnaire, "find", (query) => {
+    const chain = { select() { return chain; }, sort() { return chain; }, lean: async () => (query?.key?.$in ? query.key.$in.filter((key) => key !== missingKey).map((key) => ({ key })) : []) };
+    return chain;
+  });
+  const fresh = service;
+  fresh.resetBuiltInPresenceCheck();
+  const result = await fresh.ensureMissingBuiltInTemplates();
+  assert.deepEqual(result, [missingKey]);
+  assert.deepEqual(created, [missingKey]);
+  assert.ok(calls.questionFind.length >= 1);
 });

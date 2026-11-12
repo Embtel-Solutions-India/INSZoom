@@ -102,8 +102,9 @@ exports.createFiling = async (req, res, next) => {
     // destructive — same shared provisioning path every other visa/filing
     // checklist in this codebase uses).
     // wait for the checklist to exist (it is created on first use on a brand-new database); an existing one costs nothing
-    await questionnaireService.ensureTemplate(filingType.questionnaireKey, undefined, undefined, { wait: true });
-    const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
+    // a subtype with no checklist yet (questionnaireKey null) is created without one
+    if (filingType.questionnaireKey) await questionnaireService.ensureTemplate(filingType.questionnaireKey, undefined, undefined, { wait: true });
+    const questionnaire = filingType.questionnaireKey ? await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true }) : null;
     let assignment = null;
     if (questionnaire) {
       assignment = await questionnaireService.assignQuestionnaire(
@@ -191,8 +192,8 @@ exports.changeFilingType = async (req, res, next) => {
     );
     await caseData.save();
 
-    await questionnaireService.ensureTemplate(filingType.questionnaireKey);
-    const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
+    if (filingType.questionnaireKey) await questionnaireService.ensureTemplate(filingType.questionnaireKey);
+    const questionnaire = filingType.questionnaireKey ? await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true }) : null;
     let assignment = null;
     if (questionnaire) {
       assignment = await questionnaireService.assignQuestionnaireIfNotActive(

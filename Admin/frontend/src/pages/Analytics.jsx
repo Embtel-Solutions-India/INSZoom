@@ -258,25 +258,48 @@ const Analytics = () => {
           <div className="card">
             <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Stage</h3>
             {casesByStageData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={casesByStageData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {casesByStageData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+                <div className="w-full sm:w-1/2">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        isAnimationActive={false}
+                        data={casesByStageData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        dataKey="value"
+                        nameKey="name"
+                        labelLine={false}
+                      >
+                        {casesByStageData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      {/* hovering a slice shows its stage name; no slice is ever made active or dimmed */}
+                      <Tooltip formatter={(value, name) => [value, name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* legend: colour box + stage name, top right of the card */}
+                <ul className="w-full sm:w-1/2 max-h-64 space-y-1 overflow-y-auto pr-1 text-sm">
+                  {(() => {
+                    const total = casesByStageData.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 1
+                    return casesByStageData.map((entry, index) => (
+                      <li
+                        key={`legend-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-md px-2 py-1"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                          <span className="text-foreground" title={entry.name}>{entry.name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{entry.value} &middot; {((entry.value / total) * 100).toFixed(0)}%</span>
+                      </li>
+                    ))
+                  })()}
+                </ul>
+              </div>
             ) : renderEmptyState('No data available')}
           </div>
 

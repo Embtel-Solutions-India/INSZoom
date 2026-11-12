@@ -33,8 +33,11 @@ const CATEGORY_LABELS = {
   investor: 'Investor',
   extraordinary_ability: 'Extraordinary Ability',
   temporary: 'Temporary',
+  indian_timeline: 'Indian Timeline Cases',
   other: 'Other',
 }
+// the case types of the New Case form's "Indian timeline cases" group (visa codes as the backend stores them)
+const INDIAN_TIMELINE_CODES = new Set(['OCI', 'INDIANETOURISTVISA', 'USPASSPORTMINOR'])
 
 // Who can be assigned this checklist, based on the selected visa's category.
 // Values map onto the existing CHECKLIST_ROLES enum
@@ -254,7 +257,7 @@ export default function QuestionnaireTemplates() {
     const removed = (value) => /^(IR[1-5]|CR[12]|F2B|F3|F4)$/.test(norm(value))
     const base = visaPathways.filter((visa) => !removedQuiz(visa.key))
     const known = new Set(base.map((visa) => norm(visa.key)))
-    const categoryFor = (option) => (/employment based/i.test(option.visaType || '') ? 'work' : option.caseStructure === 'family' ? 'family' : option.caseStructure === 'employer_employee' ? 'work' : 'other')
+    const categoryFor = (option) => (INDIAN_TIMELINE_CODES.has(norm(option.visaType)) ? 'indian_timeline' : /employment based/i.test(option.visaType || '') ? 'work' : option.caseStructure === 'family' ? 'family' : option.caseStructure === 'employer_employee' ? 'work' : 'other')
     const extra = visaOptions
       .filter((option) => option.visaType && !removed(option.visaType) && !known.has(norm(option.visaType)) && option.caseStructure)
       .map((option) => ({ key: option.visaType, label: option.label || option.visaType, category: categoryFor(option) }))
