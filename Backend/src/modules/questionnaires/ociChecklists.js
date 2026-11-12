@@ -1,5 +1,5 @@
 // OCI (Overseas Citizen of India) - the "Indian Timeline Cases" section. One checklist per OCI SUBTYPE; this file holds the first:
-//   OCI - Adult Former Indian Passport Holder   (key "oci_adult_former_indian_passport_checklist")
+//   Adult Foreign citizen and held Indian passport   (key "oci_adult_former_indian_passport_checklist")
 //
 // A single-person case type (like GC-NVC / the single-party filings): ONE client questionnaire answered by the applicant, NO USCIS forms, NO canonical mappings (nothing here
 // carries a canonicalPath). The case manager creates the case in Admin (OCI + the subtype), the checklist is assigned to the client by the single-party filing mechanism
@@ -15,7 +15,7 @@ const { COUNTRIES } = require("../../config/geoOptions");
 
 const CHECKLIST_KEY = "oci_adult_former_indian_passport_checklist";
 const OCI_VISA_TYPE = "OCI";
-const SUBTYPE_LABEL = "OCI — Adult Former Indian Passport Holder";
+const SUBTYPE_LABEL = "Adult Foreign citizen and held Indian passport";
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 const VISIBILITY = { roles: ["client", ...STAFF_ROLES], portals: ["client", "admin"] };
 const YES_NO = [{ label: "Yes", value: "Yes" }, { label: "No", value: "No" }];

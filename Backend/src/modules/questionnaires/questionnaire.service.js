@@ -22,6 +22,7 @@ const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { I140I485_DEFINITIONS } = require("./i140i485Checklists");
 const { OCI_CHECKLIST_DEFINITIONS } = require("./ociChecklists");
+const { OCI_BIRTH_CHECKLIST_DEFINITIONS } = require("./ociBirthChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2437,6 +2438,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...I140I485_DEFINITIONS,
   // OCI (Indian Timeline Cases): one checklist per subtype, assigned by the subtype's own filing type (never a default of the visa type)
   ...OCI_CHECKLIST_DEFINITIONS,
+  ...OCI_BIRTH_CHECKLIST_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the

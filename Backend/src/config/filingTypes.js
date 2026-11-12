@@ -208,7 +208,7 @@ const FILING_TYPES = {
   // (groupedForSelection skips section "indian_timeline"); the Admin "New case" form picks it through the OCI subtype dropdown.
   OCI_ADULT_FORMER_INDIAN_PASSPORT: {
     key: "OCI_ADULT_FORMER_INDIAN_PASSPORT",
-    label: "OCI \u2014 Adult Former Indian Passport Holder",
+    label: "Adult Foreign citizen and held Indian passport",
     category: "indian_timeline",
     section: "indian_timeline",
     includesEad: false,
@@ -217,6 +217,18 @@ const FILING_TYPES = {
     toStatus: null,
     visaType: "OCI",
     questionnaireKey: "oci_adult_former_indian_passport_checklist",
+  },
+  OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH: {
+    key: "OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH",
+    label: "Adult Foreign citizen by birth and never held Indian passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_adult_foreign_citizen_by_birth_checklist",
   },
 };
 

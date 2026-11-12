@@ -1,4 +1,4 @@
-// OCI - Adult Former Indian Passport Holder (Indian Timeline Cases): single-person, no forms, no canonical mappings; conditional document / questionnaire rules.
+// Adult Foreign citizen and held Indian passport (Indian Timeline Cases): single-person, no forms, no canonical mappings; conditional document / questionnaire rules.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { OCI_CHECKLIST_DEFINITIONS, CHECKLIST_KEY, INSTRUCTIONS } = require("../ociChecklists");
@@ -23,7 +23,7 @@ test("registered as a single-person OCI subtype: client role, not a default, no 
   assert.equal(definition.visaType, "OCI");
   assert.equal(definition.checklistRole, "client");
   assert.equal(definition.isDefault, false, "never handed to another OCI subtype automatically");
-  assert.ok(definition.title.startsWith("OCI"));
+  assert.equal(definition.title, "Adult Foreign citizen and held Indian passport");
   for (const line of INSTRUCTIONS) assert.ok(definition.description.includes(line), line);
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
   const filing = filingTypes.getFilingType("OCI_ADULT_FORMER_INDIAN_PASSPORT");
