@@ -32,6 +32,49 @@ const MISSING_EVERY = Number(process.env.GHL_RECONCILE_MISSING_EVERY || 1);
 let passes = 0;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// ---- the fast path (2026-11-13) ----------------------------------------------------------------------------------------------------------------------------------------------------
+// The pass used to cost THREE database round trips per opportunity even when nothing had changed (link lookup, case lookup, a "last synced" write): about a minute for 74 cards on a remote
+// database, longer than the 30-second timer, so passes overlapped and were skipped. Now one batch read per pipeline loads every linked case, and an opportunity that provably matches its case
+// (same pipeline + stage, status, name, e-mail, money, no pending change or flag) costs nothing; the "last synced" stamp for all of them is ONE write. Anything that differs goes through the
+// unchanged per-opportunity path below, so no sync rule is bypassed.
+
+/** Pure. True when applying this opportunity to its case would change nothing. */
+function isUnchanged({ existing, opportunity, mapping, moneyIds }) {
+  const ghl = existing?.integrations?.ghl;
+  if (!ghl?.opportunityId || !mapping) return false;
+  if (ghl.pipelineId !== opportunity.pipelineId || ghl.pipelineStageId !== opportunity.pipelineStageId) return false;
+  if (ghl.unifiedStageKey !== mapping.unifiedStageKey) return false;
+  if (opportunity.status && opportunity.status !== ghl.opportunityStatus) return false;
+  if (ghl.flags?.deletedInGhl) return false;
+  if ((ghl.sync?.state || "synced") !== "synced") return false; // a pending / failed change goes through the full decision
+  const cardName = String(opportunity.name || "").trim();
+  if (cardName && ghl.role === "individual" && existing.caseRole !== "employee" && existing.clientName !== cardName) return false; // a rename in GHL
+  if (!existing.clientEmail && !existing.user && existing.caseRole !== "employee" && ghl.role !== "family" && opportunity.contact?.email) return false; // an e-mail to fill in
+  if (!existing.finance?.pendingPush) {
+    if (!Array.isArray(opportunity.customFields) || opportunity.monetaryValue === undefined || !moneyIds) return false; // the figures are not on the list: the full path reads the card
+    const finance = require("./ghlFinance");
+    const incoming = finance.financeFromOpportunity(opportunity, moneyIds);
+    if (existing.finance ? !finance.sameFinance(existing.finance, incoming) : finance.hasMoney(incoming)) return false;
+  }
+  return true;
+}
+
+// { linked: opportunityId -> case, orphaned: Set of opportunity ids whose link has stood for a while but whose case no longer exists (a deleted case whose card is still in GHL) }
+async function loadLinkedCases(locationId, opportunities) {
+  const links = await GHLCaseLink.find({ locationId, opportunityId: { $in: opportunities.map((o) => o.id) } }).select("opportunityId caseId createdAt").lean();
+  if (!links.length) return { linked: new Map(), orphaned: new Set() };
+  const cases = await Case.find({ _id: { $in: links.map((l) => l.caseId) } }).select("caseRole clientName clientEmail user finance integrations.ghl").lean();
+  const byId = new Map(cases.map((c) => [String(c._id), c]));
+  const linked = new Map();
+  const orphaned = new Set();
+  for (const link of links) {
+    const found = byId.get(String(link.caseId));
+    if (found) linked.set(link.opportunityId, found);
+    else if (Date.now() - new Date(link.createdAt).getTime() > 2 * 60 * 1000) orphaned.add(link.opportunityId); // same 2-minute rule as isOrphanedLink
+  }
+  return { linked, orphaned };
+}
+
 async function reconcilePipeline(pipeline, config, client, summary) {
   const result = { pipeline: pipeline.ghlPipelineName, fetched: 0, created: 0, stageUpdated: 0, unchanged: 0, skippedUnmapped: 0, orphaned: 0, failed: 0, errors: [] };
   summary.pipelines.push(result);
@@ -51,12 +94,29 @@ async function reconcilePipeline(pipeline, config, client, summary) {
   }
   result.fetched = opportunities.length;
   const { applyStageChange } = require("./ghlWebhookService"); // lazy: the webhook service requires this module's neighbours
+  // one batch read for the whole pipeline (see the fast path above); a failure here only means every opportunity takes the full path
+  let linked = new Map();
+  let orphaned = new Set();
+  let moneyIds = null;
+  try {
+    [{ linked, orphaned }, moneyIds] = await Promise.all([loadLinkedCases(config.locationId, opportunities), require("./ghlFinance").moneyFieldIds(client).catch(() => null)]);
+  } catch (error) {
+    logger.warn("ghl_reconcile_batch_load_failed", { pipeline: pipeline.ghlPipelineName, error: error.message });
+  }
+  const unchangedCaseIds = [];
 
   for (const opportunity of opportunities) {
     seen.add(opportunity.id);
     try {
       const mapping = pipelineService.resolveUnifiedStage(config.stageMappings, opportunity.pipelineId, opportunity.pipelineStageId);
       if (!mapping) { result.skippedUnmapped += 1; continue; }
+      if (orphaned.has(opportunity.id)) { result.orphaned += 1; continue; } // its case is gone (deleted) but the card is still in GHL: nothing to import, no queries
+      const batched = linked.get(opportunity.id);
+      if (batched && isUnchanged({ existing: batched, opportunity, mapping, moneyIds })) {
+        unchangedCaseIds.push(batched._id);
+        result.unchanged += 1;
+        continue;
+      }
       const existing = await findCaseByOpportunity(config.locationId, opportunity.id);
       if (!existing) {
         // its case was deleted but the card is still in GHL: nothing to import (and no GHL calls to spend on it)
@@ -89,6 +149,8 @@ async function reconcilePipeline(pipeline, config, client, summary) {
     }
     if (PACE_MS) await sleep(PACE_MS);
   }
+  // the "last synced" stamp of every unchanged case: one write instead of one per case
+  if (unchangedCaseIds.length) await Case.updateMany({ _id: { $in: unchangedCaseIds } }, { $set: { "integrations.ghl.lastSyncedAt": new Date() } }, { timestamps: false }).catch((error) => logger.warn("ghl_reconcile_stamp_failed", { error: error.message }));
   return seen;
 }
 
@@ -108,8 +170,20 @@ async function fillMissingClientEmail(existing, opportunity) {
 async function flagMissing(config, client, seenIds, summary) {
   const links = await GHLCaseLink.find({ locationId: config.locationId }).select("opportunityId caseId").lean();
   const candidates = links.filter((link) => !seenIds.has(link.opportunityId)).slice(0, MAX_MISSING_CHECKS);
+  // A link whose CASE is gone (deleted, or sitting in the recycle bin) has nobody to flag. If its card is gone from GHL too, the link has served its purpose and is removed (it used to be
+  // re-checked - one GHL call and two no-op writes each - on every single pass, forever). If the card is still in GHL the link stays: it keeps that card from being re-imported as a new case.
+  const alive = new Set((await Case.find({ _id: { $in: candidates.map((link) => link.caseId) } }).select("_id").lean()).map((row) => String(row._id)));
   let flagged = 0;
   for (const link of candidates) {
+    if (!alive.has(String(link.caseId))) {
+      try {
+        await (client ? opportunityService.getOpportunity(link.opportunityId, client) : opportunityService.getOpportunity(link.opportunityId)); // still there: an orphan card, keep the link
+      } catch (error) {
+        if (error instanceof GHLApiError && error.status === 404) await GHLCaseLink.deleteOne({ _id: link._id }).catch(() => null);
+      }
+      if (PACE_MS) await sleep(PACE_MS);
+      continue;
+    }
     try {
       // getOpportunity(id, client) takes the client ITSELF (default: the shared one). It used to be called with { client }, which threw "client.get
       // is not a function" - not a GHL 404 - so a card deleted in GHL was never recognised as deleted.
@@ -144,6 +218,7 @@ async function reconcile({ client, full = false } = {}) {
   const { config } = setup;
   if (!config.mappingsConfirmedAt) return { ok: false, problems: ["Stage mapping has not been confirmed by an admin yet"], needsConfirmation: true };
 
+  const startedAt = Date.now();
   const summary = { ok: true, complete: true, pipelines: [], flaggedDeleted: 0 };
   const seenIds = new Set();
   for (const pipeline of config.pipelines.filter((p) => p.enabled)) {
@@ -160,8 +235,15 @@ async function reconcile({ client, full = false } = {}) {
   }
 
   summary.ok = summary.complete;
+  await require("./ghlHealthService").healStaleFailures(); // a card left red by an old failure goes back to synced once nothing is waiting for it
   notifyBoards(summary);
   config.lastReconcileAt = new Date();
+  config.lastReconcileSummary = {
+    at: config.lastReconcileAt,
+    tookMs: Date.now() - startedAt,
+    orphaned: summary.pipelines.reduce((n, p) => n + (p.orphaned || 0), 0),
+    pipelines: summary.pipelines.map((p) => ({ name: p.pipeline, fetched: p.fetched, created: p.created, stageUpdated: p.stageUpdated, unchanged: p.unchanged, orphaned: p.orphaned, failed: p.failed })),
+  };
   if (summary.complete) config.lastApiOkAt = new Date();
   config.status = summary.complete ? "healthy" : "degraded";
   await config.save();
@@ -169,4 +251,4 @@ async function reconcile({ client, full = false } = {}) {
   return summary;
 }
 
-module.exports = { fillMissingClientEmail, reconcile };
+module.exports = { fillMissingClientEmail, reconcile, isUnchanged };

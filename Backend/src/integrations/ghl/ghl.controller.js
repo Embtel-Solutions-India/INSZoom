@@ -134,6 +134,16 @@ exports.caseStages = guard(async (req, res) => {
   }
 });
 
+// GET /sync-health: whether the sync is alive, whether webhooks arrive, and every card that is stuck and why.
+exports.syncHealth = guard(async (req, res) => {
+  res.json({ success: true, ...(await require("./ghlHealthService").getSyncHealth()) });
+});
+
+// POST /sync/retry-all: every change waiting for its next try is tried now.
+exports.retryAll = guard(async (req, res) => {
+  res.json({ success: true, ...(await require("./ghlHealthService").retryAll()) });
+});
+
 exports.retryJob = guard(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid job id" });
   res.json({ success: true, ...(await outbound.retryJob(req.params.id)) });

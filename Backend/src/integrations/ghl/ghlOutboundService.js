@@ -221,6 +221,7 @@ async function processAuxJob(job, { client } = {}) {
     return { status: "skipped" };
   }
   await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "done", completedAt: new Date(), lockedUntil: null, lastError: null } });
+  require("./ghlHealthService").healStaleFailures().catch(() => {}); // this change went through: a card still marked "failed" with nothing else waiting is back in sync
   return { status: "done" };
 }
 
@@ -350,7 +351,7 @@ function processJobSoon(jobId) {
 async function retryJob(jobId) {
   const job = await GHLSyncJob.findById(jobId);
   if (!job) throw httpError(404, "Job not found");
-  if (job.status !== "failed") throw httpError(409, "Only failed jobs can be retried");
+  if (!["failed", "pending"].includes(job.status)) throw httpError(409, "Only a failed or waiting job can be retried now"); // a stuck change is retried automatically; this just does it now
   if (job.type && job.type !== "stage") {
     // Employee-sync jobs recompute what to do when they run, so a retry needs no version check.
     await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", attempts: 0, nextAttemptAt: new Date(), lastError: null, completedAt: null } });

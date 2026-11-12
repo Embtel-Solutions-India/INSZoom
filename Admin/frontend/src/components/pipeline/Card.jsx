@@ -2,7 +2,7 @@ import { memo, useState } from 'react'
 import { ghlApi } from '../../services/api'
 import { resolveDisplayVisa } from '../../utils/visaDisplay'
 import { useDraggable } from '@dnd-kit/core'
-import { AlertTriangle, GripVertical, Trash2 } from 'lucide-react'
+import { AlertTriangle, GripVertical, RefreshCw, Trash2 } from 'lucide-react'
 import { formatUsdExact } from '../../utils/money'
 
 const PRIORITY_DOT = {
@@ -68,12 +68,25 @@ export function CardView({ card, stages, onMoveTo, onDelete, isOverlay = false }
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary">{resolveDisplayVisa({ visaType: card.visaType })}</span>
             ) : null}
             {card.assigneeName ? <span className="truncate text-[0.7rem] text-muted-foreground">{card.assigneeName}</span> : null}
-            {card.syncStatus === 'FAILED' ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[0.7rem] font-medium text-red-700" title="This change could not be sent to GoHighLevel. It will keep being retried; an admin can review it.">
+            {/* admins see WHY a card is not in sync (the server sends syncDetail): deleted in GHL, waiting for an e-mail, retrying, or failed after 8 tries (still retrying) */}
+            {card.syncDetail?.kind === 'card_deleted' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 text-[0.7rem] font-medium text-slate-700" title={card.syncDetail.text} data-testid="sync-card-deleted">
+                <AlertTriangle className="h-3 w-3" /> Deleted in GHL
+              </span>
+            ) : card.syncDetail?.kind === 'waiting_email' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800" title={card.syncDetail.text} data-testid="sync-waiting-email">
+                <AlertTriangle className="h-3 w-3" /> Waiting for e-mail
+              </span>
+            ) : card.syncDetail?.kind === 'retrying' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800" title={card.syncDetail.text} data-testid="sync-retrying">
+                <RefreshCw className="h-3 w-3" /> Retrying
+              </span>
+            ) : card.syncStatus === 'FAILED' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[0.7rem] font-medium text-red-700" title={card.syncDetail?.text || 'This change could not be sent to GoHighLevel. It will keep being retried; an admin can review it.'}>
                 <AlertTriangle className="h-3 w-3" /> Failed to sync
               </span>
             ) : null}
-            {card.syncStatus === 'FAILED' && card.failedJobId && !isOverlay ? (
+            {(card.syncStatus === 'FAILED' || card.syncDetail?.kind === 'retrying') && card.failedJobId && !isOverlay ? (
               <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={retryNow} disabled={retry === 'sending' || retry === 'queued'} className="rounded-full border border-red-200 px-2 py-0.5 text-[0.7rem] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" data-testid="retry-sync">
                 {retry === 'queued' ? 'Retry queued' : retry === 'sending' ? 'Retrying…' : retry === 'error' ? 'Retry failed — try again' : 'Retry'}
               </button>

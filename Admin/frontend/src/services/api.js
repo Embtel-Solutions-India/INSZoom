@@ -883,6 +883,9 @@ export const eligibilityApi = {
 // GoHighLevel pipeline board. The browser only ever talks to our backend; the backend does all GHL syncing.
 export const ghlApi = {
   status: () => api.get('/integrations/ghl/status'),
+  // admins: is the sync alive, are webhooks arriving, what is stuck and why; and "try everything that is waiting again now"
+  syncHealth: () => api.get('/integrations/ghl/sync-health'),
+  retryAll: () => api.post('/integrations/ghl/sync/retry-all'),
   board: (params = {}) => api.get('/integrations/ghl/board', { params }),
   stageList: () => api.get('/integrations/ghl/stages'),
   caseStages: (caseId) => api.get(`/integrations/ghl/cases/${caseId}/stages`),

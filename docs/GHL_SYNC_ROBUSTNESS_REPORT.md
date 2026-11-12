@@ -1,4 +1,4 @@
-# GoHighLevel sync: deletions, restore and "never give up" retries (Phase 1)
+# GoHighLevel sync: deletions, restore, "never give up" retries (Phase 1), fast inbound sync (Phase 2), sync-health view (Phase 3)
 
 Date: 2026-11-13
 
@@ -25,10 +25,21 @@ When a case was moved to the Recycle Bin, the sweep also moved its queued "delet
 ## Tests
 GHL + recycle-bin + case-deletion suites: 180 pass; the 2 failures (`ghl-import-stage-rules`: "marking an imported case completed", "an individual case takes its GHL card's name") fail the same way without my changes (files untouched). Not run: a real delete -> bin -> restore round trip with GHL, webhook delivery.
 
-## Still to do (next phases, not started)
-- **Phase 2:** faster inbound sync (the 30-second pass reads each opportunity with several sequential database calls and can take longer than 30 s), and **GHL webhooks** (zero events have ever arrived; set them up in GHL pointing at `/api/integrations/ghl/webhook` and set `GHL_WEBHOOK_PUBLIC_KEY`, `GHL_WEBHOOK_PUBLIC_URL` on the production server).
-- **Phase 3:** a sync-health view and a "retry all" button; clearer card states (waiting for e-mail / deleted in GHL).
-- Open item: **B456** (the employer matter with no e-mail) shows old failed "link employer" jobs; they no longer repeat. **B513-A**: its GHL card is gone, so with the new default it moves to the Recycle Bin after the confirmation; restoring it brings the card back in Submitted.
+## Phase 2 - fast and complete inbound sync (done)
+- **The 30-second pass was taking 91 seconds** (266 database operations): three sequential round trips per opportunity even when nothing had changed (link lookup, case lookup, a "last synced" write), so passes overlapped and were skipped - which is why GHL additions and changes could look late or missing. Now one batch read per pipeline loads every linked case, and an opportunity that provably matches its case (same pipeline + stage, status, name, e-mail, money; nothing pending or flagged) costs nothing; their "last synced" stamp is a single write. Anything that differs still goes through the unchanged per-opportunity rules, so no sync rule is bypassed. **Measured on your data: 91 s / 266 ops -> 5 s / 11 ops.**
+- Leftover links: 17 stale case<->card links (cases deleted, cards already gone) were re-checked every pass (a GHL call and two no-op writes each); they are now cleaned up once. 4 leftover GHL cards without a case ("Tmp GC-NVC" x3, "Tmp I90") are counted without queries. They are still in GHL: delete them in GHL, or tell me and I will remove them with the existing orphan-cleanup tooling.
+- **Webhooks:** the server side is ready and configured (`GHL_WEBHOOK_PUBLIC_KEY` and `GHL_WEBHOOK_PUBLIC_URL` are set here) but **GHL has never delivered one event** (0 ever). That is a setting in GoHighLevel, not code: send Opportunity events (create / stage change / update / delete) to `https://<your server>/api/integrations/ghl/webhook`, and the production server must be reachable from the internet. Until then changes sync within ~30 s through the pass above. The new Sync health panel shows "Webhooks received (24 h)" and says what to do when it is 0.
+
+## Phase 3 - sync-health view and clearer states (done)
+- **Pipeline -> Integration -> "Sync health"** (admins): last pass (age and duration), webhooks received in 24 h, waiting / retrying jobs, cards in GHL without a case, and a list of every card that is not in sync with the reason and the next try time, a **Retry** per card and **Retry all now** (`GET /integrations/ghl/sync-health`, `POST /integrations/ghl/sync/retry-all`).
+- **Cards (admins) now say why**: "Deleted in GHL" (the case is moving to the recycle bin), "Waiting for e-mail" (sent to GHL as soon as an e-mail exists), "Retrying" (with the error on hover), or "Failed to sync" after 8 tries (still retried). Retry now works on waiting jobs too.
+- A card left red by an old failure goes back to "synced" once nothing is waiting for it (it used to stay red for good), and "needs attention" caused by something else (an unmapped visa, e.g. B523-A) is no longer shown as a sync problem.
+
+## Files (phases 2-3)
+`integrations/ghl/{ghlReconcileService.js, ghlHealthService.js (new), ghlSyncState.js (new), ghlBoardService.js, ghlOutboundService.js, ghl.controller.js, ghl.routes.js}`, `models/GHLIntegration.js`; Admin `components/pipeline/{SyncHealthSection.jsx (new), GhlStatusPanel.jsx, Card.jsx}`, `services/api.js`. Tests: `ghl-reconcile-fast-path.test.js` (3), `ghl-sync-health.test.js` (3), Admin `SyncHealth.test.jsx` (5).
+
+## Tests (all phases)
+GHL suite 180 pass (the same 2 failures that fail without my changes: `ghl-import-stage-rules`); Admin Pipeline + sync-health 26 pass; Admin build OK. Not run: a real GHL webhook delivery or a delete -> bin -> restore round trip.
 
 ## Deploy
 Restart the backend. No new env vars (optional: `GHL_DELETE_CASES_REMOVED_IN_GHL=false`, `RECYCLE_BIN_ENABLED`).
