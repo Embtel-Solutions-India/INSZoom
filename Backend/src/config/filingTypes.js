@@ -266,6 +266,19 @@ const FILING_TYPES = {
     visaType: "OCI",
     questionnaireKey: "oci_minor_foreign_citizen_held_passport_checklist",
   },
+  // US Passport Renewal for Minors (also an Indian Timeline Cases visa type): single-person, no forms; the DS-11 checklist for a child under 16.
+  US_PASSPORT_MINOR_DS11: {
+    key: "US_PASSPORT_MINOR_DS11",
+    label: "US Passport Renewal for Minors (DS-11, under age 16)",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "US-PASSPORT-MINOR",
+    questionnaireKey: "us_passport_minor_ds11_checklist",
+  },
 };
 
 function listFilingTypes() {
