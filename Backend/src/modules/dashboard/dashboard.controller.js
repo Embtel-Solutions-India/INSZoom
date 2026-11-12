@@ -95,6 +95,15 @@ exports.getCaseAnalytics = async (req, res, next) => {
   }
 };
 
+exports.getCaseTrends = async (req, res, next) => {
+  try {
+    const trends = await cachedDashboardCompute(cacheKeyFor("caseTrends", req), () => dashboardService.caseTrendAnalytics(req.query, req.user));
+    res.json({ success: true, ...trends });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getRevenueAnalytics = async (req, res, next) => {
   try {
     const revenue = await cachedDashboardCompute(cacheKeyFor("revenueAnalytics", req), () => dashboardService.revenueAnalytics(req.query, req.user));

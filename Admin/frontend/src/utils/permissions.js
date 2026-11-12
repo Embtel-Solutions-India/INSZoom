@@ -144,7 +144,7 @@ export const getSidebarMenuItems = (user) => {
     { path: '/my-performance', icon: Scale, label: 'My Performance', roles: ['case_manager'] },
     { path: '/leaderboard', icon: Scale, label: 'Leaderboard', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/messages', icon: MessageSquare, label: 'Messages', roles: ADMIN_PORTAL_ROLES },
-    { path: '/eod-reports', icon: FileText, label: 'EOD Reports', roles: ADMIN_PORTAL_ROLES },
+    { path: '/eod-reports', icon: FileText, label: 'Everyday Plan', roles: ADMIN_PORTAL_ROLES },
     { path: '/payments', icon: DollarSign, label: 'Payments', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/questionnaires', icon: FileText, label: 'Questionnaires', roles: ADMIN_PORTAL_ROLES },
     { path: '/form-governance', icon: FileCheck2, label: 'Form Governance', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },

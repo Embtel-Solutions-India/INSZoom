@@ -155,6 +155,11 @@ async function caseAnalytics(query = {}, user) {
   return { total, active, closed, onHold, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
 }
 
+// Cases submitted per month + the Active / On Hold trend (this month vs previous): read from each case's pipeline history (caseTrends.service.js).
+async function caseTrendAnalytics(query = {}, user) {
+  return require("./caseTrends.service").caseTrends(withCountable(scopedCaseFilter(user)));
+}
+
 // Payment analytics (2026-11-06): read live from each case's GoHighLevel figures - Value (total fees), USCIS Fee, QB Amount Paid - in US DOLLARS.
 // The Payment collection (the client portal's) is not used here. A client-side requester gets no figures.
 async function revenueAnalytics(query = {}, user) {
@@ -453,6 +458,7 @@ module.exports = {
   appointmentAnalytics,
   buildAnalytics,
   caseAnalytics,
+  caseTrendAnalytics,
   clientDashboard,
   collaborationSummary,
   createScheduledReport,

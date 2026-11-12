@@ -65,7 +65,7 @@ const EODReports = () => {
         const response = await api.get('/reports/everyday/board', { params })
         if (!cancelled) { setBoard(response.data.data || { today: '', days: [] }); if (response.data.data?.pagination) setPagination(response.data.data.pagination); setError(null) }
       } catch (err) {
-        if (!cancelled) setError(err.response?.data?.message || err.message || 'Failed to load EOD reports')
+        if (!cancelled) setError(err.response?.data?.message || err.message || 'Failed to load the Everyday plan')
       } finally {
         hasLoadedOnce.current = true
         if (!cancelled) setLoading(false)
@@ -84,7 +84,7 @@ const EODReports = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">EOD Reports</h1>
+        <h1 className="text-2xl font-bold text-foreground">Everyday Plan</h1>
         <p className="mt-1 text-muted-foreground">Everyone's goals, achievements and numbers for each day</p>
       </div>
 

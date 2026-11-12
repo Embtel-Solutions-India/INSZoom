@@ -96,7 +96,7 @@ const CRMCases = ({ caseGroup } = {}) => {
   const [totalPages, setTotalPages] = useState(1)
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 15,
+    limit: 25,
     total: 0,
     totalPages: 1,
     hasNextPage: false,
@@ -107,7 +107,7 @@ const CRMCases = ({ caseGroup } = {}) => {
   // P12-S2: replaces the browser-native alert() previously shown here — see
   // handleCaseCreated below.
   const [createdCaseNumber, setCreatedCaseNumber] = useState(null)
-  const limit = 15 // rows per page: timed against 5 - the list query costs the same (dominated by the database round trip), the payload is gzip-compressed
+  const limit = 25 // rows per page (was 15; timed 15 vs 25 against the real list query: no measurable difference, the query is dominated by the database round trip) - earlier timed against 5: the list query costs the same (dominated by the database round trip), the payload is gzip-compressed
 
   // Phase 7 — Pending Assignment queue, sourced from the team-lead dashboard
   // endpoint (already scoped to the calling team lead's own cases, or all
