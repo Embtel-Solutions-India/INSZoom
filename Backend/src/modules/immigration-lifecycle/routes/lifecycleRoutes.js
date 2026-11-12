@@ -19,6 +19,7 @@ router.get("/cases/:caseId/deadlines", authenticate, authorizePermissions("cases
 router.get("/cases/:caseId/tracking", authenticate, authorizePermissions("cases:read"), controller.tracking);
 router.put("/cases/:caseId/tracking", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), controller.tracking);
 router.put("/cases/:caseId/tracking/fedex", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), controller.fedexTracking);
+router.put("/cases/:caseId/tracking/receipt", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), controller.receiptTracking);
 router.get("/dashboard", authenticate, authorizePermissions("cases:read"), controller.dashboard);
 
 module.exports = router;

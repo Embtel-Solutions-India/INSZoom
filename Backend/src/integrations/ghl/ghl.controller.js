@@ -117,8 +117,11 @@ exports.submittedNotice = guard(async (req, res) => {
   const { caseId } = req.params;
   if (!mongoose.isValidObjectId(caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
   if (typeof req.body?.send !== "boolean") return res.status(400).json({ success: false, message: "send must be true or false" });
+  // how the case was submitted: "online" (e-mail with the USCIS receipt number) or "fedex" (the original e-mail); absent = fedex, so older callers behave exactly as before
+  const { method } = req.body;
+  if (method !== undefined && !["online", "fedex"].includes(method)) return res.status(400).json({ success: false, message: "method must be online or fedex" });
   await outbound.assertCanWorkCase(req.user, caseId);
-  const result = await require("./ghlSubmittedNotice").sendOnTeamChoice({ caseId, send: req.body.send, user: req.user });
+  const result = await require("./ghlSubmittedNotice").sendOnTeamChoice({ caseId, send: req.body.send, user: req.user, method });
   res.json({ success: true, ...result });
 });
 

@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import FedexNumberModal from '../components/FedexNumberModal'
+import ReceiptNumberModal from '../components/ReceiptNumberModal'
+import SubmissionMethodModal from '../components/SubmissionMethodModal'
 import SubmittedEmailChoiceModal from '../components/SubmittedEmailChoiceModal'
 
 // One place that follows up a move to Submitted (FedEx). Anything that moves a case there - the Pipeline board, the case page - calls
@@ -14,14 +16,32 @@ export function FedexPromptProvider({ children }) {
   const [queue, setQueue] = useState([])
   const ask = useCallback((item) => {
     if (!item?.caseId) return
-    setQueue((current) => (current.some((entry) => entry.caseId === item.caseId) ? current : [...current, { ...item, key: `${item.caseId}-${Date.now()}`, numberAsked: false, askClientEmail: Boolean(item.askClientEmail) }]))
+    setQueue((current) => (current.some((entry) => entry.caseId === item.caseId) ? current : [...current, { ...item, key: `${item.caseId}-${Date.now()}`, method: '', numberAsked: false, askClientEmail: Boolean(item.askClientEmail) }]))
   }, [])
   const value = useMemo(() => ({ ask }), [ask])
   const current = queue[0]
   return (
     <FedexPromptContext.Provider value={value}>
       {children}
-      {current && !current.numberAsked && (
+      {/* a move into Submitted first asks HOW it was submitted (online / FedEx); "Add FedEx number" (no askClientEmail) goes straight to the FedEx popup as before */}
+      {current && current.askClientEmail && !current.method && (
+        <SubmissionMethodModal
+          key={`${current.key}-method`}
+          caseNumber={current.caseNumber}
+          label={current.label}
+          onContinue={(method) => setQueue((entries) => entries.map((entry, index) => (index === 0 ? { ...entry, method } : entry)))}
+        />
+      )}
+      {current && current.method === 'online' && !current.numberAsked && (
+        <ReceiptNumberModal
+          key={`${current.key}-receipt`}
+          caseId={current.caseId}
+          caseNumber={current.caseNumber}
+          label={current.label}
+          onClose={() => setQueue((entries) => entries.map((entry, index) => (index === 0 ? { ...entry, numberAsked: true } : entry)))}
+        />
+      )}
+      {current && current.method !== 'online' && (!current.askClientEmail || current.method === 'fedex') && !current.numberAsked && (
         <FedexNumberModal
           key={current.key}
           caseId={current.caseId}
@@ -36,6 +56,7 @@ export function FedexPromptProvider({ children }) {
           caseId={current.caseId}
           caseNumber={current.caseNumber}
           label={current.label}
+          method={current.method === 'online' ? 'online' : 'fedex'}
           onDone={() => setQueue((entries) => entries.slice(1))}
         />
       )}

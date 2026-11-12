@@ -1649,7 +1649,11 @@ const CRMCaseDetail = () => {
   useEffect(() => {
     const refresh = (event) => { if (String(event.detail?.caseId) === String(id)) fetchTracking(true) }
     window.addEventListener('fedex-number-saved', refresh)
-    return () => window.removeEventListener('fedex-number-saved', refresh)
+    window.addEventListener('receipt-number-saved', refresh) // the USCIS receipt number asked for a case submitted online: shown in the Tracking tab without a reload
+    return () => {
+      window.removeEventListener('fedex-number-saved', refresh)
+      window.removeEventListener('receipt-number-saved', refresh)
+    }
   }, [id, fetchTracking])
 
   // A case at Submitted (FedEx) or any later stage (except On Hold) has been filed: the tab shows Filed even though the recorded status may still say Draft. Only what the person picks is

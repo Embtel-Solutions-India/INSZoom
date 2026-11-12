@@ -110,7 +110,7 @@ export default function FedexNumberModal({ caseId, caseNumber, label = '', onClo
         {error && <p role="alert" className="mt-3 text-sm font-medium text-rose-600">{error}</p>}
         <div className="mt-6 flex gap-3">
           <button type="button" onClick={() => onClose(false)} disabled={busy} className="btn-secondary flex-1 justify-center disabled:opacity-50">Add later</button>
-          <button type="submit" disabled={busy} className="btn-primary flex-1 justify-center disabled:opacity-50">{busy ? 'Saving…' : 'Save tracking number'}</button>
+          <button type="submit" disabled={busy} className="btn-primary flex-1 justify-center disabled:opacity-50">{busy ? 'Saving…' : 'Save details'}</button>
         </div>
       </form>
     </div>

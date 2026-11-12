@@ -11,6 +11,7 @@ const logger = require("../../utils/logger");
 //   - client only: a family case goes to the petitioner; an employee case only when the employee has their own login (not an employer-filled slot).
 const SUBMITTED_STAGE_KEY = "submitted_fedex";
 const TEMPLATE = "case-submitted-client";
+const ONLINE_TEMPLATE = "case-submitted-online-client"; // the same congratulations when the team says the case was submitted ONLINE (USCIS receipt number instead of the FedEx section)
 
 async function recipientFor(caseDoc) {
   const ghl = caseDoc.integrations?.ghl || {};
@@ -75,7 +76,7 @@ function notifySubmitted(args) {
 }
 
 // Records the team's choice on the case timeline (best effort: a failure here never changes the answer).
-async function recordChoice(caseId, user, send, outcome) {
+async function recordChoice(caseId, user, send, outcome, method) {
   try {
     const caseService = require("../../modules/cases/case.service");
     const doc = await Case.findById(caseId);
@@ -86,7 +87,7 @@ async function recordChoice(caseId, user, send, outcome) {
       send ? "Client informed of submission" : "Client not informed of submission",
       send ? (outcome?.sent ? "The case-completion e-mail was sent to the client" : "The team chose to e-mail the client, but no e-mail was sent") : "The team chose not to e-mail the client about the submission",
       user,
-      { source: "submitted_notice_choice", send, sent: Boolean(outcome?.sent), reason: outcome?.reason || null }
+      { source: "submitted_notice_choice", send, sent: Boolean(outcome?.sent), reason: outcome?.reason || null, ...(method ? { method } : {}) }
     );
     await doc.save();
   } catch (error) {
@@ -100,35 +101,79 @@ async function recordChoice(caseId, user, send, outcome) {
  *   send: false -> nothing is sent, ever, for this move
  * Never throws: the answer is { sent, reason }.
  */
-async function sendOnTeamChoice({ caseId, send, user }) {
+async function sendOnTeamChoice({ caseId, send, user, method }) {
   try {
+    const online = method === "online"; // anything else (including no method) is the original FedEx behaviour
     const caseDoc = await Case.findById(caseId);
     if (!caseDoc) return { sent: false, reason: "case_not_found" };
     if (caseDoc.integrations?.ghl?.unifiedStageKey !== SUBMITTED_STAGE_KEY) return { sent: false, reason: "not_at_submitted" };
     if (!send) {
-      await recordChoice(caseId, user, false, null);
+      await recordChoice(caseId, user, false, null, method);
       return { sent: false, reason: "team_chose_not_to_send" };
     }
     if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
-    const already = await EmailLog.findOne({ templateKey: TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    // once per case: either version (online / FedEx) already sent stops a second one
+    const already = await EmailLog.findOne({ templateKey: { $in: [TEMPLATE, ONLINE_TEMPLATE] }, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
     if (already) return { sent: false, reason: "already_sent" };
     const client = await recipientFor(caseDoc);
     if (!client) return { sent: false, reason: "no_client_login" };
     const { sendTemplateEmail } = require("../../modules/email/email.service");
-    const result = await sendTemplateEmail(TEMPLATE, {
+    const filing = caseDoc.immigrationLifecycle?.tracking?.filing;
+    const result = await sendTemplateEmail(online ? ONLINE_TEMPLATE : TEMPLATE, {
       to: client.email,
       caseId: caseDoc._id,
       userId: client._id,
       recipientRole: client.role,
       triggeredBy: user?._id, // EmailLog.triggeredBy is a User id: the case manager who chose to send it
-      // the FedEx number, when the team has already entered it, goes inside this e-mail; without one the FedEx part is left out and the number follows in its own e-mail later
-      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: caseDoc.immigrationLifecycle?.tracking?.filing?.trackingNumber || undefined },
+      // FedEx: the number, when the team has already entered it, goes inside this e-mail; without one the FedEx part is left out and the number follows in its own e-mail later.
+      // Online: the USCIS receipt number takes the place of the FedEx section and is shown only when it has been entered.
+      data: online
+        ? { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, receiptNumber: filing?.receiptNumber || undefined }
+        : { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, trackingNumber: filing?.trackingNumber || undefined },
     });
     const outcome = { sent: Boolean(result?.sent), reason: result?.reason };
-    await recordChoice(caseId, user, true, outcome);
+    await recordChoice(caseId, user, true, outcome, method);
     return outcome;
   } catch (error) {
     logger.warn("ghl_submitted_notice_choice_failed", { caseId: String(caseId), error: error.message });
+    return { sent: false, reason: "error" };
+  }
+}
+
+const RECEIPT_TEMPLATE = "case-uscis-receipt-number-client";
+const cleanReceipt = (value) => String(value ?? "").replace(/[\s-]+/g, "").toUpperCase();
+
+/**
+ * The USCIS receipt number was added or changed by the team. If the client already got the "case submitted online" e-mail WITHOUT it, they get this separate e-mail with the number.
+ * Same rules as the FedEx number e-mail: nothing is sent when the online submitted e-mail has not been sent (the team chose not to inform the client, or it is still to be sent - the number
+ * then rides inside that e-mail), when the number is unchanged or that exact number was already e-mailed, or for an employer matter / a case with no client login.
+ * Fire and forget: never throws, never slows or fails the save.
+ */
+async function sendReceiptNumberNotice({ caseId, receiptNumber, previous, user }) {
+  try {
+    const number = cleanReceipt(receiptNumber);
+    if (!/^[A-Z]{3}\d{10}$/.test(number) || number === cleanReceipt(previous)) return { sent: false, reason: "unchanged" };
+    const caseDoc = await Case.findById(caseId);
+    if (!caseDoc) return { sent: false, reason: "case_not_found" };
+    if (caseDoc.caseRole === "principal" && caseDoc.caseStructure === "employer_employee") return { sent: false, reason: "employer_matter" };
+    const submittedSent = await EmailLog.findOne({ templateKey: ONLINE_TEMPLATE, caseId: caseDoc._id, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    if (!submittedSent) return { sent: false, reason: "submitted_email_not_sent" };
+    const alreadyThisNumber = await EmailLog.findOne({ templateKey: RECEIPT_TEMPLATE, caseId: caseDoc._id, "data.receiptNumber": number, status: { $in: ["sent", "queued"] } }).select("_id").lean();
+    if (alreadyThisNumber) return { sent: false, reason: "already_sent" };
+    const client = await recipientFor(caseDoc);
+    if (!client) return { sent: false, reason: "no_client_login" };
+    const { sendTemplateEmail } = require("../../modules/email/email.service");
+    const result = await sendTemplateEmail(RECEIPT_TEMPLATE, {
+      to: client.email,
+      caseId: caseDoc._id,
+      userId: client._id,
+      recipientRole: client.role,
+      triggeredBy: user?._id,
+      data: { clientName: caseDoc.clientName || client.name || client.displayName, caseNumber: caseDoc.caseNumber, receiptNumber: number },
+    });
+    return { sent: Boolean(result?.sent), reason: result?.reason };
+  } catch (error) {
+    logger.warn("receipt_number_notice_failed", { caseId: String(caseId), error: error.message });
     return { sent: false, reason: "error" };
   }
 }
@@ -173,4 +218,4 @@ async function sendFedexNumberNotice({ caseId, trackingNumber, previous, user })
   }
 }
 
-module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, SUBMITTED_STAGE_KEY };
+module.exports = { notifySubmitted, sendSubmittedNotice, sendOnTeamChoice, sendFedexNumberNotice, sendReceiptNumberNotice, SUBMITTED_STAGE_KEY };
