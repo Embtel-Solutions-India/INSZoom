@@ -254,6 +254,18 @@ const FILING_TYPES = {
     visaType: "OCI",
     questionnaireKey: "oci_spouse_of_foreign_origin_checklist",
   },
+  OCI_MINOR_FOREIGN_CITIZEN_HELD: {
+    key: "OCI_MINOR_FOREIGN_CITIZEN_HELD",
+    label: "Minor Foreign citizen and held Indian passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_minor_foreign_citizen_held_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

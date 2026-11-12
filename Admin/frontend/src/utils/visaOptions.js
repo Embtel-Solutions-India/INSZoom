@@ -183,7 +183,8 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 // (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
 export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci'])
 export const INDIAN_TIMELINE_SUBTYPES = {
-  oci: [{ value: 'OCI_SPOUSE_OF_FOREIGN_ORIGIN', label: 'OCI Checklist for Spouse of Foreign Origin', description: 'For eligible foreign-origin applicants applying for OCI registration through marriage to an Indian citizen or an OCI cardholder.' },
+  oci: [{ value: 'OCI_MINOR_FOREIGN_CITIZEN_HELD', label: 'Minor Foreign citizen and held Indian passport', description: 'For minor foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
+    { value: 'OCI_SPOUSE_OF_FOREIGN_ORIGIN', label: 'OCI Checklist for Spouse of Foreign Origin', description: 'For eligible foreign-origin applicants applying for OCI registration through marriage to an Indian citizen or an OCI cardholder.' },
     { value: 'OCI_MINOR_FOREIGN_CITIZEN_NEVER_HELD', label: 'Minor Foreign citizen and never held Indian passport', description: 'For minor foreign citizens who have never held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
     { value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen by birth and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },
     { value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'Adult Foreign citizen and held Indian passport', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' }],

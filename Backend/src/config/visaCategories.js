@@ -40,7 +40,7 @@ const VISA_CATEGORIES = {
   // Checklist/questionnaire-driven like PERM: ONE client checklist (gc_nvc_checklist, questionnaires/gcNvcChecklist.js), no USCIS
   // forms and no CaseForm rows. The checklist is provisioned at creation as a Case Manager draft and released to the client on approval.
   // OCI (Indian Timeline Cases): single-person, no forms; one checklist per subtype (questionnaires/ociChecklists.js)
-  OCI: { caseStructure: "single", forms: [], noForms: true, label: "OCI - Overseas Citizen of India", subTypes: ["Adult Foreign citizen and held Indian passport", "Adult Foreign citizen by birth and never held Indian passport", "Minor Foreign citizen and never held Indian passport", "OCI Checklist for Spouse of Foreign Origin"] },
+  OCI: { caseStructure: "single", forms: [], noForms: true, label: "OCI - Overseas Citizen of India", subTypes: ["Adult Foreign citizen and held Indian passport", "Adult Foreign citizen by birth and never held Indian passport", "Minor Foreign citizen and never held Indian passport", "OCI Checklist for Spouse of Foreign Origin", "Minor Foreign citizen and held Indian passport"] },
   "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 
   // ─── EMPLOYER / EMPLOYEE VISAS ───────────────────────────────────────────
