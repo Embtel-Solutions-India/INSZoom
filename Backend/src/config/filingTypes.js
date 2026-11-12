@@ -242,6 +242,18 @@ const FILING_TYPES = {
     visaType: "OCI",
     questionnaireKey: "oci_minor_foreign_citizen_never_held_passport_checklist",
   },
+  OCI_SPOUSE_OF_FOREIGN_ORIGIN: {
+    key: "OCI_SPOUSE_OF_FOREIGN_ORIGIN",
+    label: "OCI Checklist for Spouse of Foreign Origin",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_spouse_of_foreign_origin_checklist",
+  },
 };
 
 function listFilingTypes() {
