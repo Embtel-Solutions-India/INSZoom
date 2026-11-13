@@ -30,6 +30,7 @@ async function resetPassword(token, newPassword) {
   // mailbox just as the invitation link does, so it activates them too (same end state as clientInvite.acceptClientInvite) - otherwise they
   // hold a correct password and still cannot log in. Only for a never-activated client: an account an admin deactivated has no pending
   // invitation and stays deactivated.
+  const wasAwaitingActivation = user.role === "client" && user.isActive === false && user.mustSetPassword === true && Boolean(user.inviteTokenHash);
   if (user.role === "client" && user.isActive === false && user.mustSetPassword === true && user.inviteTokenHash) {
     user.isActive = true;
     user.isEmailVerified = true;
@@ -43,6 +44,7 @@ async function resetPassword(token, newPassword) {
   await user.save();
   await invalidateUserCache(user._id);
   await sessionService.revokeAllSessions(user._id);
+  if (wasAwaitingActivation) require("../email/deferredEmail.service").releaseForUser(user._id).catch(() => null); // held e-mails go out now
   return user;
 }
 

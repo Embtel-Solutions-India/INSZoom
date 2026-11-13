@@ -1,11 +1,10 @@
 const router = require("express").Router();
 const authenticate = require("../../middleware/authenticate");
 const authorizeRoles = require("../../middleware/authorizeRoles");
-const upload = require("../uploads/upload.middleware");
-const { sendFile } = require("../../utils/fileResponse");
 const service = require("./caseInvoice.service");
 
 // Mounted at /api/case-invoices. Internal team only (never clients, employers or attorneys).
+// A case's invoices are LINKS (the Invoice URL of its GoHighLevel card + any added here); there is no invoice file upload any more.
 const staff = [authenticate, authorizeRoles(...service.STAFF_ROLES)];
 
 router.get("/:caseId/employee-payments", ...staff, async (req, res, next) => {
@@ -16,34 +15,25 @@ router.get("/:caseId/employee-payments", ...staff, async (req, res, next) => {
   }
 });
 
-router.get("/:caseId", ...staff, async (req, res, next) => {
+router.get("/:caseId/urls", ...staff, async (req, res, next) => {
   try {
-    res.json({ success: true, data: await service.list(req.params.caseId, req.user) });
+    res.json({ success: true, data: await service.listUrls(req.params.caseId, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/:caseId", ...staff, upload.single("file"), async (req, res, next) => {
+router.post("/:caseId/urls", ...staff, async (req, res, next) => {
   try {
-    res.status(201).json({ success: true, data: await service.add(req.params.caseId, req.file, req.body, req.user) });
+    res.status(201).json({ success: true, data: await service.addUrl(req.params.caseId, req.body, req.user) });
   } catch (error) {
     next(error);
   }
 });
 
-router.get("/:caseId/:invoiceId/file", ...staff, async (req, res, next) => {
+router.delete("/:caseId/urls", ...staff, async (req, res, next) => {
   try {
-    const { invoice, buffer } = await service.read(req.params.caseId, req.params.invoiceId, req.user);
-    sendFile(res, { buffer, fileName: invoice.fileName, mimeType: invoice.mimeType, disposition: req.query.download === "1" ? "attachment" : "inline" });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.delete("/:caseId/:invoiceId", ...staff, async (req, res, next) => {
-  try {
-    res.json({ success: true, data: await service.remove(req.params.caseId, req.params.invoiceId, req.user) });
+    res.json({ success: true, data: await service.removeUrl(req.params.caseId, String(req.query.url || ""), req.user) });
   } catch (error) {
     next(error);
   }

@@ -4,6 +4,7 @@ import { useOptionalSocket } from '../contexts/SocketContext'
 import RevenueTrendChart from '../components/RevenueTrendChart'
 import { FINANCE_COLORS, CATEGORY_COLORS, TEAM_COLORS } from '../utils/financeColors'
 import MonthlyRevenueBars from '../components/MonthlyRevenueBars'
+import { CasesSubmittedChart, MonthlyFlowChart } from '../components/CaseTrendCharts'
 import { packageRows, NOT_ASSIGNED } from '../utils/packages'
 import {
   BarChart3,
@@ -61,6 +62,7 @@ const Analytics = () => {
   const [processingTimeData, setProcessingTimeData] = useState([])
   const [rfeTrendsData, setRfeTrendsData] = useState([])
   const [caseManagerWorkload, setCaseManagerWorkload] = useState([])
+  const [caseTrends, setCaseTrends] = useState(null)
 
   // Only the very first load shows the full skeleton — changing the date
   // range afterwards updates the charts in place instead of blanking them.
@@ -88,7 +90,7 @@ const Analytics = () => {
       if (startDate) params.startDate = startDate
       if (endDate) params.endDate = endDate
 
-      const [analyticsRes, dashboardRes, revenueRes, paymentsRes, processingRes, rfeRes, caseManagersRes] = await Promise.all([
+      const [analyticsRes, dashboardRes, revenueRes, paymentsRes, processingRes, rfeRes, caseManagersRes, caseTrendsRes] = await Promise.all([
         api.get('/analytics', { params }),
         api.get('/analytics/dashboard'),
         api.get('/analytics/revenue'),
@@ -99,10 +101,13 @@ const Analytics = () => {
         // same real-time per-manager active/completed case counts the admin
         // Dashboard's "Team Workload" panel already uses (see Dashboard.jsx's
         // fetchTeamWorkload), reused here instead of re-deriving it.
-        api.get('/case-managers')
+        api.get('/case-managers'),
+        // cases submitted per month + the active / on-hold trend; a failure here never blanks the rest of the page
+        api.get('/analytics/case-trends').catch(() => null)
       ])
 
       setAnalyticsData(analyticsRes.data.analytics)
+      setCaseTrends(caseTrendsRes?.data || null)
       setDashboardStats(dashboardRes.data)
       setRevenueData((revenueRes.data.monthlyRevenue || []).map(item => ({
         ...item,
@@ -162,11 +167,6 @@ const Analytics = () => {
     // mapGroups), with `_id` kept as a fallback for any raw-aggregate array
     // that never went through groupCount — same defensive read the admin
     // Dashboard page already uses for this exact data shape.
-    const casesByVisaTypeData = analyticsData?.cases?.byVisaType?.map(item => ({
-      name: item.key ?? item._id ?? 'Unspecified',
-      value: item.count
-    })) || []
-
     const casesByStageData = analyticsData?.cases?.byStage?.map(item => ({
       name: item.key ?? item._id ?? 'Unspecified',
       value: item.count
@@ -239,45 +239,59 @@ const Analytics = () => {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Visa Type</h3>
-            {casesByVisaTypeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={casesByVisaTypeData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#10b981" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : renderEmptyState('No data available')}
-          </div>
+        <div className="grid grid-cols-1 gap-6">
+          <CasesSubmittedChart months={caseTrends?.submittedByMonth} />
 
           <div className="card">
             <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Stage</h3>
             {casesByStageData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={casesByStageData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {casesByStageData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+                <div className="w-full sm:w-1/2">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        isAnimationActive={false}
+                        data={casesByStageData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={100}
+                        dataKey="value"
+                        nameKey="name"
+                        labelLine={false}
+                      >
+                        {casesByStageData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      {/* hovering a slice shows its stage name; no slice is ever made active or dimmed */}
+                      <Tooltip formatter={(value, name) => [value, name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* legend: colour box + stage name, top right of the card */}
+                <ul className="w-full sm:w-1/2 max-h-64 space-y-1 overflow-y-auto pr-1 text-sm">
+                  {(() => {
+                    const total = casesByStageData.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 1
+                    return casesByStageData.map((entry, index) => (
+                      <li
+                        key={`legend-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-md px-2 py-1"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                          <span className="text-foreground" title={entry.name}>{entry.name}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{entry.value} &middot; {((entry.value / total) * 100).toFixed(0)}%</span>
+                      </li>
+                    ))
+                  })()}
+                </ul>
+              </div>
             ) : renderEmptyState('No data available')}
+          </div>
+
+          <div className="lg:col-span-2">
+            <MonthlyFlowChart months={caseTrends?.monthlyFlow} />
           </div>
 
           <div className="card lg:col-span-2">

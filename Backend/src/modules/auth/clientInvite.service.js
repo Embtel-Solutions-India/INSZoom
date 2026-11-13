@@ -51,6 +51,8 @@ async function acceptClientInvite(token, newPassword, username) {
   user.mustSetPassword = false;
   await user.save();
   await invalidateUserCache(user._id);
+  // e-mails held while the account was not activated are sent now (the first at once, then one a minute); never blocks or fails the activation
+  require("../email/deferredEmail.service").releaseForUser(user._id).catch(() => null);
   return user;
 }
 

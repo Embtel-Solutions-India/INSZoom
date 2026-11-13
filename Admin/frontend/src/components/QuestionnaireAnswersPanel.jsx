@@ -105,7 +105,21 @@ function RequiredMark({ question }) {
   return isQuestionRequired(question) ? <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span> : null
 }
 
-function AnswerRow({ label, value, extra = null, required = false, prefilledFrom = null }) {
+// metadata.staffReview = [{ questionKey, operator, value, message }]: answers that may disqualify (e.g. a marriage that is no longer subsisting). Nothing is decided automatically;
+// the team is told which answer to look at. Only equals / not_equals / in are used.
+export function staffReviewNotes(question, answerMap) {
+  const rules = Array.isArray(question?.metadata?.staffReview) ? question.metadata.staffReview : []
+  return rules.filter((item) => {
+    const given = answerMap?.[item.questionKey ?? question.key]
+    if (given === undefined || given === null || given === '') return false
+    if (item.operator === 'equals') return String(given) === String(item.value)
+    if (item.operator === 'not_equals') return String(given) !== String(item.value)
+    if (item.operator === 'in') return [].concat(item.value || []).map(String).includes(String(given))
+    return false
+  }).map((item) => item.message).filter(Boolean)
+}
+
+function AnswerRow({ label, value, extra = null, required = false, prefilledFrom = null, reviewNotes = [] }) {
   const answered = value !== undefined && value !== null && value !== ''
   return (
     <div className="min-w-0">
@@ -119,6 +133,9 @@ function AnswerRow({ label, value, extra = null, required = false, prefilledFrom
       >
         {answered ? value : 'Needed'}
       </div>
+      {reviewNotes.map((note) => (
+        <p key={note} className="mt-1 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200" data-testid="staff-review-note">Needs staff review: {note}</p>
+      ))}
       {/* one login, many cases (Phase 3A): copied from the person's earlier case and not changed since */}
       {answered && prefilledFrom && (
         <p className="mt-1 text-xs text-muted-foreground" data-testid="prefilled-from">
@@ -498,7 +515,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                               <EditableAnswerInput question={question} value={draft[question.key]} onChange={(value) => setDraft((prev) => ({ ...prev, [question.key]: value }))} />
                             </div>
                           )
-                          : <AnswerRow label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />}
+                          : <AnswerRow label={question.label} reviewNotes={staffReviewNotes(question, answerMap)} value={formatAnswerValue(question, answerMap?.[question.key])} prefilledFrom={answerMap?.__prefilledFromEarlierCase?.[question.key] || null} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />}
                   </div>
                 ))}
               </div>

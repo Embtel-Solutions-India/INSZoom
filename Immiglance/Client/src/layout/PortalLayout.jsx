@@ -13,6 +13,7 @@ import EnablePushButton from "../components/EnablePushButton";
 import ForegroundMessagePush from "../components/ForegroundMessagePush";
 import { useBranding } from "../utils/branding";
 import useNotificationClickNavigation from "../hooks/useNotificationClickNavigation";
+import useUnreadMessages from "../hooks/useUnreadMessages";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
@@ -41,6 +42,7 @@ export default function PortalLayout() {
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
   const { user, logout } = useAuth();
+  const unreadMessages = useUnreadMessages();
   const navigate = useNavigate();
   useNotificationClickNavigation();
   const { multiCase, activeCaseId } = useActiveCase();
@@ -108,6 +110,11 @@ export default function PortalLayout() {
                 <>
                   <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
                   <span className="truncate">{label}</span>
+                  {label === "Messages" && unreadMessages > 0 && (
+                    <span data-testid="messages-unread-badge" aria-label={`${unreadMessages} unopened messages`} className="ml-auto flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                      {unreadMessages > 99 ? "99+" : unreadMessages}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>

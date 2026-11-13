@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { ghlApi } from '../../services/api'
+import SyncHealthSection from './SyncHealthSection'
 
 const ago = (value) => {
   if (!value) return 'never'
@@ -83,6 +84,8 @@ export default function GhlStatusPanel({ onChanged }) {
         <Row label="Queued / failed pushes to GHL">{counts.pendingJobs || 0} / <span className={counts.failedJobs ? 'text-red-700' : ''}>{counts.failedJobs || 0}</span></Row>
         <Row label="Webhook events needing attention">{(counts.failedEvents || 0) + (counts.deadEvents || 0)}</Row>
       </div>
+
+      <SyncHealthSection onChanged={onChanged} />
 
       <div className="mt-3 flex flex-wrap gap-2">
         {!data.mappingsConfirmed || data.status === 'config_mismatch' ? (

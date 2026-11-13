@@ -40,6 +40,11 @@ exports.getLegacyDashboardStats = async (req, res, next) => {
       casesByVisaType: caseVisa,
       topCaseManager: topCaseManager?.staff?.name || topCaseManager?.staff?.displayName || "N/A",
       topCaseManagerScore: topCaseManager?.score || 0,
+      // the first two case managers on the leaderboard, best first (the card shows both)
+      topCaseManagers: dashboard.teamPerformance
+        .filter((item) => item.role === "case_manager")
+        .slice(0, 2)
+        .map((item) => ({ name: item.staff?.name || item.staff?.displayName || "N/A", score: item.score || 0 })),
       dashboard,
     });
   } catch (error) {
@@ -90,6 +95,15 @@ exports.getCaseAnalytics = async (req, res, next) => {
   try {
     const cases = await cachedDashboardCompute(cacheKeyFor("caseAnalytics", req), () => dashboardService.caseAnalytics(req.query, req.user));
     res.json({ success: true, cases });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getCaseTrends = async (req, res, next) => {
+  try {
+    const trends = await cachedDashboardCompute(cacheKeyFor("caseTrends", req), () => dashboardService.caseTrendAnalytics(req.query, req.user));
+    res.json({ success: true, ...trends });
   } catch (error) {
     next(error);
   }

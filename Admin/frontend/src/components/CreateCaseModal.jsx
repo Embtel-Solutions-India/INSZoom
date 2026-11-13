@@ -181,7 +181,7 @@ const CreateCaseModal = ({
     const { value } = e.target
     if (field === 'pipelineCategory') pipelineTouched.current = true
     // the H-1B type only applies to H-1B - never carry it over to another visa
-    setForm((prev) => ({ ...prev, [field]: value, ...(field === 'visaType' ? { petitionSubType: '' } : {}) }))
+    setForm((prev) => ({ ...prev, [field]: value, ...(field === 'visaType' ? { petitionSubType: (INDIAN_TIMELINE_SUBTYPES[value]?.length === 1 ? INDIAN_TIMELINE_SUBTYPES[value][0].value : '') } : {}) }))
   }
 
   const handleSubmit = async (e) => {

@@ -17,6 +17,7 @@ router.get("/payments/trend", authenticate, authorizeRoles(...managerRoles), aut
 router.get("/payments/cases", authenticate, authorizeRoles(...managerRoles, "case_manager"), authorizePermissions("analytics:read"), ctrl.getPaymentCases);
 router.get("/payments", authenticate, authorizeRoles(...managerRoles), authorizePermissions("analytics:read"), ctrl.getPaymentAnalytics);
 router.get("/cases", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getCaseAnalytics);
+router.get("/case-trends", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getCaseTrends);
 router.get("/documents", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getDocumentAnalytics);
 router.get("/workflows", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getWorkflowAnalytics);
 router.get("/questionnaires", authenticate, authorizeRoles(...analyticsRoles), authorizePermissions("analytics:read"), ctrl.getQuestionnaireAnalytics);

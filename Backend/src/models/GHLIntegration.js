@@ -81,6 +81,7 @@ const ghlIntegrationSchema = new mongoose.Schema(
     },
     lastInitialSyncAt: Date,
     lastReconcileAt: Date,
+    lastReconcileSummary: mongoose.Schema.Types.Mixed, // the last pass (shown in the sync-health view): { at, tookMs, orphaned, pipelines: [{ name, fetched, created, stageUpdated, unchanged, orphaned, failed }] }
     lastWebhookAt: Date,
     lastApiOkAt: Date,
   },

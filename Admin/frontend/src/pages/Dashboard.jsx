@@ -1,3 +1,4 @@
+import ScoreRulesInfo from '../components/ScoreRulesInfo'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
@@ -385,18 +386,23 @@ const AdminPanel = ({
 
     {/* Top performers */}
     <div className="card">
-      <h3 className="text-sm font-semibold text-foreground mb-4">Top performers</h3>
+      <div className="mb-4 flex items-center gap-1.5">
+        <h3 className="text-sm font-semibold text-foreground">Top performers</h3>
+        <ScoreRulesInfo />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="flex items-center justify-between border border-border rounded-lg px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="stage-dot bg-primary" />
-            <div>
-              <p className="text-xs text-muted-foreground">Top Case Manager</p>
-              <p className="text-sm font-semibold text-foreground">{stats?.topCaseManager || 'N/A'}</p>
+        {(stats?.topCaseManagers?.length ? stats.topCaseManagers : [{ name: stats?.topCaseManager || 'N/A', score: stats?.topCaseManagerScore || 0 }]).map((performer, index) => (
+          <div key={`${performer.name}-${index}`} className="flex items-center justify-between border border-border rounded-lg px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="stage-dot bg-primary" />
+              <div>
+                <p className="text-xs text-muted-foreground">{index === 0 ? '1st performer' : '2nd performer'}</p>
+                <p className="text-sm font-semibold text-foreground">{performer.name}</p>
+              </div>
             </div>
+            <span className="text-xs font-medium text-muted-foreground">{performer.score} pts</span>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">{stats?.topCaseManagerScore || 0} pts</span>
-        </div>
+        ))}
       </div>
     </div>
 

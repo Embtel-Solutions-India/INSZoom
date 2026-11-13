@@ -510,7 +510,7 @@ export default function MessageThread({ caseId, fill = false }) {
   useEffect(() => {
     setItems(null)
     setError('')
-    attorneyApi.markFeedbackRead(caseId).catch(() => {}).then(load)
+    attorneyApi.markFeedbackRead(caseId).catch(() => {}).then(() => { try { window.dispatchEvent(new Event('attorney:unread-changed')) } catch { /* badge only */ } }).then(load)
   }, [caseId, load])
 
   useEffect(() => {
@@ -521,7 +521,7 @@ export default function MessageThread({ caseId, fill = false }) {
         if (current.some((item) => String(item._id) === String(incoming._id))) return current
         return [...current, incoming]
       })
-      attorneyApi.markFeedbackRead(caseId).catch(() => {})
+      attorneyApi.markFeedbackRead(caseId).catch(() => {}).then(() => { try { window.dispatchEvent(new Event('attorney:unread-changed')) } catch { /* badge only */ } })
     })
     // An edit / delete-for-everyone, from the case team or from this user's other session: replace the
     // message by _id (never append) and leave read state alone, so no unread count moves.

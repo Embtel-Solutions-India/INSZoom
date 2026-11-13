@@ -23,6 +23,11 @@ const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { I140I485_DEFINITIONS } = require("./i140i485Checklists");
 const { OCI_CHECKLIST_DEFINITIONS } = require("./ociChecklists");
 const { OCI_BIRTH_CHECKLIST_DEFINITIONS } = require("./ociBirthChecklist");
+const { OCI_MINOR_CHECKLIST_DEFINITIONS } = require("./ociMinorChecklist");
+const { OCI_SPOUSE_CHECKLIST_DEFINITIONS } = require("./ociSpouseChecklist");
+const { OCI_MINOR_HELD_CHECKLIST_DEFINITIONS } = require("./ociMinorHeldChecklist");
+const { US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS } = require("./usPassportMinorChecklist");
+const { INDIAN_ETOURIST_BUSINESS_DEFINITIONS } = require("./indianEtouristBusinessChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2439,6 +2444,11 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // OCI (Indian Timeline Cases): one checklist per subtype, assigned by the subtype's own filing type (never a default of the visa type)
   ...OCI_CHECKLIST_DEFINITIONS,
   ...OCI_BIRTH_CHECKLIST_DEFINITIONS,
+  ...OCI_MINOR_CHECKLIST_DEFINITIONS,
+  ...OCI_SPOUSE_CHECKLIST_DEFINITIONS,
+  ...OCI_MINOR_HELD_CHECKLIST_DEFINITIONS,
+  ...US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS,
+  ...INDIAN_ETOURIST_BUSINESS_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
@@ -2692,6 +2702,33 @@ async function ensureDefinitions(definitions, user, req, { wait = false } = {}) 
       throw error;
     }
   }));
+}
+
+// The Questionnaires page must always list EVERY built-in checklist, including one no case has used yet (templates are otherwise created on first use).
+// One metadata-only presence query over all built-in keys (archived ones count as present, so an archived template is never resurrected); only the
+// ABSENT ones are created, each by its own definition. Existing templates are not touched and no Question query runs for them. Once every built-in
+// template has been seen present the check is skipped for the life of the process.
+let allBuiltInsPresent = false;
+function resetBuiltInPresenceCheck() { allBuiltInsPresent = false; } // tests only
+async function ensureMissingBuiltInTemplates(user, req) {
+  if (allBuiltInsPresent) return [];
+  const keys = [...new Set(VISA_TEMPLATE_DEFINITIONS.map((definition) => definition.key).filter(Boolean))];
+  const stored = await Questionnaire.find({ key: { $in: keys } }).select("key").lean();
+  const storedKeys = new Set((stored || []).map((row) => row.key));
+  const absent = VISA_TEMPLATE_DEFINITIONS.filter((definition) => definition.key && !storedKeys.has(definition.key));
+  if (!absent.length) { allBuiltInsPresent = true; return []; }
+  const systemUser = user || { _id: undefined, role: "super_admin" };
+  const created = [];
+  for (const definition of absent) {
+    try {
+      await reconcileDefinition(definition, systemUser, req);
+      created.push(definition.key);
+    } catch (error) {
+      logger.error("questionnaire_missing_template_create_failed", { key: definition.key, error: error.message }); // one bad template never breaks the page
+    }
+  }
+  if (created.length === absent.length) allBuiltInsPresent = true;
+  return created;
 }
 
 // One checklist template by key ("n400_checklist", "i907_checklist", ...). Resolves null for a key with no code definition
@@ -3898,6 +3935,8 @@ module.exports = {
   createQuestionnaire,
   ensureDefaultVisaTemplates,
   ensureTemplate,
+  ensureMissingBuiltInTemplates,
+  resetBuiltInPresenceCheck,
   ensureTemplatesForVisa,
   notifyChecklistAssigned,
   VISA_TEMPLATE_DEFINITIONS,

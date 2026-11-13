@@ -24,5 +24,7 @@ router.get("/cases/:caseId/stages", boardStaff, ctrl.caseStages);
 router.patch("/cases/:caseId/pipeline-stage", boardStaff, ctrl.moveStage);
 router.post("/cases/:caseId/submitted-notice", boardStaff, ctrl.submittedNotice);
 router.post("/jobs/:id/retry", adminOnly, ctrl.retryJob);
+router.get("/sync-health", adminOnly, ctrl.syncHealth);
+router.post("/sync/retry-all", adminOnly, ctrl.retryAll);
 
 module.exports = router;

@@ -221,6 +221,48 @@ async function setFedexNumber(caseData, trackingNumber, user, req, amountInput) 
   return { carrier: "fedex", trackingNumber: number };
 }
 
+// ---- the USCIS receipt number of a case submitted ONLINE ------------------------------------------------------------------------------------------------------------------------------------
+// Asked when a case moves to Submitted and the team says it was submitted online (the FedEx path is unchanged). Saved on the case's USCIS Tracking filing record (the "USCIS Receipt Number"
+// field of the Tracking tab) and on the case's receipt fields, with the filing method "online". Like setFedexNumber it is QUIET: no USCIS status change, no timeline entry, no e-mail or notification.
+const RECEIPT_NUMBER = /^[A-Z]{3}\d{10}$/;
+
+/** Pure. The receipt number upper-cased without spaces / dashes, or null when it is not three letters followed by ten digits. */
+function cleanReceiptNumber(value) {
+  const compact = String(value ?? "").replace(/[\s-]+/g, "").toUpperCase();
+  return RECEIPT_NUMBER.test(compact) ? compact : null;
+}
+
+// A receipt number added AFTER the client got the "case submitted online" e-mail is e-mailed separately (see ghlSubmittedNotice.sendReceiptNumberNotice for the rules). Fire and forget.
+function notifyClientOfReceiptNumber(caseData, number, previous, user) {
+  try {
+    require("../../../integrations/ghl/ghlSubmittedNotice")
+      .sendReceiptNumberNotice({ caseId: caseData._id, receiptNumber: number, previous, user })
+      .catch(() => {});
+  } catch (_error) { /* never affects the save */ }
+}
+
+async function setReceiptNumber(caseData, receiptInput, user, req) {
+  const number = cleanReceiptNumber(receiptInput);
+  if (!number) throw Object.assign(new Error("Enter a valid USCIS receipt number: three letters followed by ten digits (for example IOE1234567890)."), { status: 400, code: "INVALID_RECEIPT_NUMBER" });
+  const Case = require("../../../models/Case");
+  const previous = caseData.immigrationLifecycle?.tracking?.filing?.receiptNumber || "";
+  await Case.updateOne(
+    { _id: caseData._id },
+    { $set: {
+      "immigrationLifecycle.tracking.filing.receiptNumber": number,
+      "immigrationLifecycle.tracking.filing.filingMethod": "online",
+      uscisReceiptNumber: number,
+      uscisNumber: number,
+      "receiptTracking.receiptNumber": number,
+      "receiptTracking.source": "manual",
+    } }
+  );
+  try { await ImmigrationTimelineService.writeAudit("USCIS_RECEIPT_NUMBER_SET", caseData, user, { previous, receiptNumber: number }, req); } catch (_error) { /* bookkeeping only */ }
+  try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "uscis_receipt_set" }); } catch (_error) { /* live update only */ }
+  notifyClientOfReceiptNumber(caseData, number, previous, user);
+  return { receiptNumber: number, filingMethod: "online" };
+}
+
 // ---- Filed by pipeline stage -------------------------------------------------------------------------------------------------------------------------------------------------------------
 // A case at Submitted (FedEx) or any later stage (Receipt Tracking, RFE, Status - Approved / Disapproved, FeedBack) HAS been filed, so its recorded USCIS status must read Filed - not only
 // on one screen. On Hold is not a filed stage. Only a PRE-filing status (draft / ready to file / none) is changed: any later status (receipt issued, approved ...) stays exactly as recorded.
@@ -280,6 +322,7 @@ async function save(caseData, payload, user, req) {
   const lifecycle = ImmigrationTimelineService.ensure(caseData);
   const previousStatus = lifecycle.tracking?.status || "draft";
   const previousFedexNumber = lifecycle.tracking?.filing?.carrier === "fedex" ? lifecycle.tracking?.filing?.trackingNumber || "" : "";
+  const previousReceiptNumber = lifecycle.tracking?.filing?.receiptNumber || "";
   const tracking = normalizedTracking(caseData, payload, user);
   lifecycle.tracking = tracking;
   lifecycle.filingStatus = STATUS_TO_LIFECYCLE[tracking.status];
@@ -304,6 +347,9 @@ async function save(caseData, payload, user, req) {
     const savedNumber = cleanFedexNumber(tracking.filing.trackingNumber);
     if (savedNumber) notifyClientOfFedexNumber(caseData, savedNumber, previousFedexNumber, user);
   }
+  // a receipt number typed in the Tracking tab after the online submitted e-mail went out reaches the client the same way (the server only sends it when that e-mail was sent)
+  const savedReceipt = cleanReceiptNumber(tracking.filing?.receiptNumber);
+  if (savedReceipt) notifyClientOfReceiptNumber(caseData, savedReceipt, previousReceiptNumber, user);
   if (previousStatus !== tracking.status) {
     await NotificationLifecycleService.caseStakeholders(caseData, {
       type: "case_stage_changed",
@@ -369,4 +415,4 @@ async function get(caseData) {
   };
 }
 
-module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount, FILED_STAGE_KEYS, filedByStageFilter, markFiledByStage, markMatterFiledIfAllEmployeesFiled };
+module.exports = { STATUS_TO_LIFECYCLE, get, save, validatePayload, setFedexNumber, setReceiptNumber, cleanReceiptNumber, cleanFedexNumber, cleanFedexAmount, getFedexAmount, canSeeFedexAmount, FILED_STAGE_KEYS, filedByStageFilter, markFiledByStage, markMatterFiledIfAllEmployeesFiled };

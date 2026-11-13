@@ -117,8 +117,11 @@ exports.submittedNotice = guard(async (req, res) => {
   const { caseId } = req.params;
   if (!mongoose.isValidObjectId(caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
   if (typeof req.body?.send !== "boolean") return res.status(400).json({ success: false, message: "send must be true or false" });
+  // how the case was submitted: "online" (e-mail with the USCIS receipt number) or "fedex" (the original e-mail); absent = fedex, so older callers behave exactly as before
+  const { method } = req.body;
+  if (method !== undefined && !["online", "fedex"].includes(method)) return res.status(400).json({ success: false, message: "method must be online or fedex" });
   await outbound.assertCanWorkCase(req.user, caseId);
-  const result = await require("./ghlSubmittedNotice").sendOnTeamChoice({ caseId, send: req.body.send, user: req.user });
+  const result = await require("./ghlSubmittedNotice").sendOnTeamChoice({ caseId, send: req.body.send, user: req.user, method });
   res.json({ success: true, ...result });
 });
 
@@ -129,6 +132,16 @@ exports.caseStages = guard(async (req, res) => {
   } catch (error) {
     res.status(error.status || 500).json({ success: false, code: error.code, message: error.message });
   }
+});
+
+// GET /sync-health: whether the sync is alive, whether webhooks arrive, and every card that is stuck and why.
+exports.syncHealth = guard(async (req, res) => {
+  res.json({ success: true, ...(await require("./ghlHealthService").getSyncHealth()) });
+});
+
+// POST /sync/retry-all: every change waiting for its next try is tried now.
+exports.retryAll = guard(async (req, res) => {
+  res.json({ success: true, ...(await require("./ghlHealthService").retryAll()) });
 });
 
 exports.retryJob = guard(async (req, res) => {

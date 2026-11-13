@@ -258,23 +258,35 @@ async function runCreate(job, client) {
     const mine = await opportunityService.fetchAllOpportunities(pipeline.ghlPipelineId, { locationId: link.locationId, contactId: link.contactId, client });
     opportunity = mine.find((o) => markerFromOpportunity(o, fieldIds) === marker) || null;
   }
+  let contactId = link.contactId;
+  const create = () => opportunityService.createOpportunity(
+    {
+      pipelineId: pipeline.ghlPipelineId,
+      locationId: link.locationId,
+      name: clean(principal.petitionerName) || clean(principal.clientName) || "Employer", // the employee's name is added once known
+      pipelineStageId: mapping.ghlStageId,
+      status: "open",
+      contactId,
+      ...(markerFieldId ? {} : { source: marker }),
+      ...(customFields.length ? { customFields } : {}),
+    },
+    client
+  );
   if (!opportunity) {
-    opportunity = await opportunityService.createOpportunity(
-      {
-        pipelineId: pipeline.ghlPipelineId,
-        locationId: link.locationId,
-        name: clean(principal.petitionerName) || clean(principal.clientName) || "Employer", // the employee's name is added once known
-        pipelineStageId: mapping.ghlStageId,
-        status: "open",
-        contactId: link.contactId,
-        ...(markerFieldId ? {} : { source: marker }),
-        ...(customFields.length ? { customFields } : {}),
-      },
-      client
-    );
+    try {
+      opportunity = await create();
+    } catch (error) {
+      // GHL answers 404 when the employer's contact no longer exists there (it was deleted in GHL): create the contact again from the employer's own details, repoint the link, try once more
+      if (error instanceof GHLApiError && error.status === 404) {
+        contactId = await require("./ghlRestore").healEmployerContact(child.parentCase, client, link.locationId);
+        opportunity = await create();
+      } else {
+        throw error;
+      }
+    }
   }
   if (!opportunity?.id) throw transient("GHL did not return the new opportunity");
-  await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: link.contactId, locationId: link.locationId });
+  await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId, locationId: link.locationId });
   return "done";
 }
 
@@ -328,6 +340,8 @@ async function runAuxJob(job, { client } = {}) {
   if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
   if (job.type === "delete_opportunity") return require("./ghlCaseOutbound").runDeleteOpportunity(job, client);
   if (job.type === "push_finance") return require("./ghlFinance").runPushFinance(job, client);
+  if (job.type === "push_invoice_url") return require("./ghlFinance").runPushInvoiceUrl(job, client);
+  if (job.type === "restore_opportunity") return require("./ghlRestore").runRestoreOpportunity(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }
 
@@ -356,7 +370,12 @@ async function adoptOwnOpportunity({ opportunity, config, pipeline, mapping, cli
   // A marker for a card we no longer have must not become a phantom card.
   if (!child) return { adopted: false, note: "marker for an unknown Immiglance case" };
   const linked = child.integrations?.ghl?.opportunityId;
-  if (linked && linked !== opportunity.id) return { adopted: false, note: "that employee card is already linked to another opportunity" };
+  if (linked && linked !== opportunity.id) {
+    // a case being restored from the recycle bin: this is its recreated card (same case, same stage) - link it, never import a second case
+    const restored = await require("./ghlRestore").adoptRestoredOpportunity({ opportunity, pipeline, mapping, locationId: config.locationId, caseDoc: child }).catch(() => false);
+    if (restored) return { adopted: true, note: "linked to the case restored from the recycle bin" };
+    return { adopted: false, note: "that employee card is already linked to another opportunity" };
+  }
   if (!linked) {
     await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: opportunity.contactId, locationId: config.locationId, role: child.caseRole === "employee" ? "employee" : "individual" });
   }

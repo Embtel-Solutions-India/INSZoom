@@ -27,6 +27,10 @@ const USER_FIELDS = ["user", "userId", "clientId", "clientUserId", "recipient", 
 const EMAIL_FIELDS = ["email", "clientEmail", "to", "emailTo", "userEmail"];
 const CLIENT_SIDE_ROLES = ["client", "employee", "employer", "beneficiary"];
 const SKIPPED_COLLECTIONS = new Set(["users", "cases", "leads", "system.profile", "casedeletionjobs", "recyclebinentries", "recyclebinchunks"]);
+// GoHighLevel bookkeeping that must OUTLIVE the case while it sits in the recycle bin: the case <-> card link (it protects a card that is still being deleted in GHL from being
+// re-imported as a brand-new case, and tells a later restore which card the case had) and the queued "delete the GHL card" jobs (they must run even if GHL is slow).
+const KEPT_WHILE_IN_BIN = { ghlcaselinks: true };
+const keepsJob = (name) => name === "ghlsyncjobs";
 
 const MAX_ATTEMPTS = Number(process.env.CASE_DELETION_MAX_ATTEMPTS || 8);
 const CONCURRENCY = Number(process.env.CASE_DELETION_CONCURRENCY || 8);
@@ -155,24 +159,28 @@ async function removeStoredFiles(db, caseIds, recycleEntryId) {
   return removed;
 }
 
+// the query for one collection: the GHL queue keeps its "delete_opportunity" jobs (a card still to be removed from GHL), whatever else of the case is swept
+const scoped = (name, or) => (keepsJob(name) ? { $and: [{ $or: or }, { type: { $ne: "delete_opportunity" } }] } : { $or: or });
+
 async function sweepCollections(db, job) {
   const caseIds = job.caseIds;
   const collections = (await db.listCollections().toArray()).map((entry) => entry.name).filter((name) => !SKIPPED_COLLECTIONS.has(name));
   const removed = {};
   await mapLimit(collections, CONCURRENCY, async (name) => {
+    if (job.recycleEntryId && KEPT_WHILE_IN_BIN[name]) return; // see KEPT_WHILE_IN_BIN
     const or = CASE_FIELDS.map((field) => ({ [field]: { $in: caseIds } }));
     if (job.userIds.length) USER_FIELDS.forEach((field) => or.push({ [field]: { $in: job.userIds } }));
     if (job.emails.length) EMAIL_FIELDS.forEach((field) => or.push({ [field]: { $in: job.emails } }));
     if (job.recycleEntryId) {
       // copy to the recycle bin first, then remove exactly the documents that were copied
-      const docs = await db.collection(name).find({ $or: or }).toArray();
+      const docs = await db.collection(name).find(scoped(name, or)).toArray();
       if (!docs.length) return;
       await require("../recycle-bin/recycle-bin.service").storeDocs(job.recycleEntryId, name, docs);
       const result = await db.collection(name).deleteMany({ _id: { $in: docs.map((doc) => doc._id) } });
       if (result?.deletedCount) removed[name] = result.deletedCount;
       return;
     }
-    const result = await db.collection(name).deleteMany({ $or: or });
+    const result = await db.collection(name).deleteMany(scoped(name, or));
     if (result?.deletedCount) removed[name] = result.deletedCount;
   });
   return removed;

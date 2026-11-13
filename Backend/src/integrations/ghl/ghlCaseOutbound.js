@@ -154,9 +154,14 @@ async function syncSince() {
 async function enqueueForCase(caseId, { since = null, force = false } = {}) {
   try {
     if (!isEnabled()) return null;
-    const caseDoc = await Case.findById(caseId).select("status visaType visaSelectionStatus caseRole caseStructure createdAt integrations.ghl.opportunityId").lean();
+    const caseDoc = await Case.findById(caseId).select("status visaType visaSelectionStatus caseRole caseStructure createdAt clientEmail petitionerUser integrations.ghl.opportunityId").lean();
     const kind = plan(caseDoc);
     if (!kind) return null;
+    // nothing to do, so no job (the sweep used to queue one per employer matter every 5 minutes, only for it to be discarded as "nothing to do"):
+    //   - an employer matter that already has its GHL contact + link;
+    //   - a case with no e-mail yet (no contact can be created; it is queued again as soon as an e-mail exists, because the sweep looks at it each time)
+    if (kind === "employer" && (await GHLEmployerLink.exists({ principalCaseId: caseDoc._id }))) return null;
+    if (!clean(caseDoc.clientEmail) && !caseDoc.petitionerUser) return null;
     if (!force) {
       const cutoff = since || (await syncSince());
       if (!cutoff || new Date(caseDoc.createdAt) < new Date(cutoff)) return null;
@@ -345,4 +350,4 @@ async function isDeletionPending(opportunityId) {
   return Boolean(await GHLSyncJob.exists(deletionPendingFilter(opportunityId)));
 }
 
-module.exports = { employeeOptions, queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, moveEmployerEmployee, isEmployerMatter, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+module.exports = { employeeOptions, queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, moveEmployerEmployee, isEmployerMatter, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled, contactDetails, upsertContact };

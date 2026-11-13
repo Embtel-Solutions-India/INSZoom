@@ -597,12 +597,16 @@ exports.getMyCase = async (req, res, next) => {
     // the FedEx shipment of the filed petition (carrier + tracking number only): shown on the client's dashboard with a link to FedEx. Additive; a failure here never fails the endpoint.
     // (for an employer matter, also each employee case's shipment - the number is entered on the employee's case but the employer is the one logged in)
     try {
-      const { filingShipment, filingShipments } = await caseService.clientFilingShipmentsFor(caseData);
+      const { filingShipment, filingShipments, filingReceipt, filingReceipts } = await caseService.clientFilingShipmentsFor(caseData);
       payload.filingShipment = filingShipment;
       payload.filingShipments = filingShipments;
+      payload.filingReceipt = filingReceipt || null; // the USCIS receipt number(s): shown in the "Track your case" card
+      payload.filingReceipts = filingReceipts || [];
     } catch (_error) {
       payload.filingShipment = null;
       payload.filingShipments = [];
+      payload.filingReceipt = null;
+      payload.filingReceipts = [];
     }
     timer.mark("serialization_completed");
     timer.done({ found: true });

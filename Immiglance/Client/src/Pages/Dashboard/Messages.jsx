@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
+import { refreshUnreadMessages } from "../../hooks/useUnreadMessages";
 import { useSocket } from "../../context/SocketContext";
 import { chunkApi, messagesApi, usersApi } from "../../services/api";
 import { useActiveCase } from "../../context/ActiveCaseContext";
@@ -733,6 +734,7 @@ export default function Messages() {
       setThreads((prev) => prev.map((t) => t._id === threadId
         ? { ...t, unreadClient: 0, unreadManager: 0 }
         : t));
+      refreshUnreadMessages(); // the sidebar badge drops as soon as the chat is opened
     } catch { /* silently fail */ }
     finally {
       if (silent) silentLoadInFlightRef.current.delete(threadId);

@@ -871,6 +871,13 @@ function clientFilingShipment({ lifecycleFiling, packageFiling } = {}) {
     || null;
 }
 
+// The USCIS receipt number the team entered for an online filing (the USCIS Tracking tab's filing record): three letters + ten digits, nothing else of the filing is shared. Pure. Null when none.
+const CLIENT_RECEIPT_NUMBER = /^[A-Z]{3}\d{10}$/;
+function clientFilingReceipt(lifecycleFiling) {
+  const receiptNumber = String(lifecycleFiling?.receiptNumber || "").replace(/[\s-]+/g, "").toUpperCase();
+  return CLIENT_RECEIPT_NUMBER.test(receiptNumber) ? { receiptNumber } : null;
+}
+
 /**
  * The courier shipments the client portal shows for a case: { filingShipment, filingShipments }.
  *   filingShipment   this case's own FedEx shipment (or null) - what a single / family case or an employee with their own login sees;
@@ -888,6 +895,9 @@ async function clientFilingShipmentsFor(caseData) {
     const own = clientFilingShipment({ lifecycleFiling: caseData.immigrationLifecycle?.tracking?.filing })
       || clientFilingShipment({ packageFiling: (await packageFiling([caseData._id])).get(String(caseData._id)) });
     const list = own ? [{ ...own, caseNumber: caseData.caseNumber || "", employeeName: "" }] : [];
+    // the USCIS receipt numbers (online filings) on the same dashboard: this case's own, plus each employee case's for an employer matter - same shape and labelling as the shipments
+    const ownReceipt = clientFilingReceipt(caseData.immigrationLifecycle?.tracking?.filing);
+    const receipts = ownReceipt ? [{ ...ownReceipt, caseNumber: caseData.caseNumber || "", employeeName: "" }] : [];
     const isEmployerMatter = caseData.caseRole === "principal" && caseData.caseStructure === "employer_employee" && (caseData.childCases || []).length;
     if (isEmployerMatter) {
       const children = await Case.find({ parentCase: caseData._id, status: { $nin: ["removed", "archived"] } })
@@ -896,11 +906,13 @@ async function clientFilingShipmentsFor(caseData) {
       for (const child of children) {
         const shipment = clientFilingShipment({ lifecycleFiling: child.immigrationLifecycle?.tracking?.filing }) || clientFilingShipment({ packageFiling: packages.get(String(child._id)) });
         if (shipment) list.push({ ...shipment, caseNumber: child.caseNumber || "", employeeName: employeeContact({ ...child, caseRole: "employee" })?.name || "" });
+        const receipt = clientFilingReceipt(child.immigrationLifecycle?.tracking?.filing);
+        if (receipt) receipts.push({ ...receipt, caseNumber: child.caseNumber || "", employeeName: employeeContact({ ...child, caseRole: "employee" })?.name || "" });
       }
     }
-    return { filingShipment: own, filingShipments: list };
+    return { filingShipment: own, filingShipments: list, filingReceipt: ownReceipt, filingReceipts: receipts };
   } catch (_error) {
-    return { filingShipment: null, filingShipments: [] };
+    return { filingShipment: null, filingShipments: [], filingReceipt: null, filingReceipts: [] };
   }
 }
 
@@ -1246,6 +1258,7 @@ module.exports = {
   populateCaseQuery,
   populateCaseQueryForClient,
   clientFilingShipment,
+  clientFilingReceipt,
   clientFilingShipmentsFor,
   reopenCase,
   resolveTeamLeadForCase,

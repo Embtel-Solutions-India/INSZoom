@@ -352,6 +352,7 @@ export const lifecycleApi = {
   saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),
   // the FedEx number of the filed petition (asked when a case moves to Submitted (FedEx)): sets only the carrier and the number
   // `amount` (what the shipment cost, internal only) is optional: left out, it is not touched
+  saveReceiptNumber: (caseId, receiptNumber) => api.put(`/lifecycle/cases/${caseId}/tracking/receipt`, { receiptNumber }),
   saveFedexNumber: (caseId, trackingNumber, amount) => api.put(`/lifecycle/cases/${caseId}/tracking/fedex`, amount === undefined ? { trackingNumber } : { trackingNumber, amount }),
 }
 
@@ -882,12 +883,16 @@ export const eligibilityApi = {
 // GoHighLevel pipeline board. The browser only ever talks to our backend; the backend does all GHL syncing.
 export const ghlApi = {
   status: () => api.get('/integrations/ghl/status'),
+  // admins: is the sync alive, are webhooks arriving, what is stuck and why; and "try everything that is waiting again now"
+  syncHealth: () => api.get('/integrations/ghl/sync-health'),
+  retryAll: () => api.post('/integrations/ghl/sync/retry-all'),
   board: (params = {}) => api.get('/integrations/ghl/board', { params }),
   stageList: () => api.get('/integrations/ghl/stages'),
   caseStages: (caseId) => api.get(`/integrations/ghl/cases/${caseId}/stages`),
   moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
   // the team's answer after a move to Submitted (FedEx): send = true e-mails the client that the case is complete, false sends nothing
-  submittedNotice: (caseId, send) => api.post(`/integrations/ghl/cases/${caseId}/submitted-notice`, { send }),
+  // method: 'online' | 'fedex' - how the case was submitted (picks which e-mail goes out); left out = the original FedEx e-mail
+  submittedNotice: (caseId, send, method) => api.post(`/integrations/ghl/cases/${caseId}/submitted-notice`, method ? { send, method } : { send }),
   setupPreview: () => api.get('/integrations/ghl/setup'),
   confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
   addNewStages: () => api.post('/integrations/ghl/setup/add-stages'),

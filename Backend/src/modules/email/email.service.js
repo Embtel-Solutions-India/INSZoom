@@ -23,12 +23,14 @@ const SUPPRESS_ALL_EXEMPT = new Set(["password-reset"]);
 // Everyone who works in the Admin portal ("team_member" is the generic internal-team marker some call sites pass instead of a User.role).
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "team_member"];
 // Emails that go to the client and to nobody else (see sendTemplateEmail).
-const CLIENT_ONLY_TEMPLATES = new Set(["checklist-incomplete-reminder", "checklist-received-client", "petition-client-review", "supporting-document-client-review", "case-submitted-client", "case-fedex-number-client"]);
+const CLIENT_ONLY_TEMPLATES = new Set(["checklist-incomplete-reminder", "checklist-received-client", "petition-client-review", "supporting-document-client-review", "case-submitted-client", "case-submitted-online-client", "case-uscis-receipt-number-client", "case-fedex-number-client"]);
 const TEMPLATE_AUDIENCE = {
   "case-created-client": "client",
   "checklist-incomplete-reminder": "client",
   "checklist-received-client": "client",
   "case-submitted-client": "client",
+  "case-submitted-online-client": "client",
+  "case-uscis-receipt-number-client": "client",
   "case-fedex-number-client": "client",
   "petition-client-review": "client",
   "petition-feedback-received": "team_member",
@@ -106,6 +108,8 @@ const TEMPLATES = {
   "case-created-client": require("./templates/case-created-client"),
   "checklist-incomplete-reminder": require("./templates/checklist-incomplete-reminder"),
   "case-submitted-client": require("./templates/case-submitted-client"),
+  "case-submitted-online-client": require("./templates/case-submitted-online-client"),
+  "case-uscis-receipt-number-client": require("./templates/case-uscis-receipt-number-client"),
   "case-fedex-number-client": require("./templates/case-fedex-number-client"),
   "checklist-received-client": require("./templates/checklist-received-client"),
   "petition-client-review": require("./templates/petition-client-review"),
@@ -285,7 +289,7 @@ async function resolveCustomization(templateKey, { to, data, caseId, adminLogin 
  * point for the rest of the app — no controller/service should ever build
  * HTML or talk to a provider directly.
  */
-async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
+async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole, skipRepeatCheck = false } = {}) {
   data = { ...data, portalLink: data.portalLink || defaultPortalLink(templateKey, recipientRole, caseId) };
   // [system.set_password_link] / [system.login_link]: the exact pages the client's email button opens.
   const clientOrigin = portalUrl("client");
@@ -322,7 +326,7 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     const outside = await caseAudience.isOutsideCaseTeam({ userId, email: to, caseId }).catch(() => false);
     if (outside) return skip("not_case_team", "the recipient is not on this case's team");
   }
-  if (caseId && !emailPolicy.NEVER_THROTTLED.has(templateKey)) {
+  if (caseId && !skipRepeatCheck && !emailPolicy.NEVER_THROTTLED.has(templateKey)) {
     const windowMs = triggerRegistry.getTrigger(templateKey)?.cooldownMs || emailPolicy.DEFAULT_COOLDOWN_MS;
     const repeated = await emailPolicy.recentlySent({ templateKey, to, caseId, windowMs }).catch(() => false);
     if (repeated) return skip("repeat", "the same email was already sent for this case a moment ago");

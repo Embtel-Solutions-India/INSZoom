@@ -117,6 +117,17 @@ exports.fedexTracking = async (req, res) => {
   }
 };
 
+// PUT /cases/:caseId/tracking/receipt { receiptNumber } - the USCIS receipt number of a case submitted online (asked when the case moves to Submitted and the team says "online"); quiet like the FedEx one.
+exports.receiptTracking = async (req, res) => {
+  try {
+    const caseData = await loadCase(req.params.caseId, req.user);
+    const filing = await TrackingService.setReceiptNumber(caseData, req.body?.receiptNumber, req.user, req);
+    return respond(res, 200, { filing });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
 exports.tracking = async (req, res) => {
   try {
     const caseData = await loadCase(req.params.caseId, req.user);

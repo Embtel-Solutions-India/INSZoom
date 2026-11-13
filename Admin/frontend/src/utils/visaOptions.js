@@ -49,6 +49,8 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
   // Indian Timeline Cases section: OCI (its subtype is chosen in the New case form)
   { value: 'oci', label: 'OCI - Overseas Citizen of India', canonicalLabel: 'OCI' },
+  { value: 'uspassportminor', label: 'US Passport Renewal for Minors', canonicalLabel: 'US-PASSPORT-MINOR' },
+  { value: 'indianetourist', label: 'Indian E-Tourist Visa', canonicalLabel: 'INDIAN-E-TOURIST-VISA' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
@@ -181,10 +183,16 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 }
 // Indian Timeline Cases: single-person, no forms. Each visa type here has subtypes; the New case form shows a subtype dropdown and the subtype decides the checklist
 // (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
-export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci'])
+export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci', 'uspassportminor', 'indianetourist'])
 export const INDIAN_TIMELINE_SUBTYPES = {
-  oci: [{ value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen by birth and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },
+  oci: [{ value: 'OCI_MINOR_FOREIGN_CITIZEN_HELD', label: 'Minor Foreign citizen and held Indian passport', description: 'For minor foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
+    { value: 'OCI_SPOUSE_OF_FOREIGN_ORIGIN', label: 'OCI Checklist for Spouse of Foreign Origin', description: 'For eligible foreign-origin applicants applying for OCI registration through marriage to an Indian citizen or an OCI cardholder.' },
+    { value: 'OCI_MINOR_FOREIGN_CITIZEN_NEVER_HELD', label: 'Minor Foreign citizen and never held Indian passport', description: 'For minor foreign citizens who have never held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
+    { value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen by birth and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },
     { value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'Adult Foreign citizen and held Indian passport', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' }],
+  indianetourist: [{ value: 'INDIAN_ETOURIST_BUSINESS', label: 'Business Visa', description: 'Indian Business Visa application questionnaire and mandatory document checklist.' },
+    { value: 'INDIAN_ETOURIST_SUBTYPE_2', label: 'Second subtype (checklist not yet configured)', description: 'No checklist is assigned until the questionnaire for this subtype is provided.' }],
+  uspassportminor: [{ value: 'US_PASSPORT_MINOR_DS11', label: 'US Passport Renewal for Minors (DS-11, under age 16)', description: 'DS-11 passport application checklist for a child under age 16: first-time applications and renewal/replacement of a Passport Book and/or Card.' }],
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow
 export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])

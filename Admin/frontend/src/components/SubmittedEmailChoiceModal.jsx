@@ -10,9 +10,11 @@ const REASONS = {
   no_client_login: 'This case has no client login to e-mail, so nothing was sent.',
   employer_matter: 'This is an employer matter, so nothing was sent. Move the employee cases instead.',
   not_at_submitted: 'The case is no longer at Submitted (FedEx), so nothing was sent.',
+  queued_until_activation: 'The invited employee has not activated their login yet. Their e-mail is queued and goes out when they activate; the employer has been e-mailed.',
 }
 
-export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = '', onDone }) {
+export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = '', method = 'fedex', onDone }) {
+  const online = method === 'online'
   const [choice, setChoice] = useState('') // 'send' | 'skip'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -24,7 +26,7 @@ export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = 
     setBusy(true)
     setError('')
     try {
-      const response = await ghlApi.submittedNotice(caseId, choice === 'send')
+      const response = await ghlApi.submittedNotice(caseId, choice === 'send', online ? 'online' : undefined)
       const result = response.data || {}
       if (choice === 'send' && !result.sent) {
         setNotSent({ text: REASONS[result.reason] || 'The e-mail could not be sent. You can try again now.', retry: !REASONS[result.reason] })
@@ -39,7 +41,9 @@ export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = 
   }
 
   const options = [
-    { value: 'send', title: 'Send the client an e-mail', text: 'Tell the client that their case is complete and has been submitted. If a FedEx tracking number was entered, it is included in the same e-mail.' },
+    { value: 'send', title: 'Send the client an e-mail', text: online
+        ? 'Tell the client that their case is complete and has been submitted online. If the USCIS receipt number was entered, it is included in the same e-mail.'
+        : 'Tell the client that their case is complete and has been submitted. If a FedEx tracking number was entered, it is included in the same e-mail.' },
     { value: 'skip', title: "Don't inform the client", text: 'No e-mail will be sent to the client about this.' },
   ]
 
@@ -51,7 +55,7 @@ export default function SubmittedEmailChoiceModal({ caseId, caseNumber, label = 
         </div>
         <h2 id="submitted-email-title" className="text-center text-xl font-bold text-foreground">Tell the client their case is complete?</h2>
         <p className="mt-2 text-center text-sm leading-6 text-muted-foreground">
-          <span className="font-semibold text-foreground">{caseNumber}{label ? ` · ${label}` : ''}</span> has moved to Submitted (FedEx).
+          <span className="font-semibold text-foreground">{caseNumber}{label ? ` · ${label}` : ''}</span> has moved to Submitted{online ? ' (online)' : ' (FedEx)'}.
           Choose whether the client should get an e-mail about it.
         </p>
 

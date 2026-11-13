@@ -309,6 +309,8 @@ connectDB()
     const eodReportMaintenance = startEodReportMaintenance();
     const weeklyReviewReminder = startWeeklyReviewReminder();
     const everydayReminders = startEverydayReminders();
+    // sends the e-mails held for clients who had not set a password yet, one a minute, once they have (never skipped, only delayed)
+    const deferredEmailWorker = require("./modules/email/deferredEmail.service").startDeferredEmailWorker();
     const ghlLeadPipelineSweep = startGhlLeadPipelineSweep();
     const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
     const uscisEditionUpgrade = startUSCISEditionUpgradeJob(withJobLock);

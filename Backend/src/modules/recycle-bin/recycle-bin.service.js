@@ -140,6 +140,8 @@ async function restoreEntry(entryId, actor) {
     } catch (error) {
       logger.warn("recycle_bin_audit_failed", { error: error.message });
     }
+    // a restored case gets its GoHighLevel card back, in the same stage (queued; never fails or slows the restore)
+    try { setImmediate(() => require("../../integrations/ghl/ghlRestore").enqueueRestoreForCases(entry.caseIds).catch(() => {})); } catch (_error) { /* GHL is an addition */ }
     return { caseNumbers: entry.caseNumbers, caseIds: entry.caseIds, restored };
   } catch (error) {
     await RecycleBinEntry.updateOne({ _id: entry._id, status: "restoring" }, { $set: { status: "in_bin", lastError: error.message } });

@@ -124,6 +124,8 @@ exports.createCustomLibraryQuestion = async (req, res, next) => {
 // sync templates. POST /defaults/seed is the explicit "reconcile every built-in template now" admin action below.
 exports.listDefaultTemplates = async (req, res, next) => {
   try {
+    // a built-in checklist that no case has used yet is created here (only the absent ones), so the page always lists every checklist; never fails the page
+    await questionnaireService.ensureMissingBuiltInTemplates(req.user, req).catch(() => {});
     const templates = await Questionnaire.find({ isTemplate: true, latestVersion: true, status: { $ne: "archived" } })
       .select("key title description visaType visaTypes status isDefault checklistRole version")
       .sort({ key: 1 })

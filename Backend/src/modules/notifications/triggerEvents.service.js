@@ -57,12 +57,16 @@ function portalLinkFor(trigger, caseId) {
 
 // Users for an audience. Case-scoped audiences come from the loaded case
 // context; admin / super_admin are role-wide by nature.
+// A login that is active, OR a client who simply has not set a password yet (mustSetPassword): their e-mails are held until they do (deferredEmail.service.js), never dropped.
+// An account an admin deactivated (isActive false and no pending invitation) is still left out.
+const ACTIVE_OR_AWAITING_ACTIVATION = { $or: [{ isActive: { $ne: false } }, { mustSetPassword: true, role: "client" }] };
+
 async function resolveAudienceUsers(audience, ctx, onlyIds, caseScoped = false) {
   // A call site can pin an audience to specific users (e.g. only the attorney
   // who was just assigned/removed, not every attorney on the case).
   if (Array.isArray(onlyIds)) {
     if (!onlyIds.length) return [];
-    return User.find({ _id: { $in: onlyIds }, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
+    return User.find({ _id: { $in: onlyIds }, ...ACTIVE_OR_AWAITING_ACTIVATION }).select("_id email role name displayName isDemoData +password").lean();
   }
   if (audience === "admin" || audience === "super_admin") {
     // A notice about a CASE never goes to every admin / super admin - only the case's own team hears about it (caseAudience.js).
@@ -71,7 +75,7 @@ async function resolveAudienceUsers(audience, ctx, onlyIds, caseScoped = false) 
   }
   const ids = ctx.people?.[audience] || [];
   if (!ids.length) return [];
-  return User.find({ _id: { $in: ids }, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
+  return User.find({ _id: { $in: ids }, ...ACTIVE_OR_AWAITING_ACTIVATION }).select("_id email role name displayName isDemoData +password").lean();
 }
 
 // Should this person be EMAILED (in-app + push are separate and always sent)?
@@ -90,7 +94,8 @@ function emailDecision(trigger, user, custom, ctx) {
   if (!(custom || trigger.emailAuto)) return { send: false, reason: "not_automatic" };
   if (user.isDemoData || ctx.isDemoData) return { send: false, reason: "demo_data" };
   if (!user.email || emailPolicy.undeliverableReason(user.email)) return { send: false, reason: "undeliverable_address" };
-  if (trigger.audience === "client" && !user.password) return { send: false, reason: "account_not_activated" };
+  // not skipped, only DELAYED: held until the client sets a password, then sent one minute apart (deferredEmail.service.js)
+  if (trigger.audience === "client" && !user.password) return { send: false, defer: true, reason: "account_not_activated" };
   return { send: true };
 }
 
@@ -108,6 +113,14 @@ async function deliver(trigger, user, { ctx, caseId, actor, data, covered, req }
   const emailAlreadySent = Boolean(covered?.emailed);
   const decision = emailDecision(trigger, user, custom, ctx);
   const emailWanted = decision.send && !emailAlreadySent;
+  const emailDeferred = Boolean(decision.defer) && !emailAlreadySent;
+  if (emailDeferred) {
+    try {
+      await require("../email/deferredEmail.service").enqueue({ user, templateKey: emailKey, data: mergedData, caseId, triggeredBy: actor, event: trigger.event });
+    } catch (error) {
+      logger.error("deferred_email_enqueue_failed", { event: trigger.event, userId: idOf(user), error: error.message });
+    }
+  }
 
   const title = registry.substitute(trigger.push.title, liveCtx, { escape: false });
   const message = registry.substitute(trigger.push.message, liveCtx, { escape: false });
@@ -190,4 +203,4 @@ function emitInBackground(event, options) {
   setImmediate(() => { emit(event, options).catch(() => null); });
 }
 
-module.exports = { emit, emitInBackground, resolveAudienceUsers, linkFor, portalLinkFor };
+module.exports = { emit, emitInBackground, resolveAudienceUsers, linkFor, portalLinkFor, emailDecision };

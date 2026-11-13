@@ -5,8 +5,9 @@
 //   2. a later pass (at least GHL_DELETE_CONFIRM_MS, default 2 minutes) asks GHL again; only if the opportunity is STILL gone is the case deleted
 //      through the normal permanent-deletion path (files, accounts, linked records), without queueing a second GHL deletion.
 // An opportunity that turns out to exist after all just clears the flag. GHL_DELETE_CASES_REMOVED_IN_GHL=false switches the deleting off
-// (the cases are then only flagged, the previous behavior). THIS IS THE DEFAULT: the deleting only happens when
-// GHL_DELETE_CASES_REMOVED_IN_GHL=true, because a real case must never be removed automatically.
+// (the cases are then only flagged). From 2026-11-13 the deleting is ON by default: the case does NOT disappear for good - it goes to the Recycle Bin
+// (30 days), and restoring it from the bin brings its GHL card back in the same stage (see ghlRestore.js). When the bin is switched off
+// (RECYCLE_BIN_ENABLED=false) nothing is deleted automatically: a card removed in GHL then only FLAGS its case.
 
 const logger = require("../../utils/logger");
 const Case = require("../../models/Case");
@@ -15,9 +16,8 @@ const { GHLApiError } = require("./ghlClient");
 const { ghlSystemActor } = require("./ghlSystemActor");
 
 const confirmMs = () => Number(process.env.GHL_DELETE_CONFIRM_MS || 2 * 60 * 1000);
-// OFF unless explicitly switched on: no real case is ever deleted automatically. A card missing from GHL only FLAGS its case (needs attention);
-// a person deletes the case here if they want it gone. Set GHL_DELETE_CASES_REMOVED_IN_GHL=true to turn automatic deleting on.
-const isEnabled = () => process.env.GHL_DELETE_CASES_REMOVED_IN_GHL === "true";
+// ON unless GHL_DELETE_CASES_REMOVED_IN_GHL=false, and only while the Recycle Bin is on (so the case can always be restored).
+const isEnabled = () => process.env.GHL_DELETE_CASES_REMOVED_IN_GHL !== "false" && require("../../modules/recycle-bin/recycle-bin.service").enabled();
 
 /** Pure: has a flagged case waited long enough to be re-checked and (if still gone) deleted? */
 function isReadyToConfirm(deletedInGhlAt, now = Date.now()) {

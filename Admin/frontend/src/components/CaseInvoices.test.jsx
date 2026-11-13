@@ -5,62 +5,69 @@ const api = { get: vi.fn(), post: vi.fn(), delete: vi.fn() }
 vi.mock('../services/api', () => ({ default: { get: (...a) => api.get(...a), post: (...a) => api.post(...a), delete: (...a) => api.delete(...a) } }))
 import CaseInvoices from './CaseInvoices'
 
-const invoice = { _id: 'i1', fileName: 'Invoice-1.pdf', mimeType: 'application/pdf', size: 20480, createdAt: '2026-11-07T10:00:00Z', uploadedBy: { name: 'Asha' } }
+const fromGhl = { url: 'https://connect.intuit.com/t/abc?locale=en_US&utm_source=sharelink', source: 'ghl', addedAt: '2026-11-07T10:00:00Z' }
+const added = { url: 'https://example.com/invoice/2', source: 'crm', addedAt: '2026-11-08T10:00:00Z' }
+const reply = (urls) => ({ data: { data: { urls } } })
 
 beforeEach(() => {
-  api.get.mockReset().mockImplementation((url) => (url.includes('/file') ? Promise.resolve({ data: new Blob(['x'], { type: 'application/pdf' }) }) : Promise.resolve({ data: { data: [invoice] } })))
-  api.post.mockReset().mockResolvedValue({ data: { data: invoice } })
-  api.delete.mockReset().mockResolvedValue({ data: { success: true } })
-  global.URL.createObjectURL = vi.fn(() => 'blob:x')
-  global.URL.revokeObjectURL = vi.fn()
+  api.get.mockReset().mockResolvedValue(reply([fromGhl, added]))
+  api.post.mockReset().mockResolvedValue(reply([fromGhl, added]))
+  api.delete.mockReset().mockResolvedValue(reply([fromGhl]))
 })
 
-describe('CaseInvoices', () => {
-  it('lists the invoices of the case with View and Download', async () => {
+describe('CaseInvoices (invoice URLs)', () => {
+  it('lists the invoice links: the one from GoHighLevel and the ones added here, each opening in a new browser tab', async () => {
     render(<CaseInvoices caseId="c1" title="B1 · Asha" onClose={() => {}} />)
-    expect(await screen.findByText('Invoice-1.pdf')).toBeTruthy()
-    expect(api.get).toHaveBeenCalledWith('/case-invoices/c1')
-    expect(screen.getByText('View')).toBeTruthy()
-    expect(screen.getByLabelText('Download Invoice-1.pdf')).toBeTruthy()
+    expect(await screen.findByText(fromGhl.url)).toBeTruthy()
+    expect(api.get).toHaveBeenCalledWith('/case-invoices/c1/urls')
+    expect(screen.getByText(/From GoHighLevel/)).toBeTruthy()
+    expect(screen.getByText(/Added here/)).toBeTruthy()
+    const link = screen.getByText(fromGhl.url).closest('a')
+    expect(link.getAttribute('href')).toBe(fromGhl.url)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toContain('noopener')
   })
 
-  it('shows an empty state', async () => {
-    api.get.mockResolvedValue({ data: { data: [] } })
+  it('no upload and no file list any more', async () => {
     render(<CaseInvoices caseId="c1" onClose={() => {}} />)
-    expect(await screen.findByText('No invoices yet')).toBeTruthy()
+    await screen.findByText(fromGhl.url)
+    expect(screen.queryByTestId('invoice-file-input')).toBeNull()
+    expect(screen.queryByText('Add invoice')).toBeNull()
+    expect(screen.queryByText('Download')).toBeNull()
   })
 
-  it('uploads the chosen file to that case', async () => {
+  it('with no link it says so', async () => {
+    api.get.mockResolvedValue(reply([]))
     render(<CaseInvoices caseId="c1" onClose={() => {}} />)
-    await screen.findByText('Invoice-1.pdf')
-    fireEvent.change(screen.getByTestId('invoice-file-input'), { target: { files: [new File(['a'], 'new.pdf', { type: 'application/pdf' })] } })
-    await waitFor(() => expect(api.post).toHaveBeenCalled())
-    expect(api.post.mock.calls[0][0]).toBe('/case-invoices/c1')
+    expect(await screen.findByText('No invoice URL has been submitted currently.')).toBeTruthy()
   })
 
-  it('Delete asks first, then removes the invoice from the list', async () => {
+  it('Add invoice URL: a text box and an Add button; the new link joins the list; an invalid one shows the server message', async () => {
+    api.get.mockResolvedValue(reply([]))
+    api.post.mockResolvedValueOnce(reply([added]))
     render(<CaseInvoices caseId="c1" onClose={() => {}} />)
-    fireEvent.click(await screen.findByLabelText('Delete Invoice-1.pdf'))
-    expect(await screen.findByTestId('invoice-delete-confirm')).toBeTruthy()
-    expect(api.delete).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByText('Delete', { selector: 'button:not([aria-label])' }))
-    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/case-invoices/c1/i1'))
-    await waitFor(() => expect(screen.queryByText('Invoice-1.pdf')).toBeNull())
+    const input = await screen.findByTestId('invoice-url-input')
+    expect(screen.getByText('Add invoice URL')).toBeTruthy()
+    expect(screen.getByText('Add').closest('button').disabled).toBe(true)
+    fireEvent.change(input, { target: { value: '  https://example.com/invoice/2  ' } })
+    fireEvent.click(screen.getByText('Add'))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/case-invoices/c1/urls', { url: 'https://example.com/invoice/2' }))
+    expect(await screen.findByText(added.url)).toBeTruthy()
+    expect(screen.queryByText('No invoice URL has been submitted currently.')).toBeNull()
+    expect(input.value).toBe('')
+
+    api.post.mockRejectedValueOnce({ response: { data: { message: 'Enter a valid link starting with http:// or https://' } } })
+    fireEvent.change(input, { target: { value: 'nope' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/valid link/)
   })
 
-  it('Cancel keeps the invoice', async () => {
+  it('every link can be removed (the server writes the change to the GoHighLevel card too)', async () => {
     render(<CaseInvoices caseId="c1" onClose={() => {}} />)
-    fireEvent.click(await screen.findByLabelText('Delete Invoice-1.pdf'))
-    fireEvent.click(await screen.findByText('Cancel'))
-    expect(api.delete).not.toHaveBeenCalled()
-    expect(screen.getByText('Invoice-1.pdf')).toBeTruthy()
-  })
-
-  it('View opens the full-screen viewer, and the cross closes it', async () => {
-    render(<CaseInvoices caseId="c1" onClose={() => {}} />)
-    fireEvent.click(await screen.findByText('View'))
-    expect(await screen.findByTestId('invoice-viewer')).toBeTruthy()
-    fireEvent.click(screen.getByLabelText('Close invoice'))
-    await waitFor(() => expect(screen.queryByTestId('invoice-viewer')).toBeNull())
+    await screen.findByText(added.url)
+    expect(screen.getAllByLabelText('Remove invoice URL')).toHaveLength(2)
+    fireEvent.click(screen.getAllByLabelText('Remove invoice URL')[1])
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/case-invoices/c1/urls', { params: { url: added.url } }))
+    await waitFor(() => expect(screen.queryByText(added.url)).toBeNull())
   })
 })

@@ -60,13 +60,16 @@ async function loadColumn(scope, column, user, { limit, skip, values }) {
   ]);
   const [assignees, employers] = await Promise.all([loadAssignees(docs), loadEmployers(docs)]);
   const isAdmin = ADMIN_ROLES.has(normalizeRole(user.role));
-  // admins can retry a failed card: attach the failed job to it (one query for the whole column)
+  // admins see WHY a card is not in sync and can retry it now: attach its unfinished job (one query for the whole column). A change is never given up on, so a stuck card's job is
+  // "pending" (retrying) rather than "failed" - both can be retried at once.
   const failedJobs = new Map();
+  const problemJobs = new Map();
   if (isAdmin) {
-    const failedIds = docs.filter((doc) => doc.integrations?.ghl?.sync?.state === "failed").map((doc) => doc._id);
+    const needs = (doc) => { const g = doc.integrations?.ghl || {}; return g.sync?.state === "failed" || g.flags?.deletedInGhl || (g.sync?.state === "pending" && g.sync?.lastError); };
+    const failedIds = docs.filter(needs).map((doc) => doc._id);
     if (failedIds.length) {
-      const jobs = await GHLSyncJob.find({ caseId: { $in: failedIds }, status: "failed" }).sort({ updatedAt: 1 }).select("caseId").lean();
-      jobs.forEach((job) => failedJobs.set(String(job.caseId), String(job._id)));
+      const jobs = await GHLSyncJob.find({ caseId: { $in: failedIds }, status: { $in: ["failed", "pending"] }, type: { $ne: "delete_opportunity" } }).sort({ updatedAt: 1 }).select("caseId attempts lastError status").lean();
+      jobs.forEach((job) => { failedJobs.set(String(job.caseId), String(job._id)); problemJobs.set(String(job.caseId), job); });
     }
   }
   const cards = docs.map((doc) => {
@@ -74,7 +77,11 @@ async function loadColumn(scope, column, user, { limit, skip, values }) {
     const card = presentCard(doc, user, { employerUserId: employer?.user, employerContactName: employer?.name });
     card.assigneeName = doc.assignedCaseManager ? assignees.get(String(doc.assignedCaseManager)) || null : null;
     card.employerName = employer?.name || null;
-    if (isAdmin) { card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention); card.failedJobId = failedJobs.get(String(doc._id)) || null; }
+    if (isAdmin) {
+      card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention);
+      card.failedJobId = failedJobs.get(String(doc._id)) || null; // the job "Retry" acts on (failed OR still-retrying)
+      card.syncDetail = require("./ghlSyncState").describeSync(doc.integrations?.ghl, problemJobs.get(String(doc._id)));
+    }
     return card;
   });
   return { key: column.key, name: column.name, total, ...(values ? { value: values.get(column.key) || 0 } : {}), cards, hasMore: skip + cards.length < total };
