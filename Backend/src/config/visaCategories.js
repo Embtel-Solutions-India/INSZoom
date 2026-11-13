@@ -47,7 +47,7 @@ const VISA_CATEGORIES = {
   // Renunciation (Indian Timeline Cases): single-person, checklist-only, no forms; one checklist per subtype (questionnaires/renunciationMinorNoPassportChecklist.js for subtype 1)
   RENUNCIATION: { caseStructure: "single", forms: [], noForms: true, label: "Renunciation", subTypes: ["Adult Indian Citizen without Indian Passport", "Adult Indian Passport Holder", "Minor Indian Passport Holder", "Minor without Indian passport"] },
   // Indian Passport Renewal (Indian Timeline Cases): single-person, checklist-only, no forms; one checklist per subtype (questionnaires/indianPassportRenewalMinorChecklist.js for subtype 1)
-  "INDIAN-PASSPORT-RENEWAL": { caseStructure: "single", forms: [], noForms: true, label: "Indian Passport Renewal", subTypes: ["Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"] },
+  "INDIAN-PASSPORT-RENEWAL": { caseStructure: "single", forms: [], noForms: true, label: "Indian Passport Renewal", subTypes: ["Adult Indian In Lieu of damage Passport", "Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"] },
   "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "E-Visa"] },
   "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 

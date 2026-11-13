@@ -424,6 +424,19 @@ const FILING_TYPES = {
     visaType: "INDIAN-PASSPORT-RENEWAL",
     questionnaireKey: "indian_passport_renewal_adult_lost_passport_checklist",
   },
+  // Indian Passport Renewal subtype 6 = Adult Indian In Lieu of damage Passport (questionnaires/indianPassportRenewalAdultDamagePassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT",
+    label: "Adult Indian In Lieu of damage Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_damage_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

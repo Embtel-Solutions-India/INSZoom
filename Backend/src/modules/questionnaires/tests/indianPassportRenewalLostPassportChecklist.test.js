@@ -30,7 +30,7 @@ test("registration: subtype 2 of Indian Passport Renewal has its own checklist, 
   assert.equal(definition.title, "Indian Passport Renewal - Minor Indian in Lieu of lost Passport");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian In Lieu of damage Passport", "Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");

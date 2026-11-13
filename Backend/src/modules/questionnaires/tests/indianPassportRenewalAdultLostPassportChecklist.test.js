@@ -34,16 +34,16 @@ test("registration: subtype 5 of Indian Passport Renewal has its own checklist, 
   assert.equal(definition.title, "Indian Passport Renewal - Adult Indian In Lieu of lost Passport", "the title carries the visa type");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian In Lieu of damage Passport", "Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
   // isolation: four subtypes, four different checklists, none a default; the same-named Renunciation subtype keeps its own
   const renewal = filingTypes.listFilingTypes().filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL");
-  assert.equal(renewal.length, 5);
-  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes[0], "Adult Indian In Lieu of lost Passport", "alphabetical: it sorts first");
-  assert.equal(new Set(renewal.map((item) => item.questionnaireKey)).size, 5, "five different checklists");
+  assert.equal(renewal.length, 6);
+  assert.equal(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes.indexOf("Adult Indian In Lieu of lost Passport"), 1, "alphabetical: right after the damage one");
+  assert.equal(new Set(renewal.map((item) => item.questionnaireKey)).size, 6, "six different checklists");
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT"]);
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === ADULT_HOLDER_KEY).map((item) => item.key), ["INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER"], "the Adult Indian Passport Holder subtype keeps its own checklist");
   assert.equal(new Set([CHECKLIST_KEY, ADULT_HOLDER_KEY, MINOR_HOLDER_KEY, LOST_KEY, DAMAGE_KEY, RENUNCIATION_ADULT_HOLDER_KEY]).size, 6, "different from every other renewal checklist and from the Renunciation one");
