@@ -332,6 +332,19 @@ const FILING_TYPES = {
     visaType: "RENUNCIATION",
     questionnaireKey: "renunciation_adult_indian_without_passport_checklist",
   },
+  // Renunciation subtype 3 = Minor Indian Passport Holder (questionnaires/renunciationMinorHolderChecklist.js).
+  RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER: {
+    key: "RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER",
+    label: "Minor Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_minor_indian_passport_holder_checklist",
+  },
 };
 
 function listFilingTypes() {
