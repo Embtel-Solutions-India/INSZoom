@@ -32,7 +32,7 @@ test("registration: new visa type Indian Passport Renewal; subtype 1 has its own
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
   const registry = visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"];
-  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Indian Passport Renewal", ["Minor Indian Passport Holder"]]);
+  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Indian Passport Renewal", ["Minor Indian Passport Holder", "Minor Indian in Lieu of lost Passport"]]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");
@@ -41,7 +41,10 @@ test("registration: new visa type Indian Passport Renewal; subtype 1 has its own
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER"]);
   assert.notEqual(CHECKLIST_KEY, RENUNCIATION_MINOR_HOLDER_KEY);
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === RENUNCIATION_MINOR_HOLDER_KEY).map((item) => item.key), ["RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER"]);
-  assert.deepEqual(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").map((item) => item.key), [CHECKLIST_KEY]);
+  // one checklist per Indian Passport Renewal subtype, each reachable only through its own filing type
+  const renewal = filingTypes.listFilingTypes().filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL");
+  assert.equal(new Set(renewal.map((item) => item.questionnaireKey)).size, renewal.length, "no two subtypes share a checklist");
+  assert.deepEqual(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").map((item) => item.key).sort(), renewal.map((item) => item.questionnaireKey).sort());
   assert.equal(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes.length, 4, "Renunciation untouched");
   const others = new Set(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY).flatMap((item) => (item.questions || []).map((question) => question.key)));
   assert.ok(!definition.questions.some((question) => others.has(question.key)), "no question key shared with another checklist");
