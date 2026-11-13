@@ -319,6 +319,19 @@ const FILING_TYPES = {
     visaType: "RENUNCIATION",
     questionnaireKey: "renunciation_minor_without_indian_passport_checklist",
   },
+  // Renunciation subtype 2 = Adult Indian Citizen without Indian Passport (questionnaires/renunciationAdultNoPassportChecklist.js).
+  RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT: {
+    key: "RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT",
+    label: "Adult Indian Citizen without Indian Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_adult_indian_without_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

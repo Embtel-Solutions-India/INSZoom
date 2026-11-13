@@ -30,14 +30,17 @@ test("registration: new visa type Renunciation; subtype 1 has its own checklist,
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "RENUNCIATION", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
   const registry = visaCategories.VISA_CATEGORIES.RENUNCIATION;
-  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Renunciation", ["Minor without Indian passport"]]);
+  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Renunciation", ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport"]]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "RENUNCIATION").length, 0, "no USCIS forms");
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
   // isolation: no other filing type points at this checklist, and no other checklist is tied to the Renunciation visa type
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT"]);
-  assert.deepEqual(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").map((item) => item.key), [CHECKLIST_KEY]);
+  // one checklist per Renunciation subtype, each reachable only through its own filing type
+  const renunciation = filingTypes.listFilingTypes().filter((item) => item.visaType === "RENUNCIATION");
+  assert.equal(new Set(renunciation.map((item) => item.questionnaireKey)).size, renunciation.length, "no two subtypes share a checklist");
+  assert.deepEqual(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").map((item) => item.key).sort(), renunciation.map((item) => item.questionnaireKey).sort());
   const others = new Set(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY).flatMap((item) => (item.questions || []).map((question) => question.key)));
   assert.ok(!definition.questions.some((question) => others.has(question.key)), "no question key shared with another checklist");
   assert.equal(new Set(definition.questions.map((question) => question.key)).size, definition.questions.length, "no duplicate keys");

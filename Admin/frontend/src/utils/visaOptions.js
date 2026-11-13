@@ -193,7 +193,8 @@ export const INDIAN_TIMELINE_SUBTYPES = {
     { value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'Adult Foreign citizen and held Indian passport', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' }],
   indianetourist: [{ value: 'INDIAN_ETOURIST_BUSINESS', label: 'Business Visa', description: 'Indian Business Visa application questionnaire and mandatory document checklist.' },
     { value: 'INDIAN_ETOURIST_SUBTYPE_2', label: 'E-Visa', description: 'Indian E-Tourist Visa (E-Visa) questionnaire and mandatory document checklist.' }],
-  renunciation: [{ value: 'RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT', label: 'Minor without Indian passport', description: 'Renunciation of Indian citizenship: checklist and questionnaire for a minor applicant without an Indian passport.' }],
+  renunciation: [{ value: 'RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT', label: 'Minor without Indian passport', description: 'Renunciation of Indian citizenship: checklist and questionnaire for a minor applicant without an Indian passport.' },
+    { value: 'RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT', label: 'Adult Indian Citizen without Indian Passport', description: 'Renunciation of Indian citizenship: checklist and questionnaire for an adult Indian citizen who does not hold an Indian passport.' }],
   uspassportminor: [{ value: 'US_PASSPORT_MINOR_DS11', label: 'US Passport Renewal for Minors (DS-11, under age 16)', description: 'DS-11 passport application checklist for a child under age 16: first-time applications and renewal/replacement of a Passport Book and/or Card.' }],
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow
