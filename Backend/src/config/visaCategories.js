@@ -45,7 +45,7 @@ const VISA_CATEGORIES = {
   "US-PASSPORT-MINOR": { caseStructure: "single", forms: [], noForms: true, label: "US Passport Renewal for Minors", subTypes: ["US Passport Renewal for Minors (DS-11, under age 16)"] },
   // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, no forms; subtype 1 Business Visa (questionnaires/indianEtouristBusinessChecklist.js), subtype 2 E-Visa (questionnaires/indianEtouristEvisaChecklist.js)
   // Renunciation (Indian Timeline Cases): single-person, checklist-only, no forms; one checklist per subtype (questionnaires/renunciationMinorNoPassportChecklist.js for subtype 1)
-  RENUNCIATION: { caseStructure: "single", forms: [], noForms: true, label: "Renunciation", subTypes: ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder"] },
+  RENUNCIATION: { caseStructure: "single", forms: [], noForms: true, label: "Renunciation", subTypes: ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder", "Adult Indian Passport Holder"] },
   "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "E-Visa"] },
   "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 

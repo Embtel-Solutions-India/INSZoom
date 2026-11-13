@@ -31,15 +31,15 @@ test("registration: subtype 3 of Renunciation has its own checklist, named after
   assert.equal(definition.title, "Minor Indian Passport Holder", "the checklist is named after its subtype");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "RENUNCIATION", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes, ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes, ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder", "Adult Indian Passport Holder"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "RENUNCIATION").length, 0, "no USCIS forms");
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
   // isolation: every Renunciation subtype is tied to its OWN checklist and no other; none is a default, so a subtype never receives another's checklist
   const renunciation = filingTypes.listFilingTypes().filter((item) => item.visaType === "RENUNCIATION");
-  assert.equal(renunciation.length, 3);
-  assert.equal(new Set(renunciation.map((item) => item.questionnaireKey)).size, 3, "three different checklists");
+  assert.equal(renunciation.length, 4);
+  assert.equal(new Set(renunciation.map((item) => item.questionnaireKey)).size, 4, "four different checklists");
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER"]);
   assert.deepEqual(new Set([CHECKLIST_KEY, MINOR_NO_KEY, ADULT_NO_KEY]).size, 3);
   for (const item of VISA_TEMPLATE_DEFINITIONS.filter((entry) => entry.visaType === "RENUNCIATION")) assert.equal(item.isDefault, false, `${item.key} is never a default`);

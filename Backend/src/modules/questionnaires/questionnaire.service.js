@@ -32,6 +32,7 @@ const { INDIAN_ETOURIST_EVISA_DEFINITIONS } = require("./indianEtouristEvisaChec
 const { RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS } = require("./renunciationMinorNoPassportChecklist");
 const { RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS } = require("./renunciationAdultNoPassportChecklist");
 const { RENUNCIATION_MINOR_HOLDER_DEFINITIONS } = require("./renunciationMinorHolderChecklist");
+const { RENUNCIATION_ADULT_HOLDER_DEFINITIONS } = require("./renunciationAdultHolderChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2457,6 +2458,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS,
   ...RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS,
   ...RENUNCIATION_MINOR_HOLDER_DEFINITIONS,
+  ...RENUNCIATION_ADULT_HOLDER_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the

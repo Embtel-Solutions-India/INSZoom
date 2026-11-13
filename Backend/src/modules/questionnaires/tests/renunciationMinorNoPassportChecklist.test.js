@@ -30,7 +30,7 @@ test("registration: new visa type Renunciation; subtype 1 has its own checklist,
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "RENUNCIATION", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
   const registry = visaCategories.VISA_CATEGORIES.RENUNCIATION;
-  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Renunciation", ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder"]]);
+  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Renunciation", ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder", "Adult Indian Passport Holder"]]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "RENUNCIATION").length, 0, "no USCIS forms");
