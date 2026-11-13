@@ -459,7 +459,9 @@ async function toneRankStage() {
 }
 
 function buildCaseSort(query = {}) {
-  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "_id";
+  // Default = creation order by the case's creation DATE (then _id), not by _id alone: a case rebuilt in place (e.g. converted to another visa type) gets a newer _id but keeps its original creation date,
+  // and must stay where its case number puts it instead of jumping to the top.
+  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "createdAt";
   const direction = String(query.sortOrder || query.order || "desc").toLowerCase() === "asc" ? 1 : -1;
   return sortBy === "_id" ? { _id: direction } : { [sortBy]: direction, _id: direction };
 }
@@ -1119,6 +1121,27 @@ async function withInviteStatus(childCases, principal) {
   });
 }
 
+// The Cases list shows a person under "Client". An employer matter whose employer name has not been written yet would show a blank cell, so - when one of its employees is named - the list shows that
+// employee instead: `listContact` = { name, email } of the matter's first named employee (oldest first). One batched query for the whole page; additive; a failure leaves the rows exactly as they were.
+async function attachEmployeeNameToUnnamedEmployerMatters(rows) {
+  try {
+    const unnamed = (rows || []).filter((row) => row?.caseRole === "principal" && row?.caseStructure === "employer_employee" && !String(row.clientName || "").trim());
+    if (!unnamed.length) return;
+    const children = await Case.find({ parentCase: { $in: unnamed.map((row) => row._id) }, caseRole: "employee", status: { $nin: ["removed", "archived"] } })
+      .select("parentCase caseRole clientName clientEmail employeeIdentity pendingEmployee createdAt").sort({ createdAt: 1 }).lean();
+    const byParent = new Map();
+    for (const child of children) {
+      const contact = employeeContact(child);
+      if (!contact?.name || byParent.has(String(child.parentCase))) continue;
+      byParent.set(String(child.parentCase), { name: contact.name, email: contact.email });
+    }
+    for (const row of unnamed) {
+      const contact = byParent.get(String(row._id));
+      if (contact) row.listContact = contact;
+    }
+  } catch (_error) { /* the list simply keeps its blank cell */ }
+}
+
 async function linkCases(caseData, linkedCaseId, relationship, user, notes, req) {
   const linkedCase = await Case.findById(linkedCaseId);
   if (!linkedCase) {
@@ -1259,6 +1282,7 @@ module.exports = {
   populateCaseQueryForClient,
   clientFilingShipment,
   clientFilingReceipt,
+  attachEmployeeNameToUnnamedEmployerMatters,
   clientFilingShipmentsFor,
   reopenCase,
   resolveTeamLeadForCase,

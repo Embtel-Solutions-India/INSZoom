@@ -2957,11 +2957,15 @@ async function reconcileDefinition(definition, systemUser, req) {
         patch.active = true;
         patch.isActive = true;
       }
-      if (Object.keys(patch).length) {
+      // The legacy `showIf` field is a mirror of the question's OLD conditionalLogic. When the definition no longer carries it, a stale mirror must go: left in place it keeps
+      // pointing at a question that may no longer exist, and the client then hides this question (an upload "disappears" from the checklist) whatever the definition says now.
+      const staleShowIf = Boolean(existing.showIf?.field) && !question.showIf?.field
+        && !adminEdits.isEdited(editedFields, "conditionalLogic") && !adminEdits.isEdited(editedFields, "showIf");
+      if (Object.keys(patch).length || staleShowIf) {
         ops.push({
           updateOne: {
             filter: { _id: existing._id },
-            update: { $set: { ...patch, updatedBy: systemUser._id } },
+            update: { $set: { ...patch, updatedBy: systemUser._id }, ...(staleShowIf ? { $unset: { showIf: "" } } : {}) },
           },
         });
       }

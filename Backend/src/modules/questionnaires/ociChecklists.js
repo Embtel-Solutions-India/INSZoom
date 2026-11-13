@@ -8,8 +8,8 @@
 // The checklist is NOT a default template of the OCI visa type (isDefault false): a later OCI subtype must never be handed the wrong subtype's checklist; the subtype's
 // own filing-type entry names exactly which checklist a case gets.
 //
-// Requiredness: a question that is shown is required unless marked optional; every conditional question carries conditionalLogic, so it is never required while hidden. "N/A" is
-// an ordinary text answer wherever a question is free text (the opening instruction); a document category that does not apply is simply not shown for that applicant.
+// Exactly the questions of the supplied checklist, every one ALWAYS visible (no show-when rules); core items required, situational ones optional. "N/A" is an ordinary text
+// answer wherever a question is free text (the opening instruction).
 const { buildQuestion } = require("./definitionHelpers");
 const { COUNTRIES } = require("../../config/geoOptions");
 
@@ -38,10 +38,6 @@ const INSTRUCTIONS = [
 ];
 
 const key = (name) => `oci_adult_${name}`;
-const rule = (name, operator, value) => ({ questionKey: key(name), operator, ...(value === undefined ? {} : { value }) });
-const all = (...rules) => ({ mode: "all", rules, groups: [] });
-const any = (...rules) => ({ mode: "any", rules, groups: [] });
-const eq = (name, value) => all(rule(name, "equals", value));
 
 const SPECS = [];
 const add = (section, name, label, type, extras = {}) => SPECS.push({ section, name, label, type, required: extras.required !== false, ...extras });
@@ -59,131 +55,98 @@ const col = (columnKey, label, type = "text", extras = {}) => ({ key: columnKey,
 // ---- Instructions (informational; shown at the top of the checklist - not answer fields) ----
 // (carried by the checklist description below)
 
-// ---- Applicant contact ----
+// ---- 1. Applicant Basic Contact Information ----
 text(S_CONTACT, "full_name", "Applicant Full Name");
 phone(S_CONTACT, "phone", "Phone Number");
 
-// ---- A. Personal and background ----
+// ---- 3A. Personal & Background Details ----
 select(S_A, "marital_status", "Marital Status", ["Single / Never Married", "Married", "Divorced", "Widowed", "Separated"]);
-text(S_A, "distinguishing_mark", "Visible Distinguishing Mark", { required: false, description: "Enter N/A if none." });
-select(S_A, "root_ancestor_relationship", "Relationship with Root Indian Ancestor", ["Self", "Father", "Mother", "Grandparent"]);
+text(S_A, "distinguishing_mark", "Visible Distinguishing Mark", { required: false });
+text(S_A, "root_ancestor_relationship", "Relationship with Root Indian Ancestor", { description: "e.g., Self / Father / Mother / Grandparent" });
 country(S_A, "country_of_birth", "Country of Birth");
 text(S_A, "place_of_birth", "Place of Birth (Province/Town/City)");
 country(S_A, "current_nationality", "Current Nationality");
 
-// ---- B. Family ----
+// ---- 3B. Family Information ----
 text(S_B, "father_name", "Father's Full Name");
 country(S_B, "father_nationality", "Father's Nationality");
-text(S_B, "father_occupation", "Father's Occupation");
+text(S_B, "father_occupation", "Father's Occupation", { required: false });
 text(S_B, "mother_name", "Mother's Full Name");
 country(S_B, "mother_nationality", "Mother's Nationality");
-text(S_B, "mother_occupation", "Mother's Occupation");
-yesNo(S_B, "spouse_based_oci", "Are you applying for OCI on the basis of an Indian spouse / spouse's OCI card?");
-const SPOUSE_APPLIES = any(rule("marital_status", "equals", "Married"), rule("spouse_based_oci", "equals", "Yes"));
-text(S_B, "spouse_name", "Spouse's Full Name", { cond: SPOUSE_APPLIES });
-date(S_B, "spouse_dob", "Spouse's Date of Birth", { cond: SPOUSE_APPLIES });
-country(S_B, "spouse_nationality", "Spouse's Nationality", { cond: SPOUSE_APPLIES });
-text(S_B, "spouse_occupation", "Spouse's Occupation", { cond: SPOUSE_APPLIES });
-date(S_B, "marriage_date", "Marriage Date", { cond: SPOUSE_APPLIES });
+text(S_B, "mother_occupation", "Mother's Occupation", { required: false });
+yesNo(S_B, "spouse_based_oci", "Are you applying OCI on the basis of an Indian Spouse/Spouse's OCI card?");
+text(S_B, "spouse_name", "Spouse's Full Name", { required: false });
+date(S_B, "spouse_dob", "Spouse's Date of Birth", { required: false });
+country(S_B, "spouse_nationality", "Spouse's Nationality", { required: false });
+text(S_B, "spouse_occupation", "Spouse's Occupation", { required: false });
+date(S_B, "marriage_date", "Marriage Date", { required: false });
 
-// ---- C. Employment ----
-text(S_C, "current_occupation", "Current Occupation / Designation", { description: "Enter N/A if not applicable." });
-select(S_C, "employment_situation", "Current employment situation", ["Employed", "Self-employed / Business owner", "Retired", "Student", "Never employed or self-employed"]);
-longText(S_C, "employer_name_address", "Employer Name and Office Address", { cond: eq("employment_situation", "Employed") });
-phone(S_C, "employer_phone", "Employer Contact Number", { cond: eq("employment_situation", "Employed") });
-text(S_C, "retired_organization", "If Retired, Department / Office / Organization", { cond: eq("employment_situation", "Retired") });
+// ---- 3C. Employment & Occupation Details ----
+text(S_C, "current_occupation", "Current Occupation / Designation");
+longText(S_C, "employer_name_address", "Employer Name & Office Address", { required: false });
+phone(S_C, "employer_phone", "Employer Contact Number", { required: false });
+text(S_C, "retired_organization", "If Retired, Dept / Office / Organization", { required: false });
 
-// ---- D. Prior OCI history and relatives ----
+// ---- 3D. Prior OCI History & Relatives in India ----
 yesNo(S_D, "prior_oci_applied", "Have you or any member of your family applied for OCI registration earlier?");
-group(S_D, "prior_oci_applications", "Previous OCI applications", {
+group(S_D, "prior_oci_applications", "If Yes, details", {
   itemLabel: "Application", addLabel: "+ Add Application", summaryFields: ["name", "reference_number"],
-  columns: [col("name", "Name"), col("relationship", "Relationship"), col("reference_number", "Reference Number"), col("date_applied", "Date When Applied", "date"), col("place_applied", "Place Where Applied"), col("status", "Application Status")],
-}, { cond: eq("prior_oci_applied", "Yes") });
-yesNo(S_D, "oci_surrendered_or_cancelled", "Have you ever surrendered an OCI card or had a previous OCI card cancelled?");
-longText(S_D, "oci_surrender_details", "Please give details", { cond: eq("oci_surrendered_or_cancelled", "Yes") });
-group(S_D, "relatives_in_india", "Family members / relatives currently residing in India", {
+  columns: [col("name", "Name / Relationship"), col("reference_number", "Reference no."), col("date_applied", "Date when applied (DD/MM/YYYY)", "date"), col("place_applied", "Place where applied"), col("status", "Status")],
+}, { required: false, description: "Fill in only if you answered Yes above." });
+yesNo(S_D, "oci_surrendered_or_cancelled", "Have you ever surrendered or had a previous OCI Card cancelled?");
+longText(S_D, "oci_surrender_details", "If Yes, details", { required: false, description: "Fill in only if you answered Yes above." });
+group(S_D, "relatives_in_india", "Details of family members / relatives currently residing in India (if any)", {
   itemLabel: "Relative", addLabel: "+ Add Relative", summaryFields: ["name", "relationship"],
   columns: [col("name", "Relative Name"), col("relationship", "Relationship"), col("age", "Age", "number", { min: 0, max: 130, step: "1" }), col("address", "Present Address in India", "textarea")],
-}, { required: false, description: "Optional. Leave empty (or enter N/A below in your notes) if you have no relatives residing in India." });
+}, { required: false, description: "Leave empty if you have no relatives currently residing in India." });
 
-// ---- Documents ----
-file(S_DOCS, "doc_digital_photo", "Digital Photograph", {
-  description: "Digital photograph - white background; dark-colored attire; taken no more than two months ago; shoulders clearly visible; no glare or shadows on the face or anywhere in the photograph; high-quality HD photograph. (If you cannot upload it here, send it by email as instructed by your case manager.)",
-});
-file(S_DOCS, "doc_signature", "Signature", {
-  description: "Sign on a plain white sheet of paper with a dark-colored pen; make sure the signature is clear and properly visible; scan the signed page in high quality. (If you cannot upload it here, send it by email as instructed by your case manager.)",
-});
+// ---- 2. Required Document Checklist: exactly 14 items, in the questionnaire's order ----
+// Every question is always visible (no show-when rules). Each category is ONE entry (a file question accepts several files); the questionnaire's guideline text is the hint.
+// Core documents are required; the ones the guidelines describe as situational ("only applies to", "if applicable", "if ever obtained") are optional.
+const lines = (...items) => items.join("\n");
+// The platform makes any item with "passport" in its name required (passportInformation.js); this one applies only to non-US passport holders, so it opts out explicitly.
+const PASSPORT_OPT_OUT = new Set(["doc_legal_status_usa"]);
+const doc = (name, label, description, required = false) => file(S_DOCS, name, label, { required, description, ...(PASSPORT_OPT_OUT.has(name) ? { passportOptOut: true } : {}) });
+doc("doc_photo_signature", "Digital Photograph & Signature", lines(
+  "Part 1: Photograph Requirements",
+  "- Use a white background and wear dark-colored attire.",
+  "- The photograph must be no older than two months.",
+  "- Your shoulders must be clearly visible.",
+  "- Ensure there is no glare or shadow on your face or anywhere in the photograph.",
+  "- Please provide a high-quality HD photograph via email.",
+  "Part 2: Signature Requirements",
+  "- Please sign on a plain white sheet of paper using a dark-colored pen.",
+  "- Ensure your signature is clear and properly visible.",
+  "- Please scan the signed page in high quality and send it to us via email."
+), true);
 add(S_DOCS, "physical_photos_ack", "Physical Photographs", "radio", {
   options: [{ label: "I will provide three identical physical passport-sized photographs when the application is lodged", value: "confirmed" }],
-  description: "Three identical physical passport-sized photographs, 2 inches × 2 inches, white background. They are submitted physically at the time of application lodging - do not upload them here.",
+  description: "Three (3) identical physical passport-sized photographs (2 inch x 2 inch, white background) to be submitted at the time of application lodging.",
 });
-file(S_DOCS, "doc_current_passport", "Current Valid Passport", { description: "Color copies of the first two and last two pages of your current valid passport. The passport must have at least nine months of validity remaining." });
-file(S_DOCS, "doc_last_indian_passport", "Last Held Indian Passport", { description: "A copy of the last Indian passport you held." });
+doc("doc_current_passport", "Current Valid Passport", "Color copy of the first two and last two pages of your current valid passport (must have at least 9 months validity remaining).", true);
+doc("doc_last_indian_passport", "Copy of Indian passport", "The last held Indian Passport", true);
+doc("doc_naturalization_certificate", "Copy of Naturalization Certificate", "The naturalization certificate should be duly signed at the designated space. If the applicant has acquired naturalization through parents and the applicant doesn't possess separate naturalization certificate, a notarized affidavit signed by both parents may be submitted along with copies of their naturalization certificates", true);
+doc("doc_surrender_certificate", "Copy of Surrender Certificate", "Note: This only applies to applicants who were naturalized from 2010 onwards.");
+doc("doc_legal_status_usa", "Legal Status in USA (Non-US Passport Holders)", "Color copy of Green Card (Front & Back), valid EAD card, or long-term US Visa. If extension is pending, submit I-797A / I-797C Notice along with the expired visa.");
+doc("doc_marital_status_proof", "Proof of Marital Status", lines(
+  "Copy of the marriage certificate, if married.",
+  "Copy of the divorce decree, if divorced. If re-married, include a copy of the marriage certificate.",
+  "Copy of the Death certificate, if the spouse is deceased.",
+  "If proof of marital status is not available, a notarized affidavit may be submitted, thereby confirming the marital status and indicating the reasons for nonavailability of requisite certificate."
+));
+doc("doc_name_change", "Proof of Name Change", "Legal Name Change Document from a local court or a duly notarized affidavit. Previous names must be stated in the application.");
+doc("doc_employment_verification", "Employment / Work Verification", lines(
+  "If an applicant is employed, a letter from the employer describing the job profile of the applicant may be provided.",
+  "If the applicant is self-employed / doing business, some documentary proof of self employment/business may be provided.",
+  "If the applicant is retired, some documentary proof regarding retirement and details of the last employer may be provided.",
+  "If the applicant is a student, some documentary proof, e. g. admission letter, may be provided.",
+  "If the applicant has never been employed/self-employed, a written statement may be submitted."
+));
+doc("doc_parents_spouse_oci_cards", "Parents' & Spouse OCI Cards", "Copies of OCI cards issued to parents and/or spouse (if applicable and available).");
+doc("doc_previous_indian_visa", "Previous Indian Visa", "Copy of previously issued Indian Visa, if ever obtained.");
+doc("doc_us_address_proof", "Proof of USA Address", "State-issued ID, Driver's License, Utility Bill (Water/Gas/Electric/Phone - under 3 months old), Valid Lease Agreement, Mortgage Statement, or recent Tax Return.", true);
+doc("doc_native_address_proof", "Native Address Proof (Non-US Nationals)", "Address proof from native/home country. If unavailable, submit a notarized statement detailing native address. Dual citizens must provide native address proof for both countries.");
 
-select(S_DOCS, "naturalization_basis", "How was naturalization acquired?", ["In my own right (I hold a naturalization certificate)", "Through my parents (no separate certificate)"]);
-const OWN_CERT = eq("naturalization_basis", "In my own right (I hold a naturalization certificate)");
-const PARENTS = eq("naturalization_basis", "Through my parents (no separate certificate)");
-add(S_DOCS, "naturalization_year", "Year of naturalization", "number", { min: 1900, max: 2100, step: "1", description: "Used to decide whether a surrender certificate applies (naturalized from 2010 onwards)." });
-file(S_DOCS, "doc_naturalization_certificate", "Naturalization Certificate", { cond: OWN_CERT, description: "A copy of the naturalization certificate. It must be signed in the designated space." });
-file(S_DOCS, "doc_parents_affidavit", "Notarized affidavit signed by both parents", { cond: PARENTS, description: "Instead of a separate certificate: a notarized affidavit signed by both parents." });
-file(S_DOCS, "doc_parents_naturalization_certificates", "Copies of both parents' naturalization certificates", { cond: PARENTS });
-file(S_DOCS, "doc_surrender_certificate", "Surrender Certificate", { cond: all(rule("naturalization_year", "gte", 2010)), description: "Applicable only to applicants who were naturalized from 2010 onwards." });
-
-yesNo(S_DOCS, "holds_us_passport", "Do you hold a U.S. passport?");
-const NO_US_PASSPORT = eq("holds_us_passport", "No");
-select(S_DOCS, "legal_status_document", "Legal status document you will provide", ["Green Card", "Employment Authorization Document (EAD)", "Long-term U.S. visa"], { cond: NO_US_PASSPORT });
-file(S_DOCS, "doc_green_card", "Green Card (front and back)", { cond: all(rule("holds_us_passport", "equals", "No"), rule("legal_status_document", "equals", "Green Card")) });
-file(S_DOCS, "doc_ead", "Valid Employment Authorization Document (EAD)", { cond: all(rule("holds_us_passport", "equals", "No"), rule("legal_status_document", "equals", "Employment Authorization Document (EAD)")) });
-file(S_DOCS, "doc_long_term_visa", "Long-term U.S. visa", { cond: all(rule("holds_us_passport", "equals", "No"), rule("legal_status_document", "equals", "Long-term U.S. visa")) });
-yesNo(S_DOCS, "visa_extension_pending", "Is a visa extension pending?", { cond: NO_US_PASSPORT });
-const EXTENSION_PENDING = all(rule("holds_us_passport", "equals", "No"), rule("visa_extension_pending", "equals", "Yes"));
-file(S_DOCS, "doc_extension_receipt", "I-797A or I-797C notice for the pending extension", { cond: EXTENSION_PENDING });
-file(S_DOCS, "doc_expired_visa", "Expired visa", { cond: EXTENSION_PENDING });
-
-// marital status evidence
-yesNo(S_DOCS, "remarried_after_divorce", "Did you remarry after a divorce?", { cond: eq("marital_status", "Married") });
-yesNo(S_DOCS, "marital_certificate_unavailable", "Is a required marital-status certificate unavailable?", { cond: any(rule("marital_status", "equals", "Married"), rule("marital_status", "equals", "Divorced"), rule("marital_status", "equals", "Widowed")) });
-// the "unavailable" question is optional to answer, so the evidence rules test for "not Yes"
-const certificateAvailable = (...statusRules) => all(rule("marital_certificate_unavailable", "not_equals", "Yes"), ...statusRules);
-file(S_DOCS, "doc_marriage_certificate", "Marriage certificate", { cond: certificateAvailable(rule("marital_status", "equals", "Married")) });
-file(S_DOCS, "doc_divorce_decree", "Divorce decree", { cond: { mode: "all", rules: [rule("marital_certificate_unavailable", "not_equals", "Yes")], groups: [any(rule("marital_status", "equals", "Divorced"), rule("remarried_after_divorce", "equals", "Yes"))] } });
-file(S_DOCS, "doc_death_certificate", "Death certificate of the spouse", { cond: certificateAvailable(rule("marital_status", "equals", "Widowed")) });
-file(S_DOCS, "doc_marital_affidavit", "Notarized affidavit confirming marital status", { cond: eq("marital_certificate_unavailable", "Yes"), description: "Explain why the required certificate is unavailable." });
-
-// name change
-yesNo(S_DOCS, "used_previous_name", "Have you ever used a previous name or legally changed your name?");
-group(S_DOCS, "previous_names", "Previous name(s)", {
-  itemLabel: "Previous name", addLabel: "+ Add Name", summaryFields: ["name"], columns: [col("name", "Previous name")],
-}, { cond: eq("used_previous_name", "Yes") });
-file(S_DOCS, "doc_name_change", "Proof of name change", { cond: eq("used_previous_name", "Yes"), description: "A legal name-change document from a local court, or a duly notarized affidavit." });
-
-// employment / work verification
-file(S_DOCS, "doc_employer_letter", "Employer letter describing your job profile", { cond: eq("employment_situation", "Employed") });
-file(S_DOCS, "doc_self_employment", "Documentary evidence of self-employment or business", { cond: eq("employment_situation", "Self-employed / Business owner") });
-file(S_DOCS, "doc_retirement_proof", "Documentary proof of retirement", { cond: eq("employment_situation", "Retired"), description: "Also give the details of your last employer in section C." });
-file(S_DOCS, "doc_student_proof", "Documentary proof of studies (for example an admission letter)", { cond: eq("employment_situation", "Student") });
-file(S_DOCS, "doc_never_employed_statement", "Written statement confirming you have never been employed or self-employed", { cond: eq("employment_situation", "Never employed or self-employed") });
-
-// OCI cards of family
-yesNo(S_DOCS, "family_holds_oci", "Do your parents and/or spouse hold OCI cards?", { required: false });
-file(S_DOCS, "doc_family_oci_cards", "Copies of the OCI cards of your parents and/or spouse", { cond: eq("family_holds_oci", "Yes"), required: false });
-
-// previous Indian visa
-yesNo(S_DOCS, "previous_indian_visa", "Have you ever been issued an Indian visa?");
-file(S_DOCS, "doc_previous_indian_visa", "Copy of the previously issued Indian visa", { cond: eq("previous_indian_visa", "Yes") });
-
-// US address proof
-select(S_DOCS, "us_address_proof_type", "U.S. address proof you will provide", ["State-issued ID", "Driver's license", "Utility bill (water, gas, electricity or telephone) dated within the last three months", "Valid lease agreement", "Mortgage statement", "Recent tax return"]);
-file(S_DOCS, "doc_us_address_proof", "Proof of U.S. address", { description: "Upload the document of the type selected above (only one is needed)." });
-
-// native address proof (non-US nationals)
-const NON_US = all(rule("current_nationality", "not_equals", "United States"), rule("current_nationality", "not_empty"));
-yesNo(S_DOCS, "dual_citizen", "Are you a dual citizen?", { cond: NON_US });
-file(S_DOCS, "doc_native_address_proof", "Proof of your address in your native / home country", { cond: NON_US, description: "If proof is unavailable, upload a notarized statement explaining your native address instead." });
-group(S_DOCS, "dual_citizen_countries", "Countries of citizenship and native address", {
-  itemLabel: "Country", addLabel: "+ Add Country", summaryFields: ["country"], columns: [col("country", "Country", "select", { options: COUNTRY_OPTIONS }), col("address", "Native address in that country", "textarea")],
-}, { cond: all(rule("current_nationality", "not_equals", "United States"), rule("dual_citizen", "equals", "Yes")), description: "Dual citizens give native-address proof for both countries." });
-file(S_DOCS, "doc_native_address_proof_second", "Proof of your address in your second country of citizenship", { cond: all(rule("current_nationality", "not_equals", "United States"), rule("dual_citizen", "equals", "Yes")) });
 
 function buildField(spec, order) {
   const common = {
@@ -191,11 +154,10 @@ function buildField(spec, order) {
     description: spec.description,
     options: spec.options,
     visibility: VISIBILITY,
-    ...(spec.cond ? { conditionalLogic: spec.cond } : {}),
   };
   const questionKey = key(spec.name);
   if (spec.type === "file") {
-    return buildQuestion(questionKey, spec.label, "file", spec.section, order, { ...common, evidenceCategory: "supporting_document", metadata: { documentType: questionKey, category: "supporting_document" } });
+    return buildQuestion(questionKey, spec.label, "file", spec.section, order, { ...common, evidenceCategory: "supporting_document", metadata: { documentType: questionKey, category: "supporting_document", ...(spec.passportOptOut ? { passportInformation: false } : {}) } });
   }
   if (spec.type === "number") {
     return buildQuestion(questionKey, spec.label, "number", spec.section, order, { ...common, metadata: { min: spec.min, max: spec.max, step: spec.step } });

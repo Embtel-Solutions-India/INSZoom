@@ -146,6 +146,21 @@ class ImmigrationKnowledgeEngineService {
     return true;
   }
 
+  /** False for another subtype's own checklist: a checklist owned by an Indian Timeline filing type applies only to a case whose filing type (petitionSubType) is that one. Every other checklist: true. */
+  static subtypeChecklistApplies(questionnaire = {}, caseData = {}) {
+    const filingTypes = require("../../config/filingTypes");
+    const owned = new Set(filingTypes.listFilingTypes().filter((type) => type.category === "indian_timeline" && type.questionnaireKey).map((type) => type.questionnaireKey));
+    if (!owned.has(questionnaire.key)) return true;
+    return filingTypes.getFilingType(caseData.petitionSubType)?.questionnaireKey === questionnaire.key;
+  }
+
+  /** Ids of the questionnaires that are a subtype's OWN, self-contained checklist (Indian Timeline types): every document it needs is one of its own upload questions, so none of them is also added to the case's separate document list. */
+  static selfContainedQuestionnaireIds(questionnaires = []) {
+    const filingTypes = require("../../config/filingTypes");
+    const owned = new Set(filingTypes.listFilingTypes().filter((type) => type.category === "indian_timeline" && type.questionnaireKey).map((type) => type.questionnaireKey));
+    return new Set(questionnaires.filter((item) => owned.has(item.key)).map((item) => idOf(item._id)));
+  }
+
   static async applicableQuestionnaires(caseData) {
     const candidates = await Questionnaire.find({
       isActive: { $ne: false },
@@ -166,6 +181,9 @@ class ImmigrationKnowledgeEngineService {
         return true;
       })
       .filter((item) => this.questionnaireApplies(item, caseData))
+      // An Indian Timeline subtype (an OCI subtype, US Passport Minor, an E-Tourist subtype) has its OWN checklist, named by its filing type: it is assigned only to a case of that subtype - never
+      // to another subtype of the same visa. (All the OCI checklists are scoped to the visa "OCI", so without this every one of them matched every OCI case and was assigned to it.)
+      .filter((item) => this.subtypeChecklistApplies(item, caseData))
       // Defense in depth: even if questionnaireApplies() matched, never let
       // a questionnaire whose declared visa scope excludes this case's visa
       // slip through (e.g. a template edited to add a second dimension
@@ -544,7 +562,9 @@ class ImmigrationKnowledgeEngineService {
     const questions = questionnaires.length
       ? await Question.find({ questionnaire: { $in: questionnaires.map((item) => item._id) }, active: true }).lean()
       : [];
-    const questionnaireRequirements = this.requirementsFromQuestionnaires(questionnaires, questions);
+    // The client sees exactly the checklist the team sees: a self-contained subtype checklist keeps its documents inside itself (never a second "Other documents" list built from them)
+    const selfContained = this.selfContainedQuestionnaireIds(questionnaires);
+    const questionnaireRequirements = this.requirementsFromQuestionnaires(questionnaires, selfContained.size ? questions.filter((question) => !selfContained.has(idOf(question.questionnaire))) : questions);
     const formRequirements = this.requirementsFromForms(templates);
     const requirements = {
       documents: uniqueBy([...questionnaireRequirements.documents, ...formRequirements.documents], (item) => normalize(item.documentType || item.name)),

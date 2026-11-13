@@ -17,7 +17,7 @@ import useUnreadMessages from "../hooks/useUnreadMessages";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
-  { label: "Tasks",      to: "/dashboard/tasks",     icon: TasksIcon },
+  { label: "Timeline",   to: "/dashboard/tasks",     icon: TasksIcon },
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Petition",   to: "/dashboard/petition",   icon: PetitionIcon },

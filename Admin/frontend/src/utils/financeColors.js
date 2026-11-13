@@ -13,7 +13,7 @@ export const FINANCE_COLORS = {
 // colours for categories (case types, case managers): vivid and distinct
 export const CATEGORY_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#F43F5E', '#06B6D4', '#EC4899', '#84CC16', '#F97316', '#6366F1', '#14B8A6', '#EAB308']
 
-// payment status -> label and dot colour (paid, partially_paid, pending = unpaid, no_fee)
+// payment status -> label and dot colour (paid, partially_paid, pending = unpaid, no_fee, invoice_added)
 export const FINANCE_STATUS = {
   paid: { label: 'Paid', color: FINANCE_COLORS.paid },
   partially_paid: { label: 'Partially paid', color: FINANCE_COLORS.partial },
@@ -22,6 +22,7 @@ export const FINANCE_STATUS = {
   overdue: { label: 'Overdue', color: FINANCE_COLORS.outstanding },
   refunded: { label: 'Refunded', color: FINANCE_COLORS.uscis },
   no_fee: { label: 'No fee set', color: FINANCE_COLORS.neutral },
+  invoice_added: { label: 'Invoice added', color: FINANCE_COLORS.total }, // invoice link(s) added, no fees set yet
 }
 
 // colours for the team performance charts

@@ -41,8 +41,8 @@ const PENDING_QUEUE_ROLES = ['super_admin', 'admin', 'team_lead']
 
 // An employee case has no client name/email of its own until the employee is invited; the employee's name and email (typed at creation or in the client
 // portal) fill the same two places. Everything else about the row is unchanged.
-const listName = (caseItem) => caseItem.clientName || caseItem.employeeContact?.name || ''
-const listEmail = (caseItem) => caseItem.clientEmail || caseItem.employeeContact?.email || ''
+const listName = (caseItem) => caseItem.clientName || caseItem.employeeContact?.name || caseItem.listContact?.name || ''
+const listEmail = (caseItem) => caseItem.clientEmail || caseItem.employeeContact?.email || caseItem.listContact?.email || ''
 
 // The two sidebar pages share this screen: Corporations (employer matters) and Clients (family + single-party matters).
 // With no caseGroup it is the all-cases list (/crm-cases).

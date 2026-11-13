@@ -90,7 +90,7 @@ export default function Tasks() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-2">
-        <h1 className="font-serif text-2xl font-bold text-foreground">Tasks</h1>
+        <h1 className="font-serif text-2xl font-bold text-foreground">Timeline</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {milestones.length ? `${completedCount} of ${milestones.length} completed` : "Your case's step-by-step progress."}
         </p>
@@ -101,7 +101,7 @@ export default function Tasks() {
           <TasksSkeleton />
         ) : !caseId ? (
           <div className="bg-card rounded-lg border border-card-border p-6 text-center">
-            <p className="text-sm text-muted-foreground">Tasks appear once your case has been created.</p>
+            <p className="text-sm text-muted-foreground">Your timeline appears once your case has been created.</p>
           </div>
         ) : (
           <TaskTimeline milestones={milestones} />

@@ -18,7 +18,6 @@ import StatusLegend from "../../components/checklist/StatusLegend";
 import EmployeeHandoffModal from "../../components/checklist/EmployeeHandoffModal";
 import SaveProgressNoticeModal from "../../components/questionnaire/SaveProgressNoticeModal";
 import CaseIntakeExtras from "../../components/checklist/CaseIntakeExtras";
-import SmartScanStep from "../../components/checklist/SmartScanStep";
 import QuestionInput from "../../components/questionnaire/QuestionInput";
 import StaffRequestedItems from "../../components/questionnaire/StaffRequestedItems";
 import PrefillBadge from "../../components/PrefillBadge";
@@ -242,7 +241,7 @@ export default function Documents() {
   const roleChecklistCount = visibleChecklists.filter((item) => item.targetRole === effectiveRole).length;
   const effectiveReferenceId = roleChecklistCount > 1 ? (activeReferenceId || visibleChecklists.find((item) => item.targetRole === effectiveRole)?.referenceId) : undefined;
 
-  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments, markUploaded } = useDocumentChecklist({ caseId: activeCaseId });
+  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments } = useDocumentChecklist({ caseId: activeCaseId });
 
   // Legacy single-role path — inert (caseId withheld, no fetch) once the new
   // architecture takes over for this case.
@@ -300,10 +299,6 @@ export default function Documents() {
   // rail nav can flag them and the page can auto-scroll to the first one.
   const [newSectionIds, setNewSectionIds] = useState(() => new Set());
   const prevSectionIdsRef = useRef(new Set());
-  // Smart Scan gate — "scan" shows SmartScanStep in place of the checklist
-  // below; "checklist" shows the normal checklist. See shouldShowScanStep
-  // further down (computed after every hook in this component has run).
-  const [scanStep, setScanStep] = useState("scan");
 
   // Handoff junction state — drives the EmployeeHandoffModal below.
   const assignment = activeCase?.questionnaireData?.masterData?.employeeQuestionnaireAssignment || {};
@@ -937,31 +932,7 @@ export default function Documents() {
     );
   }
 
-  // Smart Scan gate. Computed as a plain value (not a hook) after every
-  // hook call in this component — confirmed no useState/useEffect/useMemo/
-  // useCallback/useRef appears between here and the top of the function —
-  // so the early return below can never skip a hook. Matches the two other
-  // early returns already in this component (the employer-case-resolution
-  // branch and the employee/beneficiary caseRole branch just above).
-  const shouldShowScanStep = scanStep === "scan" && Boolean(activeCaseId) && !allRolesSubmitted && !questionnaireLoading;
-
-  const handleScanComplete = (completedScans) => {
-    completedScans.forEach(({ documentType, status, document }) => {
-      if (status === "done" && document) markUploaded(documentType, document);
-    });
-    reloadDocuments();
-    setScanStep("checklist");
-  };
-
   const hasSectionNav = sectionCounts.length > 0 || Boolean(employeeWaitingOnInvite);
-
-  if (shouldShowScanStep) {
-    return (
-      <div className="min-h-screen bg-background">
-        <SmartScanStep caseId={activeCaseId} onScanComplete={handleScanComplete} onSkip={() => setScanStep("checklist")} />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -986,15 +957,6 @@ export default function Documents() {
                 </div>
                 <span className="text-sm font-semibold text-foreground">{overall.done} of {overall.total} complete</span>
               </div>
-              {!allRolesSubmitted && overall.total > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setScanStep("scan")}
-                  className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary"
-                >
-                  Re-scan
-                </button>
-              )}
               <span aria-live="polite" role="status" data-testid="save-status" className={`text-xs font-semibold ${saveProgressState === "error" ? "text-destructive" : saveProgressState === "saved" && !hasUnsavedChanges ? "text-emerald-600" : "text-muted-foreground"}`}>
                 {uploadsInFlightCount > 0
                   ? `Uploading… (${uploadsInFlightCount} remaining)`
@@ -1069,9 +1031,10 @@ export default function Documents() {
       )}
 
       {/* With no checklist sections (a case whose checklist is only what the case manager requests), there is no section rail: the content is one centred column instead of being pushed right by an empty rail. */}
-      <div className={`mx-auto px-4 py-6 sm:px-6 ${hasSectionNav ? "max-w-7xl lg:grid lg:grid-cols-[240px_1fr] lg:gap-8" : "max-w-4xl"}`}>
-        {/* Desktop section nav — sticky rail */}
-        <nav aria-label="Checklist sections" className={hasSectionNav ? "hidden lg:block" : "hidden"}>
+      {/* The checklist is one centred column: no side rail of sections (a phone / tablet still has the "Jump to section" dropdown in the header). */}
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        {/* the old desktop section rail is no longer shown; kept hidden so nothing that points at it breaks */}
+        <nav aria-label="Checklist sections" className="hidden">
           <div className="sticky top-24 space-y-1 rounded-xl border border-border bg-card p-2">
             {presentRoleGroups.length > 1 ? (
               presentRoleGroups.map((roleGroup) => (
@@ -1130,8 +1093,14 @@ export default function Documents() {
           </div>
         </nav>
 
-        <main id="checklist-main" className="mt-4 space-y-8 lg:mt-0">
+        <main id="checklist-main" className="space-y-8">
           <StatusLegend />
+
+          {employeeWaitingOnInvite && (
+            <div className="flex items-center gap-2 rounded-xl bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700">
+              <span aria-hidden="true">⏳</span> Waiting on employee
+            </div>
+          )}
 
           {/* Premium Processing (Form I-907) - its own, clearly named section ABOVE the case's regular checklists */}
           <StaffRequestedItems caseId={activeCaseId} user={user} section="premium" />

@@ -808,7 +808,7 @@ export default function Dashboard() {
 
         {/* ── KPI tiles ── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard label="Tasks" value={openTaskCount ?? "—"} hint={openTaskCount === null ? "Loading" : openTaskCount ? `${closedTaskCount} of ${taskTotal} done` : "All done"} to="/dashboard/tasks" color={CHART_BLUE} />
+          <KpiCard label="Timeline" value={openTaskCount ?? "—"} hint={openTaskCount === null ? "Loading" : openTaskCount ? `${closedTaskCount} of ${taskTotal} done` : "All done"} to="/dashboard/tasks" color={CHART_BLUE} />
           <KpiCard label="Documents" value={documentCount ?? "—"} hint="Uploaded" to="/dashboard/documents" color={GREEN} />
           <KpiCard label="Messages" value={unreadMessages ?? "—"} hint="Unread" to="/dashboard/messages" color={PURPLE} />
           <KpiCard label="Profile" value={profileShown} hint={!profileKnown ? "Loading" : profilePercent === 100 ? "Complete" : "Finish to proceed"} to="/dashboard/profile" color={AMBER} />
