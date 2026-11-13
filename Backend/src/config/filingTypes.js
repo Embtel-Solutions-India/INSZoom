@@ -305,6 +305,20 @@ const FILING_TYPES = {
     visaType: "INDIAN-E-TOURIST-VISA",
     questionnaireKey: "indian_etourist_evisa_checklist",
   },
+  // Renunciation (Indian Timeline Cases): single-person, checklist-only, NO forms. One filing type (and one checklist) per subtype. Subtype 1 = Minor without Indian passport
+  // (questionnaires/renunciationMinorNoPassportChecklist.js). Each later subtype is added here with its own questionnaireKey.
+  RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT: {
+    key: "RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT",
+    label: "Minor without Indian passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_minor_without_indian_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

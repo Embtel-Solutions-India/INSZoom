@@ -51,6 +51,7 @@ const VISA_TYPE_OPTIONS = [
   { value: 'oci', label: 'OCI - Overseas Citizen of India', canonicalLabel: 'OCI' },
   { value: 'uspassportminor', label: 'US Passport Renewal for Minors', canonicalLabel: 'US-PASSPORT-MINOR' },
   { value: 'indianetourist', label: 'Indian E-Tourist Visa', canonicalLabel: 'INDIAN-E-TOURIST-VISA' },
+  { value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
