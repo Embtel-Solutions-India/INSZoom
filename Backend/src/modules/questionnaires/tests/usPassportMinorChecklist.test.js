@@ -33,7 +33,7 @@ test("registration: own checklist, client role, not a default, no forms, registe
   const registry = visaCategories.VISA_CATEGORIES["US-PASSPORT-MINOR"];
   assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms], ["single", [], true]);
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "US-PASSPORT-MINOR").length, 0);
-  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 5, "OCI untouched");
+  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 6, "OCI untouched");
   assert.equal(OCI_CHECKLIST_DEFINITIONS[0].questions.length, 43, "an existing checklist is unchanged");
   const others = VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY);
   const otherKeys = new Set(others.flatMap((item) => (item.questions || []).map((question) => question.key)));

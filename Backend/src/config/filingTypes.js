@@ -437,6 +437,19 @@ const FILING_TYPES = {
     visaType: "INDIAN-PASSPORT-RENEWAL",
     questionnaireKey: "indian_passport_renewal_adult_damage_passport_checklist",
   },
+  // OCI subtype 6 = OCI RENUNCIATION (questionnaires/ociRenunciationChecklist.js): a subtype of the existing OCI visa type, with its own checklist.
+  OCI_RENUNCIATION: {
+    key: "OCI_RENUNCIATION",
+    label: "OCI RENUNCIATION",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_renunciation_checklist",
+  },
 };
 
 function listFilingTypes() {

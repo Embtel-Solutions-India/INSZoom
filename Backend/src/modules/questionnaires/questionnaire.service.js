@@ -39,6 +39,7 @@ const { INDIAN_PASSPORT_RENEWAL_DAMAGE_PASSPORT_DEFINITIONS } = require("./india
 const { INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS } = require("./indianPassportRenewalAdultHolderChecklist");
 const { INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultLostPassportChecklist");
 const { INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultDamagePassportChecklist");
+const { OCI_RENUNCIATION_DEFINITIONS } = require("./ociRenunciationChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2471,6 +2472,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS,
   ...INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS,
   ...INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS,
+  ...OCI_RENUNCIATION_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the

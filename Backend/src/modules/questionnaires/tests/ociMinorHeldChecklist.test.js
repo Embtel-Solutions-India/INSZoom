@@ -36,7 +36,7 @@ test("fifth OCI subtype: own checklist, client role, not a default, no forms, no
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key));
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1);
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "OCI").length, 0);
-  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 5);
+  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 6);
   const others = [OCI_CHECKLIST_DEFINITIONS[0], OCI_BIRTH_CHECKLIST_DEFINITIONS[0], OCI_MINOR_CHECKLIST_DEFINITIONS[0], OCI_SPOUSE_CHECKLIST_DEFINITIONS[0]];
   assert.equal(others[0].questions.length, 43);
   const otherKeys = new Set(others.flatMap((item) => item.questions.map((question) => question.key)));

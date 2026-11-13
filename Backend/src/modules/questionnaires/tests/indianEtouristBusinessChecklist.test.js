@@ -40,7 +40,7 @@ test("registration: parent type, two selectable subtypes, only Business Visa has
   assert.equal(definition.isDefault, false);
   assert.equal(definition.checklistRole, "client");
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
-  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 5, "OCI untouched");
+  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 6, "OCI untouched");
   assert.equal(OCI_CHECKLIST_DEFINITIONS[0].questions.length, 43);
   const others = new Set(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY).flatMap((item) => (item.questions || []).map((question) => question.key)));
   assert.ok(!definition.questions.some((question) => others.has(question.key)));
