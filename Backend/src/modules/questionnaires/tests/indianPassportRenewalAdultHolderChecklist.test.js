@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS, CHECKLIST_KEY, SECTIONS, INSTRUCTIONS } = require("../indianPassportRenewalAdultHolderChecklist");
+const { INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS, CHECKLIST_KEY, SECTIONS } = require("../indianPassportRenewalAdultHolderChecklist");
 const { CHECKLIST_KEY: MINOR_HOLDER_KEY } = require("../indianPassportRenewalMinorChecklist");
 const { CHECKLIST_KEY: LOST_KEY } = require("../indianPassportRenewalLostPassportChecklist");
 const { CHECKLIST_KEY: DAMAGE_KEY } = require("../indianPassportRenewalDamagePassportChecklist");
@@ -34,15 +34,15 @@ test("registration: subtype 4 of Indian Passport Renewal has its own checklist, 
   assert.equal(definition.title, "Indian Passport Renewal - Adult Indian Passport Holder", "the title carries the visa type: Renunciation has a subtype of the same name");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");
   for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
   // isolation: four subtypes, four different checklists, none a default; the same-named Renunciation subtype keeps its own
   const renewal = filingTypes.listFilingTypes().filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL");
-  assert.equal(renewal.length, 4);
-  assert.equal(new Set(renewal.map((item) => item.questionnaireKey)).size, 4, "four different checklists");
+  assert.equal(renewal.length, 5);
+  assert.equal(new Set(renewal.map((item) => item.questionnaireKey)).size, 5, "five different checklists");
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER"]);
   assert.equal(new Set([CHECKLIST_KEY, MINOR_HOLDER_KEY, LOST_KEY, DAMAGE_KEY, RENUNCIATION_ADULT_HOLDER_KEY]).size, 5, "also different from the Renunciation subtype of the same name");
   assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === RENUNCIATION_ADULT_HOLDER_KEY).map((item) => item.key), ["RENUNCIATION_ADULT_INDIAN_PASSPORT_HOLDER"]);
@@ -57,7 +57,7 @@ test("registration: subtype 4 of Indian Passport Renewal has its own checklist, 
 test("sections, exact labels, options and counts", () => {
   assert.deepEqual(SECTIONS, definition.sections);
   assert.equal(SECTIONS.length, 5);
-  for (const line of INSTRUCTIONS) assert.ok(definition.description.includes(line), "the instructions text is carried");
+  assert.ok(!/IMPORTANT INSTRUCTIONS|Mandatory Document Requirement|intended to collect the information/i.test(definition.description), "the instructions paragraphs are not part of any checklist");
   assert.deepEqual(labelsOf(SECTIONS[0]), ["Applicant Name", "Phone Number", "E-mail ID"]);
   assert.deepEqual(labelsOf(SECTIONS[1]), [
     "Digital Photograph & Signature", "Physical Photographs", "Copy of the valid status in USA", "Copy of current Indian Passport", "Copy of Proof of address in USA", "Copy of Indian address proof",

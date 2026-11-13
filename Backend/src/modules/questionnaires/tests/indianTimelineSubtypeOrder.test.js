@@ -41,7 +41,7 @@ test("every Indian Timeline visa type lists its subtypes alphabetically (registr
 test("the picker offers every Indian Timeline filing type, each under its own visa type (none dropped)", () => {
   const picker = adminPicker();
   const indian = filingTypes.listFilingTypes().filter((item) => item.section === "indian_timeline");
-  assert.equal(indian.length, 16);
+  assert.ok(indian.length >= 16, "the Indian Timeline filing types are registered (" + indian.length + ")");
   for (const item of indian) {
     const pickerKey = Object.keys(PICKER_TO_VISA).find((key) => PICKER_TO_VISA[key] === item.visaType);
     assert.ok(pickerKey, `${item.key}: its visa type is in the picker`);

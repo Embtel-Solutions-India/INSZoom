@@ -411,6 +411,19 @@ const FILING_TYPES = {
     visaType: "INDIAN-PASSPORT-RENEWAL",
     questionnaireKey: "indian_passport_renewal_adult_holder_checklist",
   },
+  // Indian Passport Renewal subtype 5 = Adult Indian In Lieu of lost Passport (questionnaires/indianPassportRenewalAdultLostPassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT",
+    label: "Adult Indian In Lieu of lost Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_lost_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

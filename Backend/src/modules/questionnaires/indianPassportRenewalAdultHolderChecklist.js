@@ -4,18 +4,13 @@
 // own filing type (config/filingTypes.js) names this checklist, so a case gets it ONLY when this subtype is selected. The Renunciation visa type has a subtype of the same name, so
 // this checklist's title carries the visa type: "Indian Passport Renewal - Adult Indian Passport Holder".
 // Exactly the questions of the supplied checklist, every one ALWAYS visible (no show-when rules); core items required, situational ones optional. The supplied text is kept as hints;
-// the heading ("CHECKLIST FOR INDIAN PASSPORT RENEWAL") is not a question, and the "IMPORTANT INSTRUCTIONS" are the checklist's instructions text.
+// the heading ("CHECKLIST FOR INDIAN PASSPORT RENEWAL") is not a question, and the "IMPORTANT INSTRUCTIONS" paragraphs are NOT included (owner decision: no checklist carries them).
 const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 
 const CHECKLIST_KEY = "indian_passport_renewal_adult_holder_checklist";
 const SUBTYPE_LABEL = "Adult Indian Passport Holder";
 const CHECKLIST_TITLE = "Indian Passport Renewal - Adult Indian Passport Holder";
 const VISA_TYPE = "INDIAN-PASSPORT-RENEWAL";
-const INSTRUCTIONS = [
-  "The questions below are intended to collect the information required for your Indian Passport Renewal application. Please answer all applicable questions accurately and mark “N/A” for any questions that do not apply to you.",
-  "Please complete the questionnaire with as much accurate and detailed information as possible to enable us to prepare your passport renewal application correctly.",
-  "Mandatory Document Requirement: All supporting documents must be provided in COLOR, wherever applicable.",
-];
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 const VISIBILITY = { roles: ["client", ...STAFF_ROLES], portals: ["client", "admin"] };
 
@@ -192,7 +187,7 @@ function buildIndianPassportRenewalAdultHolderChecklist() {
     checklistRole: "client",
     isDefault: false, // assigned only by this subtype's own filing type
     reconcileMetadata: true,
-    description: `For an adult Indian passport holder applying for Indian Passport Renewal.\n\n${INSTRUCTIONS.map((line) => `• ${line}`).join("\n")}`,
+    description: "For an adult Indian passport holder applying for Indian Passport Renewal.",
     sections: SECTIONS,
     questions,
   };
@@ -200,4 +195,4 @@ function buildIndianPassportRenewalAdultHolderChecklist() {
 
 const INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS = [buildIndianPassportRenewalAdultHolderChecklist()];
 
-module.exports = { CHECKLIST_KEY, CHECKLIST_TITLE, SUBTYPE_LABEL, VISA_TYPE, INSTRUCTIONS, SECTIONS, INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS, buildIndianPassportRenewalAdultHolderChecklist };
+module.exports = { CHECKLIST_KEY, CHECKLIST_TITLE, SUBTYPE_LABEL, VISA_TYPE, SECTIONS, INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS, buildIndianPassportRenewalAdultHolderChecklist };
