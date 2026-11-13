@@ -28,6 +28,7 @@ const { OCI_SPOUSE_CHECKLIST_DEFINITIONS } = require("./ociSpouseChecklist");
 const { OCI_MINOR_HELD_CHECKLIST_DEFINITIONS } = require("./ociMinorHeldChecklist");
 const { US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS } = require("./usPassportMinorChecklist");
 const { INDIAN_ETOURIST_BUSINESS_DEFINITIONS } = require("./indianEtouristBusinessChecklist");
+const { INDIAN_ETOURIST_EVISA_DEFINITIONS } = require("./indianEtouristEvisaChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2449,6 +2450,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...OCI_MINOR_HELD_CHECKLIST_DEFINITIONS,
   ...US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS,
   ...INDIAN_ETOURIST_BUSINESS_DEFINITIONS,
+  ...INDIAN_ETOURIST_EVISA_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the

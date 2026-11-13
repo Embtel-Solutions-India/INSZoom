@@ -280,7 +280,7 @@ const FILING_TYPES = {
     questionnaireKey: "us_passport_minor_ds11_checklist",
   },
   // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, NO forms. Subtype 1 = Business Visa (its own checklist).
-  // Subtype 2 is a registered, selectable placeholder: questionnaireKey null = NO checklist is assigned until its questionnaire is supplied.
+  // Subtype 2 = E-Visa (its own checklist, questionnaires/indianEtouristEvisaChecklist.js).
   INDIAN_ETOURIST_BUSINESS: {
     key: "INDIAN_ETOURIST_BUSINESS",
     label: "Business Visa",
@@ -295,7 +295,7 @@ const FILING_TYPES = {
   },
   INDIAN_ETOURIST_SUBTYPE_2: {
     key: "INDIAN_ETOURIST_SUBTYPE_2",
-    label: "Second subtype (checklist not yet configured)",
+    label: "E-Visa",
     category: "indian_timeline",
     section: "indian_timeline",
     includesEad: false,
@@ -303,7 +303,7 @@ const FILING_TYPES = {
     fromStatus: null,
     toStatus: null,
     visaType: "INDIAN-E-TOURIST-VISA",
-    questionnaireKey: null,
+    questionnaireKey: "indian_etourist_evisa_checklist",
   },
 };
 

@@ -29,10 +29,10 @@ test("registration: parent type, two selectable subtypes, only Business Visa has
   const business = filingTypes.getFilingType("INDIAN_ETOURIST_BUSINESS");
   const second = filingTypes.getFilingType("INDIAN_ETOURIST_SUBTYPE_2");
   assert.deepEqual([business.visaType, business.questionnaireKey, business.label], ["INDIAN-E-TOURIST-VISA", CHECKLIST_KEY, "Business Visa"]);
-  assert.deepEqual([second.visaType, second.questionnaireKey], ["INDIAN-E-TOURIST-VISA", null]);
+  assert.deepEqual([second.visaType, second.questionnaireKey, second.label], ["INDIAN-E-TOURIST-VISA", "indian_etourist_evisa_checklist", "E-Visa"]);
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-E-TOURIST-VISA").length, 0, "no scaffold checklist for either subtype");
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1);
-  assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "INDIAN-E-TOURIST-VISA").length, 1, "the second subtype receives no checklist");
+  assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.visaType === "INDIAN-E-TOURIST-VISA").length, 2, "one checklist per subtype (Business Visa, E-Visa)");
   for (const entry of [business, second]) assert.ok(!filingTypes.groupedForSelection().standalone.some((item) => item.key === entry.key));
   const registry = visaCategories.VISA_CATEGORIES["INDIAN-E-TOURIST-VISA"];
   assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.subTypes.length], ["single", [], true, 2]);

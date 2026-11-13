@@ -43,8 +43,8 @@ const VISA_CATEGORIES = {
   OCI: { caseStructure: "single", forms: [], noForms: true, label: "OCI - Overseas Citizen of India", subTypes: ["Adult Foreign citizen and held Indian passport", "Adult Foreign citizen by birth and never held Indian passport", "Minor Foreign citizen and never held Indian passport", "OCI Checklist for Spouse of Foreign Origin", "Minor Foreign citizen and held Indian passport"] },
   // US Passport Renewal for Minors (Indian Timeline Cases): single-person, no forms; DS-11 data-collection checklist (questionnaires/usPassportMinorChecklist.js)
   "US-PASSPORT-MINOR": { caseStructure: "single", forms: [], noForms: true, label: "US Passport Renewal for Minors", subTypes: ["US Passport Renewal for Minors (DS-11, under age 16)"] },
-  // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, no forms; subtype 1 Business Visa (questionnaires/indianEtouristBusinessChecklist.js), subtype 2 not yet configured
-  "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "Second subtype (checklist not yet configured)"] },
+  // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, no forms; subtype 1 Business Visa (questionnaires/indianEtouristBusinessChecklist.js), subtype 2 E-Visa (questionnaires/indianEtouristEvisaChecklist.js)
+  "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "E-Visa"] },
   "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 
   // ─── EMPLOYER / EMPLOYEE VISAS ───────────────────────────────────────────
