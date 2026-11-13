@@ -5,7 +5,7 @@
 // ("Indian Passport Renewal - Minor Indian Passport Holder"): "Indian Passport Renewal - Minor Indian in Lieu of lost Passport".
 // Exactly the questions of the supplied checklist, every one ALWAYS visible (no show-when rules); core items required, situational ones optional. The supplied text is kept as hints;
 // the heading ("CHECKLIST FOR INDIAN PASSPORT RENEWAL") is not a question, and the "IMPORTANT INSTRUCTIONS" are the checklist's instructions text.
-const { buildQuestion } = require("./definitionHelpers");
+const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 
 const CHECKLIST_KEY = "indian_passport_renewal_minor_lost_passport_checklist";
 const SUBTYPE_LABEL = "Minor Indian in Lieu of lost Passport";
@@ -61,18 +61,18 @@ doc("doc_photo_signature", "Digital Photograph & Signature", lines(
   "- The photograph must be no older than two months.",
   "- Your shoulders must be clearly visible.",
   "- Ensure there is no glare or shadow on your face or anywhere in the photograph.",
-  "- Please provide a high-quality HD photograph.",
+  "- Please upload a high-quality HD photograph here.",
   "Part 2: Signature Requirements",
   "- Please sign on a plain white sheet of paper using a dark-colored pen.",
   "- Ensure your signature is clear and properly visible.",
-  "- Please scan the signed page in high quality and send it to us via email.",
-  "Note: If the minor cannot sign, please provide their left thumb impression. Kindly capture the impression using blue ink on a plain white sheet and send a clear photo of it."
+  "- Please scan the signed page in high quality and upload it here.",
+  "Note: If the minor cannot sign, please provide their left thumb impression. Kindly capture the impression using blue ink on a plain white sheet and upload a clear photo of it here."
 ), true);
 add(S1, "physical_photos_ack", "Physical Photographs", "radio", {
-  options: [{ label: "I will provide three identical physical passport-sized photographs when the application is submitted", value: "confirmed" }],
+  options: PHYSICAL_PHOTOS_OPTIONS,
   description: lines(
     "Please provide three (3) identical physical passport-sized photographs (2 inches × 2 inches) with a white background at the time of submitting your application.",
-    "Important: The physical photographs must be exactly the same as the photograph(s) you send to us."
+    "Important: The physical photographs must be exactly the same as the photograph(s) you upload here."
   ),
 });
 doc("doc_us_status", "Copy of the valid status in USA", lines(

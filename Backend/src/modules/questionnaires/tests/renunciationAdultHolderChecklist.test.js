@@ -70,7 +70,7 @@ test("sections, exact labels and counts", () => {
   assert.equal(q("emergency_contacts").repeatableConfig.min, 1, "at least one emergency contact");
   const photo = q("doc_photo_signature").description;
   assert.match(photo, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements/);
-  assert.ok(photo.includes("Please provide a high-quality HD photograph.") && photo.endsWith("send it to us."), "the stray spaces before the full stops are removed, the words are the supplied ones");
+  assert.ok(photo.includes("Please upload a high-quality HD photograph here.") && photo.endsWith("upload it here."), "the photo and signature are uploaded here (no e-mail wording)");
   assert.doesNotMatch(photo, /thumb|via email/);
   assert.match(q("physical_photos_ack").description, /Please ensure that all photos are identical and match the uploaded photo\.$/);
   assert.match(q("doc_address_proof").description, /ANY ONE required[\s\S]*Driving license \(FRONT AND BACK\)[\s\S]*Income Tax Return$/);

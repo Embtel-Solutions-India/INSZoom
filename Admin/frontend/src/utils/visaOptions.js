@@ -199,7 +199,8 @@ export const INDIAN_TIMELINE_SUBTYPES = {
     { value: 'RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER', label: 'Minor Indian Passport Holder', description: 'Renunciation of Indian citizenship: checklist and questionnaire for a minor applicant who holds an Indian passport.' },
     { value: 'RENUNCIATION_ADULT_INDIAN_PASSPORT_HOLDER', label: 'Adult Indian Passport Holder', description: 'Renunciation of Indian citizenship: checklist and questionnaire for an adult applicant who holds an Indian passport.' }],
   indianpassportrenewal: [{ value: 'INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER', label: 'Minor Indian Passport Holder', description: 'Indian Passport Renewal: document checklist and questionnaire for a minor Indian passport holder.' },
-    { value: 'INDIAN_PASSPORT_RENEWAL_MINOR_LOST_PASSPORT', label: 'Minor Indian in Lieu of lost Passport', description: 'Indian Passport Renewal: document checklist and questionnaire for a minor Indian in lieu of a lost passport.' }],
+    { value: 'INDIAN_PASSPORT_RENEWAL_MINOR_LOST_PASSPORT', label: 'Minor Indian in Lieu of lost Passport', description: 'Indian Passport Renewal: document checklist and questionnaire for a minor Indian in lieu of a lost passport.' },
+    { value: 'INDIAN_PASSPORT_RENEWAL_MINOR_DAMAGE_PASSPORT', label: 'Minor Indian in Lieu of damage Passport', description: 'Indian Passport Renewal: document checklist and questionnaire for a minor Indian in lieu of a damaged passport.' }],
   uspassportminor: [{ value: 'US_PASSPORT_MINOR_DS11', label: 'US Passport Renewal for Minors (DS-11, under age 16)', description: 'DS-11 passport application checklist for a child under age 16: first-time applications and renewal/replacement of a Passport Book and/or Card.' }],
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow

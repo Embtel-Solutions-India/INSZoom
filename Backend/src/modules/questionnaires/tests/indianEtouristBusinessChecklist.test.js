@@ -131,7 +131,7 @@ test("validation: date, email, phone; a complete applicant is accepted; omission
     applied_evisa: "No", visited_india: "No", permission_denied: "No", countries_10_years: "USA", saarc: "No", name_changed: "No",
     occupation: "Engineer", designation: "SE", employer_name: "Co", employer_address: "addr", employer_phone: "5125550101", military: "No",
     ref_name: "R", ref_address: "addr", ref_phone: "5125550102", emergency_name: "E", emergency_address: "addr", emergency_phone: "5125550103",
-    physical_photos: "confirmed",
+    physical_photos: require("../definitionHelpers").PHYSICAL_PHOTOS_LINE,
   });
   const result = validateResponse(definition, definition.questions, base, client);
   assert.deepEqual(result.errors, []);

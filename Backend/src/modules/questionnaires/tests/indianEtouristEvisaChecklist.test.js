@@ -95,7 +95,7 @@ test("no show-when rules: every question is always visible; exact required list;
   assert.equal(q("countries_10_years").description, "List all countries");
   assert.equal(q("port_arrival").description, "Airport / Seaport name");
   assert.equal(q("military_details").label, "If Yes give details");
-  assert.equal(q("doc_invitation").description, "Submission format: Email Attachment");
+  assert.equal(q("doc_invitation").description, "Submission format: Upload here");
   assert.equal(definition.title, "INDIAN E-TOURIST VISA (E-VISA) APPLICATION QUESTIONNAIRE");
 });
 

@@ -67,8 +67,8 @@ test("sections, exact labels and counts", () => {
   assert.equal(q("emergency_contacts").repeatable, true);
   assert.equal(q("emergency_contacts").repeatableConfig.min, 1, "at least one emergency contact");
   assert.match(q("doc_photo_signature").description, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements[\s\S]*left thumb impression/);
-  assert.ok(q("doc_photo_signature").description.endsWith("send a clear photo of it"), "the thumb note is exactly as supplied");
-  assert.match(q("physical_photos_ack").description, /exactly the same as the photograph\(s\) you send to us\.$/);
+  assert.ok(q("doc_photo_signature").description.endsWith("upload a clear photo of it here."), "the thumb note says to upload here (no e-mail)");
+  assert.match(q("physical_photos_ack").description, /exactly the same as the photograph\(s\) you upload here\.$/);
   assert.match(q("doc_address_proof").description, /ANY ONE required[\s\S]*Driving license \(FRONT AND BACK\)[\s\S]*affidavit of address proof/);
   assert.equal(q("doc_recent_indian_passport").description, "First three and last two pages of the most recent Indian passport.");
   assert.equal(q("father_passport_no").description, "If the applicant has gained naturalization through parents, please provide information below:");

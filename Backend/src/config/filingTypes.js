@@ -385,6 +385,19 @@ const FILING_TYPES = {
     visaType: "INDIAN-PASSPORT-RENEWAL",
     questionnaireKey: "indian_passport_renewal_minor_lost_passport_checklist",
   },
+  // Indian Passport Renewal subtype 3 = Minor Indian in Lieu of damage Passport (questionnaires/indianPassportRenewalDamagePassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_MINOR_DAMAGE_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_MINOR_DAMAGE_PASSPORT",
+    label: "Minor Indian in Lieu of damage Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_minor_damage_passport_checklist",
+  },
 };
 
 function listFilingTypes() {

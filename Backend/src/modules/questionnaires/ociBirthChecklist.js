@@ -2,7 +2,7 @@
 //   key "oci_adult_foreign_citizen_by_birth_checklist", question keys "oci_birth_<name>" (a different prefix from the first subtype, so the two never collide).
 // Same shape as the first subtype (questionnaires/ociChecklists.js, which is untouched): single-person, client role, NO USCIS forms, NO canonical mappings, not a default of the OCI
 // Every question is always visible to the client (no show-when rules) and optional everywhere, including Admin.
-const { buildQuestion } = require("./definitionHelpers");
+const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 const { COUNTRIES } = require("../../config/geoOptions");
 const INSTRUCTIONS = [
   "Complete the questionnaire thoroughly to enable accurate petition preparation.",
@@ -93,10 +93,10 @@ group(S_D, "relatives_in_india", "Details of family members / relatives currentl
 const PASSPORT_OPT_OUT = new Set(["doc_legal_status_usa", "doc_spouse_passport", "doc_parents_naturalization_passports"]);
 const doc = (name, label, description, required = false) => file(S_DOCS, name, label, { required, description, ...(PASSPORT_OPT_OUT.has(name) ? { passportOptOut: true } : {}) });
 doc("doc_digital_photo_signature", "1. Digital Photograph & Signature",
-  "Part 1 - Photograph: use a white background and wear dark-colored attire; the photograph must be no older than two months; your shoulders must be clearly visible; ensure there is no glare or shadow on your face or anywhere in the photograph; provide a high-quality HD photograph (upload it here, or email it if your case manager asks). Part 2 - Signature: sign on a plain white sheet of paper using a dark-colored pen; ensure your signature is clear and properly visible; scan the signed page in high quality (upload it here, or email it if your case manager asks).", true);
+  "Part 1 - Photograph: use a white background and wear dark-colored attire; the photograph must be no older than two months; your shoulders must be clearly visible; ensure there is no glare or shadow on your face or anywhere in the photograph; provide a high-quality HD photograph (upload it here). Part 2 - Signature: sign on a plain white sheet of paper using a dark-colored pen; ensure your signature is clear and properly visible; scan the signed page in high quality (upload it here).", true);
 add(S_DOCS, "physical_photos_ack", "2. Physical Photographs", "radio", {
   required: true,
-  options: [{ label: "I will provide three identical physical passport-sized photographs when the application is lodged", value: "confirmed" }],
+  options: PHYSICAL_PHOTOS_OPTIONS,
   description: "Three (3) identical physical passport-sized photographs (2 inch x 2 inch, white background) to be submitted at the time of application lodging. Do not upload them here.",
 });
 doc("doc_current_passport", "3. Current Valid Passport", "Color copy of the first two and last two pages of your current valid passport (must have at least 9 months validity remaining).", true);

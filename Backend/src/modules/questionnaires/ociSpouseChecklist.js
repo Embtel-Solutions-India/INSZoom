@@ -6,7 +6,7 @@
 // STAFF REVIEW: nothing here decides eligibility. An answer that may disqualify (not married, "No" to the spouse-based question, a marriage no longer subsisting, more than one living
 // spouse, the spouse's other living spouse) carries metadata.staffReview = [{ questionKey, operator, value, message }]; the Admin answers panel shows an amber "Needs staff review"
 // note under that answer. The client sees a non-blocking warning where the rule is a validation rule (marital status).
-const { buildQuestion } = require("./definitionHelpers");
+const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 const { COUNTRIES } = require("../../config/geoOptions");
 const { INSTRUCTIONS } = require("./ociBirthChecklist");
 
@@ -123,14 +123,14 @@ file(S_DOCS, "doc_photo_signature", "Digital Photograph & Signature", { descript
   "- The photograph must be no older than two months.",
   "- Your shoulders must be clearly visible.",
   "- Ensure there is no glare or shadow on your face or anywhere in the photograph.",
-  "- Please provide a high-quality HD photograph via email.",
+  "- Please upload a high-quality HD photograph here.",
   "Part 2: Signature Requirements",
   "- Please sign on a plain white sheet of paper using a dark-colored pen.",
   "- Ensure your signature is clear and properly visible.",
-  "- Please scan the signed page in high quality and send it to us via email."
+  "- Please scan the signed page in high quality and upload it here."
 ) });
 add(S_DOCS, "physical_photos_ack", "Physical Photographs", "radio", {
-  options: [{ label: "I will provide three identical physical passport-sized photographs when the application is lodged", value: "confirmed" }],
+  options: PHYSICAL_PHOTOS_OPTIONS,
   description: "Three (3) identical physical passport-sized photographs (2 inch x 2 inch, white background) to be submitted at the time of application lodging.",
 });
 file(S_DOCS, "doc_current_passport", "Current Valid Passport", { description: "Color copy of the first two and last two pages of your current valid passport (must have at least 9 months validity remaining)." });

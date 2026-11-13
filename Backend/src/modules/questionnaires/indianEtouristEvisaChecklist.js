@@ -156,10 +156,10 @@ text(SJ, "emergency_name", "Name", { description: "EMERGENCY CONTACT (HOME COUNT
 longText(SJ, "emergency_address", "Full Address & Relationship");
 phone(SJ, "emergency_phone", "Phone Number");
 
-// ---- K: the three documents (Email Attachment = uploaded here) ----
-file(SK, "doc_passport", "Current Valid Passport (Color scanned copy of First & Last page)", { description: "Submission format: Email Attachment" });
-file(SK, "doc_photo", "Recent Passport-Style Color Photograph (White background)", { description: "Submission format: Email Attachment" });
-file(SK, "doc_invitation", "Invitation Letter from Inviting Person/Host in India (If applicable)", { required: false, description: "Submission format: Email Attachment" });
+// ---- K: the three documents (uploaded here) ----
+file(SK, "doc_passport", "Current Valid Passport (Color scanned copy of First & Last page)", { description: "Submission format: Upload here" });
+file(SK, "doc_photo", "Recent Passport-Style Color Photograph (White background)", { description: "Submission format: Upload here" });
+file(SK, "doc_invitation", "Invitation Letter from Inviting Person/Host in India (If applicable)", { required: false, description: "Submission format: Upload here" });
 
 function buildField(spec, order) {
   const common = {

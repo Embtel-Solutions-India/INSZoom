@@ -30,7 +30,7 @@ test("registration: subtype 2 of Indian Passport Renewal has its own checklist, 
   assert.equal(definition.title, "Indian Passport Renewal - Minor Indian in Lieu of lost Passport");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Minor Indian Passport Holder", "Minor Indian in Lieu of lost Passport"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"].subTypes, ["Minor Indian Passport Holder", "Minor Indian in Lieu of lost Passport", "Minor Indian in Lieu of damage Passport"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");
@@ -75,8 +75,8 @@ test("sections, exact labels, options and counts", () => {
   assert.deepEqual(q("emergency_contacts").metadata.fields.map((f) => [f.label, f.type]), [["Full Name", "text"], ["Address", "textarea"], ["Contact No.", "phone"], ["Email ID", "email"]]);
   assert.equal(q("emergency_contacts").repeatableConfig.min, 1, "at least one emergency contact");
   const photo = q("doc_photo_signature").description;
-  assert.ok(photo.includes("Please provide a high-quality HD photograph.") && photo.includes("send it to us via email.") && photo.endsWith("send a clear photo of it."), "stray spaces removed and the double period made single");
-  assert.ok(q("physical_photos_ack").description.endsWith("the photograph(s) you send to us."));
+  assert.ok(photo.includes("Please upload a high-quality HD photograph here.") && photo.includes("and upload it here.") && photo.endsWith("upload a clear photo of it here."), "everything is uploaded here (no e-mail wording)");
+  assert.ok(q("physical_photos_ack").description.endsWith("the photograph(s) you upload here."));
   assert.match(q("doc_police_report").description, /^In case of Loss passport – Police report with the name of the applicant \(s\)[\s\S]*NOT BE MORE THAN 6 MONTHS OLD[\s\S]*how the passport is lost or stolen\.$/);
   assert.match(q("doc_us_status").description, /^\(Notarized\)[\s\S]*Green Card - FRONT AND BACK[\s\S]*Notarized hotel bill/);
   assert.equal(q("education_exact").description, "Exact education qualification");

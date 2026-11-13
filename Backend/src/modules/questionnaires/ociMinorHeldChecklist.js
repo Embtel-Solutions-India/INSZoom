@@ -2,7 +2,7 @@
 //   key "oci_minor_foreign_citizen_held_passport_checklist", question keys "oci_minorheld_<name>" (a prefix of its own: no key is shared with the other four subtypes).
 // Same shape as the other subtypes: single-person, client role, NO USCIS forms, NO canonical mappings, not a default of the OCI visa type (the subtype's own
 // filing-type entry names this checklist). Exactly the questions of the supplied checklist, every one ALWAYS visible (no show-when rules); core items required, situational optional.
-const { buildQuestion } = require("./definitionHelpers");
+const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 const { COUNTRIES } = require("../../config/geoOptions");
 const { INSTRUCTIONS } = require("./ociBirthChecklist");
 
@@ -79,15 +79,15 @@ file(S_DOCS, "doc_photo_signature", "Digital Photograph & Signature", { descript
   "- The photograph must be no older than two months.",
   "- Your shoulders must be clearly visible.",
   "- Ensure there is no glare or shadow on your face or anywhere in the photograph.",
-  "- Please provide a high-quality HD photograph via email.",
+  "- Please upload a high-quality HD photograph here.",
   "Part 2: Signature Requirements",
   "- Please sign on a plain white sheet of paper using a dark-colored pen.",
   "- Ensure your signature is clear and properly visible.",
-  "- Please scan the signed page in high quality and send it to us via email.",
-  "Note: If the minor cannot sign, please provide their left thumb impression. Kindly capture the impression using blue ink on a plain white sheet and send a clear photo of it via email."
+  "- Please scan the signed page in high quality and upload it here.",
+  "Note: If the minor cannot sign, please provide their left thumb impression. Kindly capture the impression using blue ink on a plain white sheet and upload a clear photo of it here."
 ) });
 add(S_DOCS, "physical_photos_ack", "Physical Photographs", "radio", {
-  options: [{ label: "I will provide three identical physical passport-sized photographs when the application is lodged", value: "confirmed" }],
+  options: PHYSICAL_PHOTOS_OPTIONS,
   description: "Three (3) identical physical passport-sized photographs (2 inch x 2 inch, white background) to be submitted at the time of application lodging.",
 });
 file(S_DOCS, "doc_current_passport", "Current Valid Passport", { description: "Color copy of the first two and last two pages of your current valid passport (must have at least 9 months validity remaining)." });

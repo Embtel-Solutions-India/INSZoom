@@ -32,7 +32,7 @@ test("registration: new visa type Indian Passport Renewal; subtype 1 has its own
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "INDIAN-PASSPORT-RENEWAL", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
   const registry = visaCategories.VISA_CATEGORIES["INDIAN-PASSPORT-RENEWAL"];
-  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Indian Passport Renewal", ["Minor Indian Passport Holder", "Minor Indian in Lieu of lost Passport"]]);
+  assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms, registry.label, registry.subTypes], ["single", [], true, "Indian Passport Renewal", ["Minor Indian Passport Holder", "Minor Indian in Lieu of lost Passport", "Minor Indian in Lieu of damage Passport"]]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "INDIAN-PASSPORT-RENEWAL").length, 0, "no USCIS forms");
@@ -85,7 +85,7 @@ test("sections, exact labels, options and counts", () => {
   assert.deepEqual([q("us_address").type, q("us_address_since").type, q("father_email").type, q("mother_contact_number").type, q("indian_relative_contact").type], ["address", "date", "email", "phone", "phone"]);
   assert.deepEqual(q("emergency_contacts").metadata.fields.map((f) => [f.label, f.type]), [["Full Name", "text"], ["Address", "textarea"], ["Contact No.", "phone"], ["Email ID", "email"]]);
   assert.equal(q("emergency_contacts").repeatableConfig.min, 1, "at least one emergency contact");
-  assert.match(q("doc_photo_signature").description, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements[\s\S]*left thumb impression[\s\S]*photo of it\.$/);
+  assert.match(q("doc_photo_signature").description, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements[\s\S]*left thumb impression[\s\S]*upload a clear photo of it here\.$/);
   assert.match(q("doc_us_status").description, /^\(Notarized\)[\s\S]*Green Card - FRONT AND BACK[\s\S]*U\.S\. Visa Stamp[\s\S]*Notarized hotel bill/);
   assert.match(q("doc_us_address_proof").description, /MUST BE SIGNED BY THE TENANT AND LANDLORD[\s\S]*Income Tax return \(1040\)/);
   assert.match(q("doc_indian_address_proof").description, /^\(The address details provided below must match[\s\S]*Aadhar Card[\s\S]*Voter Card ID[\s\S]*Ration card/);

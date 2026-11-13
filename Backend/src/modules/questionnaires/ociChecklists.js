@@ -10,7 +10,7 @@
 //
 // Exactly the questions of the supplied checklist, every one ALWAYS visible (no show-when rules); core items required, situational ones optional. "N/A" is an ordinary text
 // answer wherever a question is free text (the opening instruction).
-const { buildQuestion } = require("./definitionHelpers");
+const { buildQuestion, PHYSICAL_PHOTOS_OPTIONS } = require("./definitionHelpers");
 const { COUNTRIES } = require("../../config/geoOptions");
 
 const CHECKLIST_KEY = "oci_adult_former_indian_passport_checklist";
@@ -113,14 +113,14 @@ doc("doc_photo_signature", "Digital Photograph & Signature", lines(
   "- The photograph must be no older than two months.",
   "- Your shoulders must be clearly visible.",
   "- Ensure there is no glare or shadow on your face or anywhere in the photograph.",
-  "- Please provide a high-quality HD photograph via email.",
+  "- Please upload a high-quality HD photograph here.",
   "Part 2: Signature Requirements",
   "- Please sign on a plain white sheet of paper using a dark-colored pen.",
   "- Ensure your signature is clear and properly visible.",
-  "- Please scan the signed page in high quality and send it to us via email."
+  "- Please scan the signed page in high quality and upload it here."
 ), true);
 add(S_DOCS, "physical_photos_ack", "Physical Photographs", "radio", {
-  options: [{ label: "I will provide three identical physical passport-sized photographs when the application is lodged", value: "confirmed" }],
+  options: PHYSICAL_PHOTOS_OPTIONS,
   description: "Three (3) identical physical passport-sized photographs (2 inch x 2 inch, white background) to be submitted at the time of application lodging.",
 });
 doc("doc_current_passport", "Current Valid Passport", "Color copy of the first two and last two pages of your current valid passport (must have at least 9 months validity remaining).", true);
