@@ -1,4 +1,4 @@
-// Adult Foreign citizen by birth and never held Indian passport (never held an Indian passport): the SECOND subtype of the OCI visa type under "Indian Timeline Cases".
+// Adult Foreign citizen and never held Indian passport (never held an Indian passport): the SECOND subtype of the OCI visa type under "Indian Timeline Cases".
 //   key "oci_adult_foreign_citizen_by_birth_checklist", question keys "oci_birth_<name>" (a different prefix from the first subtype, so the two never collide).
 // Same shape as the first subtype (questionnaires/ociChecklists.js, which is untouched): single-person, client role, NO USCIS forms, NO canonical mappings, not a default of the OCI
 // Every question is always visible to the client (no show-when rules) and optional everywhere, including Admin.
@@ -12,7 +12,7 @@ const INSTRUCTIONS = [
 ];
 
 const CHECKLIST_KEY = "oci_adult_foreign_citizen_by_birth_checklist";
-const SUBTYPE_LABEL = "Adult Foreign citizen by birth and never held Indian passport";
+const SUBTYPE_LABEL = "Adult Foreign citizen and never held Indian passport";
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 const VISIBILITY = { roles: ["client", ...STAFF_ROLES], portals: ["client", "admin"] };
 const YES_NO = [{ label: "Yes", value: "Yes" }, { label: "No", value: "No" }];

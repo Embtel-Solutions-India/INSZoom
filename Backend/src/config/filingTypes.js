@@ -220,7 +220,7 @@ const FILING_TYPES = {
   },
   OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH: {
     key: "OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH",
-    label: "Adult Foreign citizen by birth and never held Indian passport",
+    label: "Adult Foreign citizen and never held Indian passport",
     category: "indian_timeline",
     section: "indian_timeline",
     includesEad: false,
@@ -397,6 +397,19 @@ const FILING_TYPES = {
     toStatus: null,
     visaType: "INDIAN-PASSPORT-RENEWAL",
     questionnaireKey: "indian_passport_renewal_minor_damage_passport_checklist",
+  },
+  // Indian Passport Renewal subtype 4 = Adult Indian Passport Holder (questionnaires/indianPassportRenewalAdultHolderChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER",
+    label: "Adult Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_holder_checklist",
   },
 };
 

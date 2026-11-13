@@ -31,7 +31,7 @@ test("registration: subtype 3 of Renunciation has its own checklist, named after
   assert.equal(definition.title, "Minor Indian Passport Holder", "the checklist is named after its subtype");
   assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "RENUNCIATION", "client", false]);
   assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
-  assert.deepEqual(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes, ["Minor without Indian passport", "Adult Indian Citizen without Indian Passport", "Minor Indian Passport Holder", "Adult Indian Passport Holder"]);
+  assert.deepEqual(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes, ["Adult Indian Citizen without Indian Passport", "Adult Indian Passport Holder", "Minor Indian Passport Holder", "Minor without Indian passport"]);
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").length, 0, "no competing scaffold checklist");
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "RENUNCIATION").length, 0, "no USCIS forms");

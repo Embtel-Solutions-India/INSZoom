@@ -1,4 +1,4 @@
-// Adult Foreign citizen by birth and never held Indian passport (2nd Indian Timeline subtype): registration, isolation from the first subtype, no forms / mappings, all questions visible + optional.
+// Adult Foreign citizen and never held Indian passport (2nd Indian Timeline subtype): registration, isolation from the first subtype, no forms / mappings, all questions visible + optional.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { OCI_BIRTH_CHECKLIST_DEFINITIONS, CHECKLIST_KEY, INSTRUCTIONS } = require("../ociBirthChecklist");
@@ -20,7 +20,7 @@ const state = (name, answers = {}) => {
 
 test("second OCI subtype: its own checklist, client role, not a default, no forms, no canonical paths; the first subtype is untouched", () => {
   assert.equal(definition.key, CHECKLIST_KEY);
-  assert.equal(definition.title, "Adult Foreign citizen by birth and never held Indian passport");
+  assert.equal(definition.title, "Adult Foreign citizen and never held Indian passport");
   assert.equal(definition.visaType, "OCI");
   assert.equal(definition.checklistRole, "client");
   assert.equal(definition.isDefault, false);

@@ -49,7 +49,7 @@ const VISA_TYPE_OPTIONS = [
   { value: 'i140i485', label: 'I-140 + I-485', canonicalLabel: 'I-140/I-485' },
   // Indian Timeline Cases section: OCI (its subtype is chosen in the New case form)
   { value: 'oci', label: 'OCI - Overseas Citizen of India', canonicalLabel: 'OCI' },
-  { value: 'uspassportminor', label: 'US Passport Renewal for Minors', canonicalLabel: 'US-PASSPORT-MINOR' },
+  { value: 'uspassportminor', label: 'US Passport Renewal', canonicalLabel: 'US-PASSPORT-MINOR' },
   { value: 'indianetourist', label: 'Indian E-Tourist Visa', canonicalLabel: 'INDIAN-E-TOURIST-VISA' },
   { value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' },
   { value: 'indianpassportrenewal', label: 'Indian Passport Renewal', canonicalLabel: 'INDIAN-PASSPORT-RENEWAL' },
