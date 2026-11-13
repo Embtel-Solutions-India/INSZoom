@@ -52,6 +52,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'uspassportminor', label: 'US Passport Renewal for Minors', canonicalLabel: 'US-PASSPORT-MINOR' },
   { value: 'indianetourist', label: 'Indian E-Tourist Visa', canonicalLabel: 'INDIAN-E-TOURIST-VISA' },
   { value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' },
+  { value: 'indianpassportrenewal', label: 'Indian Passport Renewal', canonicalLabel: 'INDIAN-PASSPORT-RENEWAL' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
@@ -184,7 +185,7 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 }
 // Indian Timeline Cases: single-person, no forms. Each visa type here has subtypes; the New case form shows a subtype dropdown and the subtype decides the checklist
 // (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
-export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation'])
+export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation', 'indianpassportrenewal'])
 export const INDIAN_TIMELINE_SUBTYPES = {
   oci: [{ value: 'OCI_MINOR_FOREIGN_CITIZEN_HELD', label: 'Minor Foreign citizen and held Indian passport', description: 'For minor foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
     { value: 'OCI_SPOUSE_OF_FOREIGN_ORIGIN', label: 'OCI Checklist for Spouse of Foreign Origin', description: 'For eligible foreign-origin applicants applying for OCI registration through marriage to an Indian citizen or an OCI cardholder.' },
@@ -197,6 +198,7 @@ export const INDIAN_TIMELINE_SUBTYPES = {
     { value: 'RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT', label: 'Adult Indian Citizen without Indian Passport', description: 'Renunciation of Indian citizenship: checklist and questionnaire for an adult Indian citizen who does not hold an Indian passport.' },
     { value: 'RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER', label: 'Minor Indian Passport Holder', description: 'Renunciation of Indian citizenship: checklist and questionnaire for a minor applicant who holds an Indian passport.' },
     { value: 'RENUNCIATION_ADULT_INDIAN_PASSPORT_HOLDER', label: 'Adult Indian Passport Holder', description: 'Renunciation of Indian citizenship: checklist and questionnaire for an adult applicant who holds an Indian passport.' }],
+  indianpassportrenewal: [{ value: 'INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER', label: 'Minor Indian Passport Holder', description: 'Indian Passport Renewal: document checklist and questionnaire for a minor Indian passport holder.' }],
   uspassportminor: [{ value: 'US_PASSPORT_MINOR_DS11', label: 'US Passport Renewal for Minors (DS-11, under age 16)', description: 'DS-11 passport application checklist for a child under age 16: first-time applications and renewal/replacement of a Passport Book and/or Card.' }],
 }
 export const FAMILY_PACKAGE_VISA_TYPES = new Set(['f1family', 'i130', 'i130i485']) // every I-130 / Green Card package type follows the same workflow

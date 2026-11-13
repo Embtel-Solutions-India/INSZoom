@@ -358,6 +358,20 @@ const FILING_TYPES = {
     visaType: "RENUNCIATION",
     questionnaireKey: "renunciation_adult_indian_passport_holder_checklist",
   },
+  // Indian Passport Renewal (Indian Timeline Cases): single-person, checklist-only, NO forms. One filing type (and one checklist) per subtype. Subtype 1 = Minor Indian Passport
+  // Holder (questionnaires/indianPassportRenewalMinorChecklist.js). Each later subtype is added here with its own questionnaireKey.
+  INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER: {
+    key: "INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER",
+    label: "Minor Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_minor_holder_checklist",
+  },
 };
 
 function listFilingTypes() {

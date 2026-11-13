@@ -51,7 +51,7 @@ test("the backend dropdown and the Admin copy list Renunciation as an Indian Tim
   const backend = fs.readFileSync(path.join(__dirname, "../../../config/visaDropdown.js"), "utf8");
   const line = "{ value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' }";
   assert.ok(admin.includes(line) && backend.includes(line), "the same dropdown entry in both copies");
-  assert.ok(admin.includes("'renunciation'])"), "an Indian Timeline visa type in the Admin picker");
+  assert.ok(admin.includes("'indianetourist', 'renunciation'"), "an Indian Timeline visa type in the Admin picker");
   assert.ok(admin.includes("value: 'RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT', label: 'Minor without Indian passport'"), "the subtype is selectable");
 });
 
