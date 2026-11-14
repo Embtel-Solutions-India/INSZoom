@@ -35,70 +35,37 @@ test("registered as a single-person OCI subtype: client role, not a default, no 
   assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
 });
 
-test("all required questionnaire fields and document categories are present", () => {
-  for (const name of ["full_name", "phone", "marital_status", "distinguishing_mark", "root_ancestor_relationship", "country_of_birth", "place_of_birth", "current_nationality", "father_name", "father_nationality", "father_occupation", "mother_name", "mother_nationality", "mother_occupation", "spouse_based_oci", "current_occupation", "prior_oci_applied", "oci_surrendered_or_cancelled", "relatives_in_india", "doc_digital_photo", "doc_signature", "physical_photos_ack", "doc_current_passport", "doc_last_indian_passport", "doc_us_address_proof", "doc_previous_indian_visa", "doc_name_change"]) assert.ok(q(name), name);
-  assert.deepEqual(q("root_ancestor_relationship").options.map((o) => o.value), ["Self", "Father", "Mother", "Grandparent"]);
-  assert.equal(state("distinguishing_mark").required, false);
-  assert.equal(state("full_name").required, true);
-  assert.equal(state("relatives_in_india").required, false);
-  assert.equal(q("doc_digital_photo").type, "file");
-  assert.equal(q("doc_signature").type, "file");
-  assert.ok(/white background/i.test(q("doc_digital_photo").description) && /plain white sheet/i.test(q("doc_signature").description));
+test("14 document items in the supplied order, one each; every question always visible; exact required list", () => {
+  assert.equal(definition.questions.length, 43);
+  const docs = definition.questions.filter((question) => question.sectionKey === "required_documents");
+  assert.deepEqual(docs.map((question) => question.label), [
+    "Digital Photograph & Signature", "Physical Photographs", "Current Valid Passport", "Copy of Indian passport", "Copy of Naturalization Certificate", "Copy of Surrender Certificate",
+    "Legal Status in USA (Non-US Passport Holders)", "Proof of Marital Status", "Proof of Name Change", "Employment / Work Verification", "Parents' & Spouse OCI Cards", "Previous Indian Visa",
+    "Proof of USA Address", "Native Address Proof (Non-US Nationals)",
+  ]);
   assert.equal(q("physical_photos_ack").type, "radio", "physical photographs are an acknowledgement, never an upload");
-});
-
-test("naturalization: own certificate vs through parents; surrender certificate only from 2010", () => {
-  const own = { oci_adult_naturalization_basis: "In my own right (I hold a naturalization certificate)" };
-  const parents = { oci_adult_naturalization_basis: "Through my parents (no separate certificate)" };
-  assert.deepEqual([state("doc_naturalization_certificate", own).required, state("doc_parents_affidavit", own).visible], [true, false]);
-  assert.deepEqual([state("doc_naturalization_certificate", parents).visible, state("doc_parents_affidavit", parents).required, state("doc_parents_naturalization_certificates", parents).required], [false, true, true]);
-  assert.equal(state("doc_surrender_certificate", { oci_adult_naturalization_year: 2009 }).visible, false);
-  assert.equal(state("doc_surrender_certificate", { oci_adult_naturalization_year: 2010 }).required, true);
-  assert.equal(state("doc_surrender_certificate", {}).visible, false);
-});
-
-test("legal status (non-US passport holders) and pending extension", () => {
-  assert.equal(state("legal_status_document", { oci_adult_holds_us_passport: "Yes" }).visible, false);
-  assert.equal(state("legal_status_document", { oci_adult_holds_us_passport: "No" }).required, true);
-  const answers = { oci_adult_holds_us_passport: "No", oci_adult_legal_status_document: "Green Card" };
-  assert.deepEqual([state("doc_green_card", answers).required, state("doc_ead", answers).visible, state("doc_long_term_visa", answers).visible], [true, false, false]);
-  assert.equal(state("doc_extension_receipt", answers).visible, false);
-  const pending = { ...answers, oci_adult_visa_extension_pending: "Yes" };
-  assert.deepEqual([state("doc_extension_receipt", pending).required, state("doc_expired_visa", pending).required], [true, true]);
-  assert.equal(state("doc_extension_receipt", { oci_adult_holds_us_passport: "Yes", oci_adult_visa_extension_pending: "Yes" }).visible, false);
-});
-
-test("marital status evidence", () => {
-  const single = { oci_adult_marital_status: "Single / Never Married" };
-  assert.deepEqual(["doc_marriage_certificate", "doc_divorce_decree", "doc_death_certificate", "doc_marital_affidavit"].map((n) => state(n, single).visible), [false, false, false, false]);
-  assert.deepEqual([state("doc_marriage_certificate", { oci_adult_marital_status: "Married" }).required, state("doc_divorce_decree", { oci_adult_marital_status: "Married" }).visible], [true, false]);
-  const remarried = { oci_adult_marital_status: "Married", oci_adult_remarried_after_divorce: "Yes" };
-  assert.deepEqual([state("doc_divorce_decree", remarried).required, state("doc_marriage_certificate", remarried).required], [true, true]);
-  assert.equal(state("doc_divorce_decree", { oci_adult_marital_status: "Divorced" }).required, true);
-  assert.equal(state("doc_death_certificate", { oci_adult_marital_status: "Widowed" }).required, true);
-  const unavailable = { oci_adult_marital_status: "Married", oci_adult_marital_certificate_unavailable: "Yes" };
-  assert.deepEqual([state("doc_marital_affidavit", unavailable).required, state("doc_marriage_certificate", unavailable).visible], [true, false]);
-});
-
-test("spouse, employment, name change, previous visa, prior OCI and native address are conditional", () => {
-  assert.equal(state("spouse_name", { oci_adult_marital_status: "Single / Never Married", oci_adult_spouse_based_oci: "No" }).visible, false);
-  assert.equal(state("spouse_name", { oci_adult_marital_status: "Married" }).required, true);
-  assert.equal(state("marriage_date", { oci_adult_marital_status: "Single / Never Married", oci_adult_spouse_based_oci: "Yes" }).required, true);
-  assert.deepEqual([state("employer_name_address", { oci_adult_employment_situation: "Employed" }).required, state("employer_name_address", { oci_adult_employment_situation: "Retired" }).visible, state("retired_organization", { oci_adult_employment_situation: "Retired" }).required], [true, false, true]);
-  const evidence = { Employed: "doc_employer_letter", "Self-employed / Business owner": "doc_self_employment", Retired: "doc_retirement_proof", Student: "doc_student_proof", "Never employed or self-employed": "doc_never_employed_statement" };
-  for (const [situation] of Object.entries(evidence)) {
-    for (const [other, otherDoc] of Object.entries(evidence)) assert.equal(state(otherDoc, { oci_adult_employment_situation: situation }).visible, other === situation, `${otherDoc} for ${situation}`);
+  for (const question of docs.filter((item) => item.key !== "oci_adult_physical_photos_ack")) assert.equal(question.type, "file", question.label);
+  for (const question of definition.questions) {
+    assert.ok(!question.conditionalLogic || !(question.conditionalLogic.rules || []).length, question.key + " has no show-when rule");
+    assert.equal(isQuestionVisible(question, {}, client), true, question.key + " visible with no answers");
   }
-  assert.deepEqual([state("previous_names", { oci_adult_used_previous_name: "No" }).visible, state("doc_name_change", { oci_adult_used_previous_name: "Yes" }).required], [false, true]);
-  assert.deepEqual([state("doc_previous_indian_visa", { oci_adult_previous_indian_visa: "No" }).visible, state("doc_previous_indian_visa", { oci_adult_previous_indian_visa: "Yes" }).required], [false, true]);
-  assert.deepEqual([state("prior_oci_applications", { oci_adult_prior_oci_applied: "No" }).visible, state("prior_oci_applications", { oci_adult_prior_oci_applied: "Yes" }).required], [false, true]);
-  assert.deepEqual([state("oci_surrender_details", { oci_adult_oci_surrendered_or_cancelled: "No" }).visible, state("oci_surrender_details", { oci_adult_oci_surrendered_or_cancelled: "Yes" }).required], [false, true]);
-  assert.equal(state("doc_native_address_proof", { oci_adult_current_nationality: "United States" }).visible, false);
-  assert.equal(state("doc_native_address_proof", { oci_adult_current_nationality: "Canada" }).required, true);
-  assert.equal(state("doc_native_address_proof_second", { oci_adult_current_nationality: "Canada", oci_adult_dual_citizen: "No" }).visible, false);
-  assert.deepEqual([state("dual_citizen_countries", { oci_adult_current_nationality: "Canada", oci_adult_dual_citizen: "Yes" }).required, state("doc_native_address_proof_second", { oci_adult_current_nationality: "Canada", oci_adult_dual_citizen: "Yes" }).required], [true, true]);
-  assert.equal(q("prior_oci_applications").repeatable, true);
-  assert.equal(q("relatives_in_india").repeatable, true);
-  assert.equal(q("prior_oci_applications").metadata.fields.length, 6);
-  assert.equal(q("relatives_in_india").metadata.fields.length, 4);
+  const required = definition.questions.filter((question) => question.required).map((question) => question.key.replace("oci_adult_", "")).sort();
+  assert.deepEqual(required, ["full_name", "phone", "marital_status", "root_ancestor_relationship", "country_of_birth", "place_of_birth", "current_nationality", "father_name", "father_nationality", "mother_name", "mother_nationality", "spouse_based_oci", "current_occupation", "prior_oci_applied", "oci_surrendered_or_cancelled", "doc_photo_signature", "physical_photos_ack", "doc_current_passport", "doc_last_indian_passport", "doc_naturalization_certificate", "doc_us_address_proof"].sort());
+  for (const name of ["distinguishing_mark", "father_occupation", "mother_occupation", "spouse_name", "spouse_dob", "spouse_nationality", "spouse_occupation", "marriage_date", "employer_name_address", "employer_phone", "retired_organization", "prior_oci_applications", "oci_surrender_details", "relatives_in_india", "doc_surrender_certificate", "doc_legal_status_usa", "doc_marital_status_proof", "doc_name_change", "doc_employment_verification", "doc_parents_spouse_oci_cards", "doc_previous_indian_visa", "doc_native_address_proof"]) assert.equal(state(name).required, false, name);
+});
+
+test("the supplied labels, answer types and hints", () => {
+  const type = (name) => q(name).type;
+  assert.deepEqual([type("root_ancestor_relationship"), type("marital_status"), type("spouse_based_oci"), type("marriage_date"), type("employer_phone"), type("phone")], ["text", "select", "radio", "date", "phone", "phone"]);
+  assert.equal(q("root_ancestor_relationship").description, "e.g., Self / Father / Mother / Grandparent");
+  assert.equal(q("spouse_based_oci").label, "Are you applying OCI on the basis of an Indian Spouse/Spouse's OCI card?");
+  assert.deepEqual(q("prior_oci_applications").metadata.fields.map((f) => f.label), ["Name / Relationship", "Reference no.", "Date when applied (DD/MM/YYYY)", "Place where applied", "Status"]);
+  assert.deepEqual(q("relatives_in_india").metadata.fields.map((f) => f.label), ["Relative Name", "Relationship", "Age", "Present Address in India"]);
+  assert.equal(q("relatives_in_india").label, "Details of family members / relatives currently residing in India (if any)");
+  assert.match(q("doc_photo_signature").description, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements/);
+  assert.match(q("doc_naturalization_certificate").description, /notarized affidavit signed by both parents/);
+  assert.match(q("doc_surrender_certificate").description, /naturalized from 2010 onwards/);
+  assert.match(q("doc_marital_status_proof").description, /marriage certificate[\s\S]*divorce decree[\s\S]*Death certificate[\s\S]*notarized affidavit/);
+  assert.match(q("doc_employment_verification").description, /employed[\s\S]*self-employed[\s\S]*retired[\s\S]*student[\s\S]*never been employed/);
+  assert.match(q("doc_us_address_proof").description, /under 3 months old/);
 });

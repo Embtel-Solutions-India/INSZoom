@@ -220,7 +220,7 @@ const FILING_TYPES = {
   },
   OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH: {
     key: "OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH",
-    label: "Adult Foreign citizen by birth and never held Indian passport",
+    label: "Adult Foreign citizen and never held Indian passport",
     category: "indian_timeline",
     section: "indian_timeline",
     includesEad: false,
@@ -280,7 +280,7 @@ const FILING_TYPES = {
     questionnaireKey: "us_passport_minor_ds11_checklist",
   },
   // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, NO forms. Subtype 1 = Business Visa (its own checklist).
-  // Subtype 2 is a registered, selectable placeholder: questionnaireKey null = NO checklist is assigned until its questionnaire is supplied.
+  // Subtype 2 = E-Visa (its own checklist, questionnaires/indianEtouristEvisaChecklist.js).
   INDIAN_ETOURIST_BUSINESS: {
     key: "INDIAN_ETOURIST_BUSINESS",
     label: "Business Visa",
@@ -295,7 +295,7 @@ const FILING_TYPES = {
   },
   INDIAN_ETOURIST_SUBTYPE_2: {
     key: "INDIAN_ETOURIST_SUBTYPE_2",
-    label: "Second subtype (checklist not yet configured)",
+    label: "E-Visa",
     category: "indian_timeline",
     section: "indian_timeline",
     includesEad: false,
@@ -303,7 +303,152 @@ const FILING_TYPES = {
     fromStatus: null,
     toStatus: null,
     visaType: "INDIAN-E-TOURIST-VISA",
-    questionnaireKey: null,
+    questionnaireKey: "indian_etourist_evisa_checklist",
+  },
+  // Renunciation (Indian Timeline Cases): single-person, checklist-only, NO forms. One filing type (and one checklist) per subtype. Subtype 1 = Minor without Indian passport
+  // (questionnaires/renunciationMinorNoPassportChecklist.js). Each later subtype is added here with its own questionnaireKey.
+  RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT: {
+    key: "RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT",
+    label: "Minor without Indian passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_minor_without_indian_passport_checklist",
+  },
+  // Renunciation subtype 2 = Adult Indian Citizen without Indian Passport (questionnaires/renunciationAdultNoPassportChecklist.js).
+  RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT: {
+    key: "RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT",
+    label: "Adult Indian Citizen without Indian Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_adult_indian_without_passport_checklist",
+  },
+  // Renunciation subtype 3 = Minor Indian Passport Holder (questionnaires/renunciationMinorHolderChecklist.js).
+  RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER: {
+    key: "RENUNCIATION_MINOR_INDIAN_PASSPORT_HOLDER",
+    label: "Minor Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_minor_indian_passport_holder_checklist",
+  },
+  // Renunciation subtype 4 = Adult Indian Passport Holder (questionnaires/renunciationAdultHolderChecklist.js).
+  RENUNCIATION_ADULT_INDIAN_PASSPORT_HOLDER: {
+    key: "RENUNCIATION_ADULT_INDIAN_PASSPORT_HOLDER",
+    label: "Adult Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "RENUNCIATION",
+    questionnaireKey: "renunciation_adult_indian_passport_holder_checklist",
+  },
+  // Indian Passport Renewal (Indian Timeline Cases): single-person, checklist-only, NO forms. One filing type (and one checklist) per subtype. Subtype 1 = Minor Indian Passport
+  // Holder (questionnaires/indianPassportRenewalMinorChecklist.js). Each later subtype is added here with its own questionnaireKey.
+  INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER: {
+    key: "INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER",
+    label: "Minor Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_minor_holder_checklist",
+  },
+  // Indian Passport Renewal subtype 2 = Minor Indian in Lieu of lost Passport (questionnaires/indianPassportRenewalLostPassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_MINOR_LOST_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_MINOR_LOST_PASSPORT",
+    label: "Minor Indian in Lieu of lost Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_minor_lost_passport_checklist",
+  },
+  // Indian Passport Renewal subtype 3 = Minor Indian in Lieu of damage Passport (questionnaires/indianPassportRenewalDamagePassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_MINOR_DAMAGE_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_MINOR_DAMAGE_PASSPORT",
+    label: "Minor Indian in Lieu of damage Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_minor_damage_passport_checklist",
+  },
+  // Indian Passport Renewal subtype 4 = Adult Indian Passport Holder (questionnaires/indianPassportRenewalAdultHolderChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER",
+    label: "Adult Indian Passport Holder",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_holder_checklist",
+  },
+  // Indian Passport Renewal subtype 5 = Adult Indian In Lieu of lost Passport (questionnaires/indianPassportRenewalAdultLostPassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT",
+    label: "Adult Indian In Lieu of lost Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_lost_passport_checklist",
+  },
+  // Indian Passport Renewal subtype 6 = Adult Indian In Lieu of damage Passport (questionnaires/indianPassportRenewalAdultDamagePassportChecklist.js).
+  INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT: {
+    key: "INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT",
+    label: "Adult Indian In Lieu of damage Passport",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "INDIAN-PASSPORT-RENEWAL",
+    questionnaireKey: "indian_passport_renewal_adult_damage_passport_checklist",
+  },
+  // OCI subtype 6 = OCI RENUNCIATION (questionnaires/ociRenunciationChecklist.js): a subtype of the existing OCI visa type, with its own checklist.
+  OCI_RENUNCIATION: {
+    key: "OCI_RENUNCIATION",
+    label: "OCI RENUNCIATION",
+    category: "indian_timeline",
+    section: "indian_timeline",
+    includesEad: false,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "OCI",
+    questionnaireKey: "oci_renunciation_checklist",
   },
 };
 

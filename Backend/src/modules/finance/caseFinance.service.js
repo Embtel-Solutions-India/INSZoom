@@ -11,13 +11,16 @@ const { COUNTABLE_CASE } = require("../cases/countableCase");
 
 const FINANCE_SOURCES = ["ghl", "crm"]; // read from the GoHighLevel card, or typed in Immiglance (a case with no card)
 const HAS_FINANCE = { "finance.source": { $in: FINANCE_SOURCES } };
+// A case with at least one invoice link (Case.invoiceLinks.urls, internal-only) is listed in the Payments table even when it has no figures yet.
+const HAS_INVOICE_LINK = { "invoiceLinks.urls.0": { $exists: true } };
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const owed = { $max: [{ $subtract: [{ $ifNull: ["$finance.totalAmount", 0] }, { $ifNull: ["$finance.amountPaid", 0] }] }, 0] };
 const monthOf = { $ifNull: ["$finance.lastPaymentAt", "$createdAt"] };
 
 // The cases with figures that an analytics request asks for (date range on the case's creation, like the other dashboard counts; an extra filter may be merged in).
-function financeMatch(range = {}, extra = {}) {
-  return { $and: [{ ...range }, HAS_FINANCE, COUNTABLE_CASE, extra] };
+// `withInvoices` (the Payments table only) also takes the cases that have invoice links; the totals / charts never set it, so their figures are unchanged.
+function financeMatch(range = {}, extra = {}, { withInvoices = false } = {}) {
+  return { $and: [{ ...range }, withInvoices ? { $or: [HAS_FINANCE, HAS_INVOICE_LINK] } : HAS_FINANCE, COUNTABLE_CASE, extra] };
 }
 
 async function totals(match) {
@@ -68,7 +71,7 @@ async function revenueAnalytics(range = {}, extra = {}) {
 
 // One row per case, for the Payments Overview table.
 async function listCases({ range = {}, search = "", status = "", page = 1, limit = 25, extra = {} } = {}) {
-  const and = [financeMatch(range, extra)];
+  const and = [financeMatch(range, extra, { withInvoices: true })];
   const term = String(search || "").trim();
   if (term) {
     const rx = { $regex: term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
@@ -82,13 +85,14 @@ async function listCases({ range = {}, search = "", status = "", page = 1, limit
   const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * size;
   const [rows, count] = await Promise.all([
     Case.find(filter).sort({ "finance.updatedAt": -1 }).skip(skip).limit(size)
-      .select("caseNumber clientName clientEmail visaType petitionSubType caseRole pendingEmployee employeeIdentity finance createdAt").lean(),
+      .select("caseNumber clientName clientEmail visaType petitionSubType caseRole pendingEmployee employeeIdentity finance createdAt +invoiceLinks").lean(),
     Case.countDocuments(filter),
   ]);
   const items = rows.map((row) => {
     const f = row.finance || {};
     const total = Number(f.totalAmount) || 0;
     const paid = Number(f.amountPaid) || 0;
+    const hasInvoice = (row.invoiceLinks?.urls || []).length > 0; // internal field: only this yes/no leaves the server, never the links
     const pendingPerson = row.caseRole === "employee" ? row.pendingEmployee || row.employeeIdentity || {} : {};
     return {
       _id: row._id,
@@ -102,7 +106,8 @@ async function listCases({ range = {}, search = "", status = "", page = 1, limit
       amountPaid: round2(paid),
       outstanding: round2(Math.max(total - paid, 0)),
       invoiceNo: f.invoiceNo || "",
-      status: total > 0 && paid >= total ? "paid" : paid > 0 ? "partially_paid" : total > 0 ? "pending" : "no_fee",
+      // a case with invoice links but no figures yet is "invoice_added" (not "no_fee")
+      status: total > 0 && paid >= total ? "paid" : paid > 0 ? "partially_paid" : total > 0 ? "pending" : hasInvoice ? "invoice_added" : "no_fee",
       lastPaymentAt: f.lastPaymentAt || null,
       updatedAt: f.updatedAt || null,
     };

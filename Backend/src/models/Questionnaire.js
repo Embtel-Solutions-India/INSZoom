@@ -156,6 +156,8 @@ const questionnaireSchema = new mongoose.Schema(
       allowImportExport: { type: Boolean, default: true },
       // true: the upload questions stay inside their own sections instead of being collected into the shared "Documents" step (used by the L1A Documentation Checklist)
       inlineDocuments: { type: Boolean, default: false },
+      // the order a visa type's DEFAULT checklists are shown in (1 first). Optional: a template without it keeps the order it always had (see orderDefaultChecklists in questionnaire.service.js)
+      checklistOrder: { type: Number },
     },
     builder: {
       dragDropEnabled: { type: Boolean, default: true },

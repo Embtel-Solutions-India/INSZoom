@@ -973,6 +973,7 @@ exports.getCases = async (req, res, next) => {
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
     await require("../../integrations/ghl/ghlStageNames").attachStageNames(cases, serializedCases);
+    await caseService.attachEmployeeNameToUnnamedEmployerMatters(serializedCases); // a nameless employer matter shows its employee's name in the list
     timer.mark("case_serialization_completed", { count: serializedCases.length });
     res.json({
       success: true,

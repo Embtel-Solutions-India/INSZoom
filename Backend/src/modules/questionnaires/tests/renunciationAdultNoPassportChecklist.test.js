@@ -1,0 +1,92 @@
+// Renunciation (Indian Timeline Cases) -> subtype 2 "Adult Indian Citizen without Indian Passport": registration, isolation (shown only for its own subtype), exact questions, no show-when rules.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const { RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS, CHECKLIST_KEY, SECTIONS } = require("../renunciationAdultNoPassportChecklist");
+const { CHECKLIST_KEY: MINOR_KEY, RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS } = require("../renunciationMinorNoPassportChecklist");
+const { slugSection } = require("../definitionHelpers");
+const service = require("../questionnaire.service");
+const filingTypes = require("../../../config/filingTypes");
+const visaCategories = require("../../../config/visaCategories");
+const visaFormSeeds = require("../../form-registry/seeds/visaFormMappings.seed");
+const { SINGLE_PARTY_FILING_DEFINITIONS } = require("../singlePartyChecklists");
+
+const { isQuestionVisible, isQuestionRequired, VISA_TEMPLATE_DEFINITIONS } = service;
+const definition = RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS[0];
+const q = (name) => definition.questions.find((question) => question.key === `renadu_${name}`);
+const client = { role: "client" };
+const state = (name, answers = {}) => {
+  const question = q(name);
+  assert.ok(question, `${name} exists`);
+  const visible = isQuestionVisible(question, answers, client);
+  return { visible, required: visible && isQuestionRequired(question, answers) };
+};
+const labelsOf = (section) => definition.questions.filter((question) => question.sectionKey === slugSection(section)).map((question) => question.label);
+
+test("registration: subtype 2 of Renunciation has its own checklist, named after the subtype, assigned only through its own filing type", () => {
+  const filing = filingTypes.getFilingType("RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT");
+  assert.deepEqual([filing.label, filing.visaType, filing.category, filing.section, filing.questionnaireKey], ["Adult Indian Citizen without Indian Passport", "RENUNCIATION", "indian_timeline", "indian_timeline", CHECKLIST_KEY]);
+  assert.equal(definition.title, "Adult Indian Citizen without Indian Passport", "the checklist is named after its subtype");
+  assert.deepEqual([definition.key, definition.visaType, definition.checklistRole, definition.isDefault], [CHECKLIST_KEY, "RENUNCIATION", "client", false]);
+  assert.ok(!filingTypes.groupedForSelection().standalone.some((entry) => entry.key === filing.key), "not offered in the status-change pickers");
+  assert.deepEqual(visaCategories.VISA_CATEGORIES.RENUNCIATION.subTypes, ["Adult Indian Citizen without Indian Passport", "Adult Indian Passport Holder", "Minor Indian Passport Holder", "Minor without Indian passport"]);
+  assert.equal(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key === CHECKLIST_KEY).length, 1, "registered exactly once");
+  assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.filter((item) => item.visaType === "RENUNCIATION").length, 0, "no competing scaffold checklist");
+  assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "RENUNCIATION").length, 0, "no USCIS forms");
+  for (const question of definition.questions) assert.ok(!question.mapping && !(question.metadata || {}).canonicalPath, `${question.key} has no canonical mapping`);
+  // isolation: each Renunciation subtype is tied to its OWN checklist and no other; neither is a default, so a subtype never receives the other's checklist
+  assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === CHECKLIST_KEY).map((item) => item.key), ["RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT"]);
+  assert.deepEqual(filingTypes.listFilingTypes().filter((item) => item.questionnaireKey === MINOR_KEY).map((item) => item.key), ["RENUNCIATION_MINOR_WITHOUT_INDIAN_PASSPORT"]);
+  assert.notEqual(CHECKLIST_KEY, MINOR_KEY);
+  assert.equal(RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS[0].isDefault, false);
+  assert.equal(RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS[0].questions.length, 34, "subtype 1 is unchanged");
+  const others = new Set(VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY).flatMap((item) => (item.questions || []).map((question) => question.key)));
+  assert.ok(!definition.questions.some((question) => others.has(question.key)), "no question key shared with another checklist");
+  assert.equal(new Set(definition.questions.map((question) => question.key)).size, definition.questions.length, "no duplicate keys");
+  const admin = fs.readFileSync(path.join(__dirname, "../../../../../Admin/frontend/src/utils/visaOptions.js"), "utf8");
+  assert.ok(admin.includes("value: 'RENUNCIATION_ADULT_INDIAN_WITHOUT_PASSPORT', label: 'Adult Indian Citizen without Indian Passport'"), "the subtype is selectable in Admin");
+});
+
+test("sections, exact labels and counts", () => {
+  assert.deepEqual(SECTIONS, definition.sections);
+  assert.equal(SECTIONS.length, 5);
+  assert.deepEqual(labelsOf(SECTIONS[0]), ["Applicant Name", "Phone Number", "E-mail ID"]);
+  assert.deepEqual(labelsOf(SECTIONS[1]), [
+    "Digital Photograph & Signature", "Physical Photographs", "Copy of Address Proof", "Copy of Current Passport", "Copy of Recent Indian Passport", "Copy of Naturalization Certificate",
+    "Spouse's Valid Passport", "Copy of Proof of Indian origin", "Copy of Police report:", "As you don’t have the most recent Indian passport, please provide one document:",
+  ]);
+  assert.deepEqual(labelsOf(SECTIONS[2]), ["Indian passport number", "Place of Issue (Indian Passport)", "Issued date (Indian Passport)", "Expiry date (Indian Passport)", "Visible distinguishing mark (if any)", "Marital Status", "Educational Qualification of the applicant", "Place of Birth (Village/Town/City)", "District", "State/UT"]);
+  assert.deepEqual(labelsOf(SECTIONS[3]), ["Father’s Surname", "Father’s Given name", "Mother’s Surname", "Mother’s Given name", "Legal Guardian's Surname (if applicable)", "Legal Guardian's Given name (if applicable)", "Spouse's Surname", "Spouse's Given name", "Spouse's Nationality", "From where you have travelled to U.S for first time", "Date when you arrived in U.S.A for first time"]);
+  assert.deepEqual(labelsOf(SECTIONS[4]), ["Emergency Contact Details"]);
+  assert.equal(definition.questions.length, 3 + 10 + 10 + 11 + 1);
+  assert.equal(q("physical_photos_ack").type, "radio", "the physical photographs are an acknowledgement, never an upload");
+  assert.equal(definition.questions.filter((question) => question.type === "file").length, 9);
+  assert.deepEqual(q("marital_status").options.map((o) => o.value), ["Divorced", "Married", "Separated", "Single", "Widow/ Widower"]);
+  assert.deepEqual(q("education").options.map((o) => o.value), ["10th Pass and Above", "7th Pass or Less", "Between 8th and 9th Standard", "Graduate and Above"]);
+  assert.deepEqual([q("applicant_phone").type, q("applicant_email").type, q("first_arrival_date").type, q("indian_passport_issue_date").type, q("spouse_nationality").type], ["phone", "email", "date", "date", "select"]);
+  assert.deepEqual(q("emergency_contacts").metadata.fields.map((f) => [f.label, f.type]), [["Full Name", "text"], ["Address", "textarea"], ["Contact No.", "phone"]]);
+  assert.equal(q("emergency_contacts").repeatable, true);
+  assert.equal(q("emergency_contacts").repeatableConfig.min, 1, "at least one emergency contact");
+  assert.match(q("doc_photo_signature").description, /Part 1: Photograph Requirements[\s\S]*Part 2: Signature Requirements/);
+  assert.doesNotMatch(q("doc_photo_signature").description, /thumb/, "this subtype's text has no thumb-impression note");
+  assert.match(q("doc_address_proof").description, /ANY ONE required[\s\S]*Driving license \(FRONT AND BACK\)[\s\S]*Income Tax Return/);
+  assert.equal(q("doc_spouse_passport").description, "Spouse's current valid passport (if applicable).");
+  assert.match(q("doc_proof_of_indian_origin").description, /any TWO documents and information[\s\S]*Documents required:[\s\S]*Voter ID[\s\S]*Board Certificate[\s\S]*Birth Certificate[\s\S]*parent’s proof of Indian origin/);
+  assert.match(q("doc_police_report").description, /naturalized after 2010[\s\S]*Green Card[\s\S]*NOT BE MORE THAN 6 MONTHS OLD/);
+  assert.equal(q("indian_passport_number").description, "If you don’t have copy of Indian passport, please provide below information:");
+  assert.equal(q("marital_status").description, "Choose any one:");
+});
+
+test("no show-when rules: every question is always visible; exact required list; the passport rule does not force the situational passport items", () => {
+  for (const question of definition.questions) {
+    assert.ok(!question.conditionalLogic || !(question.conditionalLogic.rules || []).length, `${question.key} has no show-when rule`);
+    assert.equal(isQuestionVisible(question, {}, client), true, `${question.key} visible with no answers`);
+  }
+  const required = definition.questions.filter((question) => question.required).map((question) => question.key.replace("renadu_", "")).sort();
+  assert.deepEqual(required, ["applicant_name", "applicant_phone", "applicant_email", "doc_photo_signature", "physical_photos_ack", "doc_address_proof", "doc_current_passport", "doc_naturalization_certificate", "marital_status", "education", "place_of_birth", "district", "state_ut",
+    "father_surname", "father_given_name", "mother_surname", "mother_given_name", "first_travel_from", "first_arrival_date", "emergency_contacts"].sort());
+  for (const name of ["doc_recent_indian_passport", "doc_spouse_passport", "doc_proof_of_indian_origin", "doc_police_report", "doc_indian_citizenship_alternative", "indian_passport_number", "indian_passport_place", "indian_passport_issue_date", "indian_passport_expiry_date", "distinguishing_mark",
+    "guardian_surname", "guardian_given_name", "spouse_surname", "spouse_given_name", "spouse_nationality"]) assert.equal(state(name).required, false, name);
+  assert.equal(state("doc_current_passport").required, true, "the current foreign passport copy stays required");
+});

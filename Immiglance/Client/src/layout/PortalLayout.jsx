@@ -5,7 +5,7 @@ import { useEmployeeView } from "../context/ActiveCaseContext";
 import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
 import { useActiveCase } from "../context/ActiveCaseContext";
 import CaseSwitcher from "../components/CaseSwitcher";
-import { resolveDisplayVisa } from "../utils/visaDisplay";
+import { caseVisaTypeLabel } from "../utils/caseCategoryLabel";
 import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
 import BrandMark from "../components/BrandMark";
@@ -17,7 +17,7 @@ import useUnreadMessages from "../hooks/useUnreadMessages";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
-  { label: "Tasks",      to: "/dashboard/tasks",     icon: TasksIcon },
+  { label: "Timeline",   to: "/dashboard/tasks",     icon: TasksIcon },
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Petition",   to: "/dashboard/petition",   icon: PetitionIcon },
@@ -54,7 +54,7 @@ export default function PortalLayout() {
     ? `${profileData.firstName}${profileData.lastName ? " " + profileData.lastName : ""}`
     : user?.displayName || user?.email?.split("@")[0] || "Client";
 
-  const visaLabel = resolveDisplayVisa(caseData || {}) || caseData?.visaCategory || "Case";
+  const visaLabel = caseVisaTypeLabel(caseData || {}) || caseData?.visaCategory || "Case";
   const caseRef = caseData?.caseId || caseData?._id?.slice?.(-8)?.toUpperCase() || "—";
   const isEmployee = useEmployeeView(user); // follows the open case
 

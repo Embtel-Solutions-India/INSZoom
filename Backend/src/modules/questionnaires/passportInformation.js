@@ -8,6 +8,9 @@
 const NOT_PASSPORT_INFORMATION = /photo|nationalityDetails|everApplied|previouslyApplied|CertOrPassport/i;
 
 function isPassportInformation(question = {}) {
+  // Explicit, per-question opt-out for documents that merely MENTION a passport but only apply to some applicants (a spouse's or parents' passport
+  // when the checklist has no show-when rules). Nothing sets it by default, so every other checklist keeps the rule.
+  if (question.metadata && question.metadata.passportInformation === false) return false;
   const text = `${question.key || ""} ${question.label || ""}`;
   return /passport/i.test(text) && !NOT_PASSPORT_INFORMATION.test(text);
 }

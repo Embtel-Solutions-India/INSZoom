@@ -261,11 +261,25 @@ function tolerantVisaRegex(text) {
   return chars.length ? chars.join("[^a-zA-Z0-9]*") : String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Visa CATEGORY filter (Cases page): ?visaTypes=H-1B,L-1A,... lists the visa types of one category (employment, family, Indian timeline ...). Each name must match the stored visa type
+// as a whole (tolerant of separators, like tolerantVisaRegex), so "L-1A" never also catches another visa that merely contains it.
+function visaTypesList(query) {
+  const raw = Array.isArray(query.visaTypes) ? query.visaTypes.join(",") : typeof query.visaTypes === "string" ? query.visaTypes : "";
+  return [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))].slice(0, 300);
+}
+function visaTypesCondition(query) {
+  const list = visaTypesList(query);
+  if (!list.length) return null;
+  return { visaType: { $regex: `^(?:${list.map(tolerantVisaRegex).join("|")})$`, $options: "i" } };
+}
+
 function buildCaseFilterFields(query) {
   const filter = {};
   if (query.status) filter.status = query.status;
   if (query.visaType) filter.visaType = { $regex: tolerantVisaRegex(query.visaType), $options: "i" };
   if (query.visaCategory) filter.visaCategory = query.visaCategory;
+  const visaTypesMatch = visaTypesCondition(query);
+  if (visaTypesMatch) filter.$and = [...(filter.$and || []), visaTypesMatch];
   if (query.stage) filter.stage = query.stage;
   if (query.priority) filter.priority = query.priority;
   if (query.package) filter.package = query.package;
@@ -387,9 +401,11 @@ async function resolveStaffListFilter(query, user) {
   // The Status and Stage filters roll up the same way (2026-11-06): a matter is listed when it OR any of its employee / beneficiary cases matches.
   const statusFilter = typeof query.status === "string" ? query.status.trim() : "";
   const stageFilter = typeof query.stage === "string" ? query.stage.trim() : "";
-  if (exclude && !query.caseRole && (visaType || visaCategory || statusFilter || stageFilter)) {
-    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaCategory: undefined, status: undefined, stage: undefined }, user);
+  const visaTypesMatch = visaTypesCondition(query);
+  if (exclude && !query.caseRole && (visaType || visaTypesMatch || visaCategory || statusFilter || stageFilter)) {
+    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaTypes: undefined, visaCategory: undefined, status: undefined, stage: undefined }, user);
     const attrMatch = {};
+    if (visaTypesMatch) attrMatch.$and = [visaTypesMatch]; // the category: this case OR any of its employees / beneficiaries is of one of its visa types
     if (visaType) attrMatch.visaType = { $regex: tolerantVisaRegex(visaType), $options: "i" };
     if (visaCategory) attrMatch.visaCategory = visaCategory;
     if (statusFilter) attrMatch.status = statusFilter;
@@ -459,7 +475,9 @@ async function toneRankStage() {
 }
 
 function buildCaseSort(query = {}) {
-  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "_id";
+  // Default = creation order by the case's creation DATE (then _id), not by _id alone: a case rebuilt in place (e.g. converted to another visa type) gets a newer _id but keeps its original creation date,
+  // and must stay where its case number puts it instead of jumping to the top.
+  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "createdAt";
   const direction = String(query.sortOrder || query.order || "desc").toLowerCase() === "asc" ? 1 : -1;
   return sortBy === "_id" ? { _id: direction } : { [sortBy]: direction, _id: direction };
 }
@@ -1119,6 +1137,27 @@ async function withInviteStatus(childCases, principal) {
   });
 }
 
+// The Cases list shows a person under "Client". An employer matter whose employer name has not been written yet would show a blank cell, so - when one of its employees is named - the list shows that
+// employee instead: `listContact` = { name, email } of the matter's first named employee (oldest first). One batched query for the whole page; additive; a failure leaves the rows exactly as they were.
+async function attachEmployeeNameToUnnamedEmployerMatters(rows) {
+  try {
+    const unnamed = (rows || []).filter((row) => row?.caseRole === "principal" && row?.caseStructure === "employer_employee" && !String(row.clientName || "").trim());
+    if (!unnamed.length) return;
+    const children = await Case.find({ parentCase: { $in: unnamed.map((row) => row._id) }, caseRole: "employee", status: { $nin: ["removed", "archived"] } })
+      .select("parentCase caseRole clientName clientEmail employeeIdentity pendingEmployee createdAt").sort({ createdAt: 1 }).lean();
+    const byParent = new Map();
+    for (const child of children) {
+      const contact = employeeContact(child);
+      if (!contact?.name || byParent.has(String(child.parentCase))) continue;
+      byParent.set(String(child.parentCase), { name: contact.name, email: contact.email });
+    }
+    for (const row of unnamed) {
+      const contact = byParent.get(String(row._id));
+      if (contact) row.listContact = contact;
+    }
+  } catch (_error) { /* the list simply keeps its blank cell */ }
+}
+
 async function linkCases(caseData, linkedCaseId, relationship, user, notes, req) {
   const linkedCase = await Case.findById(linkedCaseId);
   if (!linkedCase) {
@@ -1259,6 +1298,7 @@ module.exports = {
   populateCaseQueryForClient,
   clientFilingShipment,
   clientFilingReceipt,
+  attachEmployeeNameToUnnamedEmployerMatters,
   clientFilingShipmentsFor,
   reopenCase,
   resolveTeamLeadForCase,

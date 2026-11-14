@@ -28,6 +28,20 @@ const { OCI_SPOUSE_CHECKLIST_DEFINITIONS } = require("./ociSpouseChecklist");
 const { OCI_MINOR_HELD_CHECKLIST_DEFINITIONS } = require("./ociMinorHeldChecklist");
 const { US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS } = require("./usPassportMinorChecklist");
 const { INDIAN_ETOURIST_BUSINESS_DEFINITIONS } = require("./indianEtouristBusinessChecklist");
+const { INDIAN_ETOURIST_EVISA_DEFINITIONS } = require("./indianEtouristEvisaChecklist");
+const { RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS } = require("./renunciationMinorNoPassportChecklist");
+const { RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS } = require("./renunciationAdultNoPassportChecklist");
+const { RENUNCIATION_MINOR_HOLDER_DEFINITIONS } = require("./renunciationMinorHolderChecklist");
+const { RENUNCIATION_ADULT_HOLDER_DEFINITIONS } = require("./renunciationAdultHolderChecklist");
+const { INDIAN_PASSPORT_RENEWAL_MINOR_DEFINITIONS } = require("./indianPassportRenewalMinorChecklist");
+const { INDIAN_PASSPORT_RENEWAL_LOST_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalLostPassportChecklist");
+const { INDIAN_PASSPORT_RENEWAL_DAMAGE_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalDamagePassportChecklist");
+const { INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS } = require("./indianPassportRenewalAdultHolderChecklist");
+const { INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultLostPassportChecklist");
+const { INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultDamagePassportChecklist");
+const { OCI_RENUNCIATION_DEFINITIONS } = require("./ociRenunciationChecklist");
+const { US_VISITOR_VISA_DEFINITIONS } = require("./usVisitorVisaChecklists");
+const { STAMPING_DEFINITIONS } = require("./stampingChecklist");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2449,6 +2463,20 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...OCI_MINOR_HELD_CHECKLIST_DEFINITIONS,
   ...US_PASSPORT_MINOR_CHECKLIST_DEFINITIONS,
   ...INDIAN_ETOURIST_BUSINESS_DEFINITIONS,
+  ...INDIAN_ETOURIST_EVISA_DEFINITIONS,
+  ...RENUNCIATION_MINOR_NO_PASSPORT_DEFINITIONS,
+  ...RENUNCIATION_ADULT_NO_PASSPORT_DEFINITIONS,
+  ...RENUNCIATION_MINOR_HOLDER_DEFINITIONS,
+  ...RENUNCIATION_ADULT_HOLDER_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_MINOR_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_LOST_PASSPORT_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_DAMAGE_PASSPORT_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS,
+  ...INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS,
+  ...OCI_RENUNCIATION_DEFINITIONS,
+  ...US_VISITOR_VISA_DEFINITIONS,
+  ...STAMPING_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
@@ -2651,6 +2679,7 @@ async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
 // Same create-or-patch logic as the full seed, scoped to the checklists a request actually needs, cached per template key
 // (ENSURE_TTL_MS) so repeated page loads cost nothing.
 const lazyTemplateCache = new Map(); // definition.key -> { at, promise, present }
+const { orderDefaultChecklists } = require("./checklistOrder"); // a visa type's default checklists are shown in settings.checklistOrder order (stable; no order = unchanged)
 const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-\s]/g, "").toUpperCase();
 
 function reconcileInBackground(definition, user, req) {
@@ -2843,6 +2872,11 @@ async function reconcileDefinition(definition, systemUser, req) {
       questionnaire.set("settings.inlineDocuments", definition.settings.inlineDocuments);
       changed = true;
     }
+    // the order a visa type's default checklists are shown in (settings.checklistOrder; for example US Visitor Visa: applicant checklist 1, sponsor questionnaire 2)
+    if (definition.settings?.checklistOrder !== undefined && questionnaire.settings?.checklistOrder !== definition.settings.checklistOrder) {
+      questionnaire.set("settings.checklistOrder", definition.settings.checklistOrder);
+      changed = true;
+    }
     if (!designerEdited("assignmentRules") && definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
       questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
       changed = true;
@@ -2955,11 +2989,15 @@ async function reconcileDefinition(definition, systemUser, req) {
         patch.active = true;
         patch.isActive = true;
       }
-      if (Object.keys(patch).length) {
+      // The legacy `showIf` field is a mirror of the question's OLD conditionalLogic. When the definition no longer carries it, a stale mirror must go: left in place it keeps
+      // pointing at a question that may no longer exist, and the client then hides this question (an upload "disappears" from the checklist) whatever the definition says now.
+      const staleShowIf = Boolean(existing.showIf?.field) && !question.showIf?.field
+        && !adminEdits.isEdited(editedFields, "conditionalLogic") && !adminEdits.isEdited(editedFields, "showIf");
+      if (Object.keys(patch).length || staleShowIf) {
         ops.push({
           updateOne: {
             filter: { _id: existing._id },
-            update: { $set: { ...patch, updatedBy: systemUser._id } },
+            update: { $set: { ...patch, updatedBy: systemUser._id }, ...(staleShowIf ? { $unset: { showIf: "" } } : {}) },
           },
         });
       }
@@ -3405,6 +3443,7 @@ async function resolveCaseQuestionnaires(caseId) {
     }
     // a legacy L-1A case (it already carries an old Employer / Employee checklist) is not given the new L1A Document Checklist on top
     const legacyL1a = /^L1A/.test(visaType) ? await carriesRetiredL1aChecklist(caseData) : false;
+    orderDefaultChecklists(defaults);
     for (const questionnaire of defaults) {
       if (legacyL1a && NEW_DOCUMENT_CHECKLIST_KEYS.includes(questionnaire.key)) continue;
       const id = String(questionnaire._id);
@@ -3905,6 +3944,7 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  orderDefaultChecklists,
   isRetiredChecklistFor,
   deactivateQuestion,
   // create-or-patch ONE built-in checklist template from its code definition (used by scripts/syncChecklistDefinitions.js)

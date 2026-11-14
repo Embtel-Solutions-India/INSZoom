@@ -33,8 +33,8 @@ test("registration: own checklist, client role, not a default, no forms, registe
   const registry = visaCategories.VISA_CATEGORIES["US-PASSPORT-MINOR"];
   assert.deepEqual([registry.caseStructure, registry.forms, registry.noForms], ["single", [], true]);
   assert.equal(visaFormSeeds.mappings.filter((row) => row.visaType === "US-PASSPORT-MINOR").length, 0);
-  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 5, "OCI untouched");
-  assert.equal(OCI_CHECKLIST_DEFINITIONS[0].questions.length, 73, "an existing checklist is unchanged");
+  assert.equal(visaCategories.VISA_CATEGORIES.OCI.subTypes.length, 6, "OCI untouched");
+  assert.equal(OCI_CHECKLIST_DEFINITIONS[0].questions.length, 43, "an existing checklist is unchanged");
   const others = VISA_TEMPLATE_DEFINITIONS.filter((item) => item.key !== CHECKLIST_KEY);
   const otherKeys = new Set(others.flatMap((item) => (item.questions || []).map((question) => question.key)));
   assert.ok(!definition.questions.some((question) => otherKeys.has(question.key)), "no question key is shared with any other checklist");
@@ -44,13 +44,13 @@ test("registration: own checklist, client role, not a default, no forms, registe
 test("five sections in order with the exact supplied question labels and counts", () => {
   assert.deepEqual(SECTIONS, definition.sections);
   assert.equal(SECTIONS.length, 5);
-  assert.deepEqual(labelsOf(SECTIONS[0]), ["First Name", "Middle Name", "Last Name", "Other Names Used", "Date of Birth (MM/DD/YYYY)", "Social Security Number (SSN)", "City of Birth", "State / Territory of Birth", "Country of Birth", "USCIS Registration A-Number (if any)", "Sex (M / F / X)", "Height (Feet & Inches)", "Hair Color", "Eye Color", "Occupation", "School Name"]);
+  assert.deepEqual(labelsOf(SECTIONS[0]), ["First Name", "Middle Name", "Last Name", "Other Names Used", "Date of Birth (MM/DD/YYYY)", "Social Security Number (SSN)*", "City of Birth", "State / Territory of Birth", "Country of Birth", "USCIS Registration A-Number (if any)", "Sex (M / F / X)", "Height (Feet & Inches)", "Hair Color", "Eye Color", "Occupation", "School Name"]);
   assert.deepEqual(labelsOf(SECTIONS[1]), ["Full Mailing Address", "In Care Of Full Name (Parent/Guardian receiving mail)", "Is Mailing Address same as Permanent Address?", "Full Permanent Address (if different)", "Email Address", "Phone / Mobile Number"]);
   assert.deepEqual(labelsOf(SECTIONS[2]), ["Date of Departure (MM/DD/YYYY)", "Date of Return (MM/DD/YYYY)", "Countries to be Visited", "Full Name (First & Last)", "Full Mailing Address", "Telephone / Contact Number", "Email Address", "Relationship with Minor"]);
   assert.equal(labelsOf(SECTIONS[3])[0], "Select application category / product requested:");
   assert.deepEqual(labelsOf(SECTIONS[4]).slice(0, 5), ["Father's / Parent 1 First & Middle Name", "Father's / Parent 1 Last Name", "Date of Birth (MM/DD/YYYY)", "Place of Birth (City, State, Country)", "U.S. Citizen?"]);
   assert.deepEqual(labelsOf(SECTIONS[4]).slice(5, 6), ["Mother's / Parent 2 First & Middle Name"]);
-  assert.equal(definition.questions.length, 16 + 6 + 8 + 9 + 10);
+  assert.equal(definition.questions.length, 16 + 6 + 8 + 5 + 10);
   assert.deepEqual(q("category").options.map((o) => o.value), Object.values(CATEGORY));
   assert.deepEqual(q("sex").options.map((o) => o.value), ["M", "F", "X"]);
   assert.deepEqual(q("prev_status").options.map((o) => o.value), ["Submitted", "Lost", "Stolen*"]);
@@ -59,34 +59,20 @@ test("five sections in order with the exact supplied question labels and counts"
   assert.equal(labelsOf(SECTIONS[2]).length, 8);
 });
 
-test("always-required vs optional", () => {
-  for (const name of ["first_name", "last_name", "date_of_birth", "city_of_birth", "country_of_birth", "sex", "height", "hair_color", "eye_color", "occupation", "mailing_address", "mailing_same_as_permanent", "email", "phone", "category", "emergency_name", "emergency_address", "emergency_phone", "emergency_relationship", "ssn",
-    "parent1_first_middle_name", "parent1_last_name", "parent1_dob", "parent1_place_of_birth", "parent1_us_citizen", "parent2_first_middle_name", "parent2_last_name", "parent2_dob", "parent2_place_of_birth", "parent2_us_citizen"]) assert.equal(state(name).required, true, name);
-  for (const name of ["middle_name", "other_names", "a_number", "school_name", "in_care_of", "departure_date", "return_date", "countries_to_visit", "emergency_email"]) assert.equal(state(name).required, false, name);
+test("no show-when rules: every question is always visible; exact required list; one set of recent-passport fields", () => {
+  for (const question of definition.questions) {
+    assert.ok(!question.conditionalLogic || !(question.conditionalLogic.rules || []).length, question.key + " has no show-when rule");
+    assert.equal(isQuestionVisible(question, {}, client), true, question.key + " visible with no answers");
+  }
+  const required = definition.questions.filter((question) => question.required).map((question) => question.key.replace("ds11minor_", "")).sort();
+  assert.deepEqual(required, ["first_name", "last_name", "date_of_birth", "ssn", "city_of_birth", "country_of_birth", "sex", "height", "hair_color", "eye_color", "occupation", "mailing_address", "mailing_same_as_permanent", "email", "phone", "emergency_name", "emergency_address", "emergency_phone", "emergency_relationship", "category", "parent1_first_middle_name", "parent1_last_name", "parent1_dob", "parent1_place_of_birth", "parent1_us_citizen"].sort());
+  for (const name of ["middle_name", "other_names", "state_of_birth", "a_number", "school_name", "in_care_of", "permanent_address", "departure_date", "return_date", "countries_to_visit", "emergency_email", "prev_number", "prev_issue_date", "prev_status", "prev_expiry_date", "parent2_first_middle_name", "parent2_last_name", "parent2_dob", "parent2_place_of_birth", "parent2_us_citizen"]) assert.equal(state(name).required, false, name);
+  for (const gone of ["card_number", "card_issue_date", "card_status", "card_expiry_date"]) assert.equal(q(gone), undefined, gone + " (the second Passport Card set) is not in the supplied checklist");
+  const hints = definition.questions.filter((question) => question.description).map((question) => question.key.replace("ds11minor_", "")).sort();
+  assert.deepEqual(hints, ["departure_date", "emergency_name", "ssn"], "only the hints that are in the supplied checklist");
 });
 
-test("conditional: state of birth, permanent address, first-time vs existing documents, both Book & Card", () => {
-  assert.equal(state("state_of_birth", a({ country_of_birth: "India" })).visible, false, "not asked for a foreign birth");
-  assert.deepEqual(Object.values(state("state_of_birth", a({ country_of_birth: "United States" }))), [true, true]);
-  assert.equal(state("permanent_address", a({ mailing_same_as_permanent: "Yes" })).visible, false);
-  assert.equal(state("permanent_address").visible, false);
-  assert.deepEqual(Object.values(state("permanent_address", a({ mailing_same_as_permanent: "No" }))), [true, true]);
-  const docs = ["prev_number", "prev_issue_date", "prev_status", "prev_expiry_date"];
-  for (const name of docs) {
-    assert.equal(state(name, a({ category: CATEGORY.first })).visible, false, `${name} hidden for first-time`);
-    assert.equal(state(name).visible, false, `${name} hidden before a choice`);
-    for (const category of [CATEGORY.book, CATEGORY.card, CATEGORY.both]) assert.deepEqual(Object.values(state(name, a({ category }))), [true, true], `${name} / ${category}`);
-  }
-  const card = ["card_number", "card_issue_date", "card_status", "card_expiry_date"];
-  for (const name of card) {
-    assert.equal(state(name, a({ category: CATEGORY.book })).visible, false);
-    assert.equal(state(name, a({ category: CATEGORY.card })).visible, false);
-    assert.deepEqual(Object.values(state(name, a({ category: CATEGORY.both }))), [true, true], `${name} separate record for both`);
-  }
-  assert.notEqual(q("prev_number").key, q("card_number").key, "book and card never share a field");
-});
-
-test("a first-time applicant with every other required answer is complete (no passport/card fields demanded)", () => {
+test("an applicant with every required answer is complete (recent-passport fields and Parent 2 are optional)", () => {
   const answers = a({
     first_name: "A", last_name: "B", date_of_birth: "2018-04-02", ssn: "000-00-0000", city_of_birth: "Austin", state_of_birth: "TX", country_of_birth: "United States", sex: "F", height: "3 ft 5 in", hair_color: "Brown", eye_color: "Brown", occupation: "Student / Child",
     mailing_address: { line1: "1 Main", city: "Austin" }, mailing_same_as_permanent: "Yes", email: "a@b.co", phone: "+15125550100",
@@ -99,8 +85,6 @@ test("a first-time applicant with every other required answer is complete (no pa
   assert.deepEqual(result.missingRequired, []);
   assert.deepEqual(result.errors, []);
   assert.notEqual(answers.ds11minor_parent1_dob, answers.ds11minor_parent2_dob, "parents stored independently");
-  const incomplete = validateResponse(definition, definition.questions, { ...answers, ds11minor_category: CATEGORY.book }, client);
-  assert.deepEqual(incomplete.missingRequired.map((item) => item.questionKey).sort(), ["ds11minor_prev_expiry_date", "ds11minor_prev_issue_date", "ds11minor_prev_number", "ds11minor_prev_status"]);
 });
 
 test("backend validation: SSN (incl. placeholder), A-Number, height, email, phone, dates", () => {

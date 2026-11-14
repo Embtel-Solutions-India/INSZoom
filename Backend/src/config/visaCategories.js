@@ -40,11 +40,20 @@ const VISA_CATEGORIES = {
   // Checklist/questionnaire-driven like PERM: ONE client checklist (gc_nvc_checklist, questionnaires/gcNvcChecklist.js), no USCIS
   // forms and no CaseForm rows. The checklist is provisioned at creation as a Case Manager draft and released to the client on approval.
   // OCI (Indian Timeline Cases): single-person, no forms; one checklist per subtype (questionnaires/ociChecklists.js)
-  OCI: { caseStructure: "single", forms: [], noForms: true, label: "OCI - Overseas Citizen of India", subTypes: ["Adult Foreign citizen and held Indian passport", "Adult Foreign citizen by birth and never held Indian passport", "Minor Foreign citizen and never held Indian passport", "OCI Checklist for Spouse of Foreign Origin", "Minor Foreign citizen and held Indian passport"] },
+  OCI: { caseStructure: "single", forms: [], noForms: true, label: "OCI - Overseas Citizen of India", subTypes: ["Adult Foreign citizen and held Indian passport", "Adult Foreign citizen and never held Indian passport", "Minor Foreign citizen and held Indian passport", "Minor Foreign citizen and never held Indian passport", "OCI Checklist for Spouse of Foreign Origin", "OCI RENUNCIATION"] },
   // US Passport Renewal for Minors (Indian Timeline Cases): single-person, no forms; DS-11 data-collection checklist (questionnaires/usPassportMinorChecklist.js)
-  "US-PASSPORT-MINOR": { caseStructure: "single", forms: [], noForms: true, label: "US Passport Renewal for Minors", subTypes: ["US Passport Renewal for Minors (DS-11, under age 16)"] },
-  // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, no forms; subtype 1 Business Visa (questionnaires/indianEtouristBusinessChecklist.js), subtype 2 not yet configured
-  "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "Second subtype (checklist not yet configured)"] },
+  "US-PASSPORT-MINOR": { caseStructure: "single", forms: [], noForms: true, label: "US Passport Renewal", subTypes: ["US Passport Renewal for Minors (DS-11, under age 16)"] },
+  // Indian E-Tourist Visa (Indian Timeline Cases): single-person, checklist-only, no forms; subtype 1 Business Visa (questionnaires/indianEtouristBusinessChecklist.js), subtype 2 E-Visa (questionnaires/indianEtouristEvisaChecklist.js)
+  // Renunciation (Indian Timeline Cases): single-person, checklist-only, no forms; one checklist per subtype (questionnaires/renunciationMinorNoPassportChecklist.js for subtype 1)
+  RENUNCIATION: { caseStructure: "single", forms: [], noForms: true, label: "Renunciation", subTypes: ["Adult Indian Citizen without Indian Passport", "Adult Indian Passport Holder", "Minor Indian Passport Holder", "Minor without Indian passport"] },
+  // Indian Passport Renewal (Indian Timeline Cases): single-person, checklist-only, no forms; one checklist per subtype (questionnaires/indianPassportRenewalMinorChecklist.js for subtype 1)
+  "INDIAN-PASSPORT-RENEWAL": { caseStructure: "single", forms: [], noForms: true, label: "Indian Passport Renewal", subTypes: ["Adult Indian In Lieu of damage Passport", "Adult Indian In Lieu of lost Passport", "Adult Indian Passport Holder", "Minor Indian in Lieu of damage Passport", "Minor Indian in Lieu of lost Passport", "Minor Indian Passport Holder"] },
+  // US Visitor Visa (Indian Timeline Cases): single-person, no forms and NO subtype. Its two checklists (questionnaires/usVisitorVisaChecklists.js: the applicant checklist, then the I-134 sponsor
+  // questionnaire) are default checklists of this visa type, so they go to US Visitor Visa cases only.
+  // Stamping (Indian Timeline Cases): single-person, no forms and NO subtype, ONE checklist (questionnaires/stampingChecklist.js) that is a default checklist of this visa type only.
+  STAMPING: { caseStructure: "single", forms: [], noForms: true, selfContainedChecklists: true, checklists: ["stamping_checklist"], label: "Stamping" },
+  "US-VISITOR-VISA": { caseStructure: "single", forms: [], noForms: true, selfContainedChecklists: true, checklists: ["us_visitor_visa_applicant_checklist", "us_visitor_visa_i134_checklist"], label: "US Visitor Visa" },
+  "INDIAN-E-TOURIST-VISA": { caseStructure: "single", forms: [], noForms: true, label: "Indian E-Tourist Visa", subTypes: ["Business Visa", "E-Visa"] },
   "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 
   // ─── EMPLOYER / EMPLOYEE VISAS ───────────────────────────────────────────

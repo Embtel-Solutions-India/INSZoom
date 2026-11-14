@@ -473,17 +473,15 @@ const CreateCaseModal = ({
           {indianSubtypes && (
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Checklist type *</label>
-              <select
+              {/* a custom list (not a native <select>): its options wrap inside the popup instead of running past its edge */}
+              <WrappingSelect
                 required
+                compact
                 value={form.petitionSubType}
-                onChange={handleChange('petitionSubType')}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="" disabled>Select checklist type</option>
-                {indianSubtypes.map((subtype) => (
-                  <option key={subtype.value} value={subtype.value}>{subtype.label}</option>
-                ))}
-              </select>
+                onChange={(value) => handleChange('petitionSubType')({ target: { value } })}
+                options={indianSubtypes.map((subtype) => ({ value: subtype.value, label: subtype.label }))}
+                placeholder="Select checklist type"
+              />
               {indianSubtypes.find((subtype) => subtype.value === form.petitionSubType)?.description && (
                 <p className="mt-1 text-xs text-muted-foreground">{indianSubtypes.find((subtype) => subtype.value === form.petitionSubType).description}</p>
               )}

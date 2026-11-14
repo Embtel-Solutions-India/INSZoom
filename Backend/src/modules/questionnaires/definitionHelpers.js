@@ -34,4 +34,9 @@ function buildQuestion(key, label, type, sectionTitle, order, extras = {}) {
   };
 }
 
-module.exports = { slugSection, buildQuestion };
+// The "Physical Photographs" item of every checklist that asks for them. They are never uploaded: the applicant brings them to the office. The single option is a REQUIRED
+// choice whose text is the instruction itself; the stored answer is that same sentence, so the Admin portal (which shows the stored value) reads it exactly as the client saw it.
+const PHYSICAL_PHOTOS_LINE = "Bring three identical physical passport-sized photographs with you when you come to the office.";
+const PHYSICAL_PHOTOS_OPTIONS = [{ label: PHYSICAL_PHOTOS_LINE, value: PHYSICAL_PHOTOS_LINE }];
+
+module.exports = { slugSection, buildQuestion, PHYSICAL_PHOTOS_LINE, PHYSICAL_PHOTOS_OPTIONS };

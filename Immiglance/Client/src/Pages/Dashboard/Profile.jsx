@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
 import { authApi, casesApi, employeeProfileApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
 import { useEmployeeView } from "../../context/ActiveCaseContext";
-import { resolveDisplayVisa } from "../../utils/visaDisplay";
+import { caseCategoryLabel, caseVisaTypeLabel, INDIAN_TIMELINE_CATEGORY } from "../../utils/caseCategoryLabel";
 import PasswordHint from "../../components/auth/PasswordHint";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
@@ -49,8 +50,10 @@ export default function Profile() {
   const employeeView = useEmployeeView(user); // follows the open case (one login, many cases)
   const [data, setData] = useState(INITIAL);
   const [activeCaseId, setActiveCaseId] = useState("");
+  const [shownSubtype, setShownSubtype] = useState(""); // an Indian Timeline case's subtype, shown as its category (display only; "" for every other visa)
   const [shownVisa, setShownVisa] = useState(""); // the proper visa name of the open case (N-400 - Naturalization, H-1B Extension ...), display only
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -87,7 +90,8 @@ export default function Profile() {
           visaCategory: activeCase.visaCategory || "",
           visaType: activeCase.visaType || "",
         });
-        setShownVisa(resolveDisplayVisa(activeCase));
+        setShownVisa(caseVisaTypeLabel(activeCase));
+        setShownSubtype(activeCase?.visaCategory === INDIAN_TIMELINE_CATEGORY ? caseCategoryLabel(activeCase) : "");
         setLoading(false);
       }).catch(() => setLoading(false));
       return () => { mounted = false; };
@@ -119,7 +123,8 @@ export default function Profile() {
         visaCategory: activeCase.visaCategory || client.visaCategory || "",
         visaType: activeCase.visaType || client.visaType || "",
       });
-      setShownVisa(resolveDisplayVisa(activeCase));
+      setShownVisa(caseVisaTypeLabel(activeCase));
+        setShownSubtype(activeCase?.visaCategory === INDIAN_TIMELINE_CATEGORY ? caseCategoryLabel(activeCase) : "");
       setLoading(false);
     }).catch(() => setLoading(false));
     return () => { mounted = false; };
@@ -150,6 +155,8 @@ export default function Profile() {
       }
       setMessage("Saved");
       setDirty(false);
+      // refresh what the dashboard shows from the profile (phone, name); a failed refresh must never turn a successful save into an error
+      try { queryClient.invalidateQueries({ queryKey: ["profile"] }); } catch { /* the 30 s cache refreshes it anyway */ }
     } catch (error) {
       setMessage(error.message || "Unable to save");
     } finally {
@@ -210,7 +217,7 @@ export default function Profile() {
   }
 
   const fullName = `${data.firstName} ${data.lastName}`.trim() || "Your profile";
-  const visaCategoryLabel = VISA_CATEGORIES.find((item) => item.id === data.visaCategory)?.label || data.visaCategory || "Not selected";
+  const visaCategoryLabel = shownSubtype || VISA_CATEGORIES.find((item) => item.id === data.visaCategory)?.label || data.visaCategory || "Not selected";
 
   return (
     <div className="min-h-screen bg-background">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import useCaseDataChanged from "../../hooks/useCaseDataChanged";
-import { resolveDisplayVisa } from "../../utils/visaDisplay";
+import { caseCategoryLabel, caseVisaTypeLabel } from "../../utils/caseCategoryLabel";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useEmployeeView } from "../../context/ActiveCaseContext";
@@ -153,8 +153,8 @@ function CaseInfo({ caseData, profileData }) {
       <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Your case</p>
-          <h3 className="mt-1 truncate text-base font-semibold leading-tight text-foreground">{resolveDisplayVisa(caseData)}</h3>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{caseData.visaCategory || "Category not selected"}</p>
+          <h3 className="mt-1 truncate text-base font-semibold leading-tight text-foreground">{caseVisaTypeLabel(caseData)}</h3>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{caseCategoryLabel(caseData) || "Category not selected"}</p>
         </div>
         {caseData.uscisNumber && (
           <span className="shrink-0 rounded border border-border bg-secondary/50 px-2 py-1 font-mono text-[0.65rem] font-medium text-foreground">{caseData.uscisNumber}</span>
@@ -371,23 +371,27 @@ const initialsOf = (name) => String(name || "").trim().split(/\s+/).map((part) =
 
 // The steps shown are the stages of the case's own GoHighLevel pipeline when it has one (names and count come from there, so they follow any
 // change made in GHL); otherwise the portal's standard five steps.
-function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline, milestones }) {
+function CaseStatusStepper({ caseData, profileData, profileFields, user, displayName, pipeline, milestones }) {
   // The bar shows the same steps as the Tasks page (the case's lifecycle milestones); when the card reaches Submitted on the Pipeline, "Filed" completes and so
   // does everything before it (utils/milestones.js). Only if those milestones are not available does it fall back to the pipeline's own stages / the standard steps.
   const useMilestones = Array.isArray(milestones) && milestones.length > 0;
-  const ghlStages = !useMilestones && pipeline?.stages?.length ? pipeline.stages : null;
+  // The client never sees the GoHighLevel pipeline stages (an internal view for the team): without milestones the standard steps are shown, never the pipeline.
+  const ghlStages = null;
   const steps = useMilestones ? milestones.map((milestone) => milestone.label) : ghlStages ? ghlStages.map((stage) => stage.name) : CASE_STATUS_STEPS;
   const found = ghlStages ? ghlStages.findIndex((stage) => stage.key === pipeline.currentKey) : -1;
   const firstOpen = useMilestones ? milestones.findIndex((milestone) => !milestone.completed) : -1;
   const currentIndex = useMilestones ? (firstOpen === -1 ? steps.length - 1 : firstOpen) : ghlStages ? Math.max(0, found) : resolveCaseStepIndex(caseData);
   const statusLabel = steps[currentIndex] || "Evaluation In Progress";
   const email = profileData?.email || user?.email || "—";
-  const phone = profileData?.primaryPhone || caseData?.clientPhone || "—";
+  // the phone the client saved on the Profile page (profileFields is read from the same place the Profile page reads), then the other places a phone can live
+  const phone = profileFields?.primaryPhone || profileData?.primaryPhone || caseData?.clientPhone || "—";
+  // Indian Timeline cases show their subtype here (see utils/caseCategoryLabel.js); every other visa shows its category exactly as before
+  const categoryShown = caseCategoryLabel(caseData);
   const details = [
     { label: "Email", value: email },
     { label: "Phone", value: phone },
-    { label: "Visa category", value: caseData?.visaCategory && caseData.visaCategory !== "Not Selected" ? caseData.visaCategory : "Not selected" },
-    { label: "Visa type", value: resolveDisplayVisa(caseData) || "Not assigned" },
+    { label: "Visa category", value: categoryShown && categoryShown !== "Not Selected" ? categoryShown : "Not selected" },
+    { label: "Visa type", value: caseVisaTypeLabel(caseData) || "Not assigned" },
     { label: "Case ID", value: caseData?.caseId, mono: true },
     { label: "Case opened", value: fmtDate(caseData?.createdAt || caseData?.startedDate) },
   ];
@@ -591,9 +595,9 @@ function KpiCard({ label, value, hint, to, color }) {
 }
 
 /* ── Case Details (client-facing summary card, matches Immiglance reference) ── */
-function CaseDetailsCard({ caseData, profileData, user }) {
+function CaseDetailsCard({ caseData, profileData, profileFields, user }) {
   const email = profileData?.email || user?.email || "—";
-  const phone = profileData?.primaryPhone || caseData?.clientPhone || "—";
+  const phone = profileFields?.primaryPhone || profileData?.primaryPhone || caseData?.clientPhone || "—";
   const submitted = fmtDate(caseData?.createdAt);
   return (
     <div className="bg-card rounded-lg border border-card-border p-6">
@@ -601,7 +605,7 @@ function CaseDetailsCard({ caseData, profileData, user }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Category</p>
-          <p className="text-sm font-semibold text-foreground">{caseData?.visaCategory || "Not selected"}</p>
+          <p className="text-sm font-semibold text-foreground">{caseCategoryLabel(caseData) || "Not selected"}</p>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Email</p>
@@ -796,7 +800,7 @@ export default function Dashboard() {
 
         <div id="case-progress">
           {isInitialCaseLoading ? <CaseProgressSkeleton /> : (
-            <CaseStatusStepper caseData={activeCaseData} profileData={profileData} user={user} displayName={displayName} pipeline={pipeline} milestones={milestones} />
+            <CaseStatusStepper caseData={activeCaseData} profileData={profileData} profileFields={profileFields} user={user} displayName={displayName} pipeline={pipeline} milestones={milestones} />
           )}
         </div>
 
@@ -808,7 +812,7 @@ export default function Dashboard() {
 
         {/* ── KPI tiles ── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard label="Tasks" value={openTaskCount ?? "—"} hint={openTaskCount === null ? "Loading" : openTaskCount ? `${closedTaskCount} of ${taskTotal} done` : "All done"} to="/dashboard/tasks" color={CHART_BLUE} />
+          <KpiCard label="Timeline" value={openTaskCount ?? "—"} hint={openTaskCount === null ? "Loading" : openTaskCount ? `${closedTaskCount} of ${taskTotal} done` : "All done"} to="/dashboard/tasks" color={CHART_BLUE} />
           <KpiCard label="Documents" value={documentCount ?? "—"} hint="Uploaded" to="/dashboard/documents" color={GREEN} />
           <KpiCard label="Messages" value={unreadMessages ?? "—"} hint="Unread" to="/dashboard/messages" color={PURPLE} />
           <KpiCard label="Profile" value={profileShown} hint={!profileKnown ? "Loading" : profilePercent === 100 ? "Complete" : "Finish to proceed"} to="/dashboard/profile" color={AMBER} />
@@ -877,7 +881,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            <CaseDetailsCard caseData={activeCaseData} profileData={profileData} user={user} />
+            <CaseDetailsCard caseData={activeCaseData} profileData={profileData} profileFields={profileFields} user={user} />
             <SignedDeclarationCard caseData={activeCaseData} />
           </div>
 
