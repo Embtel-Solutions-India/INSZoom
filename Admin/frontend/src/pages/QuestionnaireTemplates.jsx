@@ -37,7 +37,7 @@ const CATEGORY_LABELS = {
   other: 'Other',
 }
 // the case types of the New Case form's "Indian timeline cases" group (visa codes as the backend stores them)
-const INDIAN_TIMELINE_CODES = new Set(['OCI', 'INDIANETOURISTVISA', 'USPASSPORTMINOR', 'RENUNCIATION', 'INDIANPASSPORTRENEWAL'])
+const INDIAN_TIMELINE_CODES = new Set(['OCI', 'INDIANETOURISTVISA', 'USPASSPORTMINOR', 'RENUNCIATION', 'INDIANPASSPORTRENEWAL', 'USVISITORVISA'])
 
 // Who can be assigned this checklist, based on the selected visa's category.
 // Values map onto the existing CHECKLIST_ROLES enum

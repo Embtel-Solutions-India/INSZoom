@@ -40,6 +40,6 @@ test("the built-in checklist definitions carry required questions again (they ar
   const withRequired = definitions.filter((definition) => (definition.questions || []).some((question) => question.required === true));
   assert.ok(withRequired.length > 50, `many definitions mark questions required (found ${withRequired.length})`);
   // passport information is required wherever a definition asks for it
-  const everyPassportRequired = definitions.every((definition) => (definition.questions || []).filter((question) => /passport/i.test(question.key || "") && /number/i.test(question.key || "")).every((question) => question.required === true || question.metadata?.optional));
+  const everyPassportRequired = definitions.every((definition) => (definition.questions || []).filter((question) => /passport/i.test(question.key || "") && /number/i.test(question.key || "")).every((question) => question.required === true || question.metadata?.optional || question.metadata?.passportInformation === false /* an explicit per-question opt-out (passportInformation.js), e.g. a spouse's or a previous passport */));
   assert.equal(everyPassportRequired, true);
 });

@@ -51,7 +51,7 @@ test("the dropdown copies (backend + Admin) list Indian E-Tourist Visa with exac
   assert.ok(backend.some((option) => option.value === "indianetourist" && option.canonicalLabel === "INDIAN-E-TOURIST-VISA"));
   const admin = fs.readFileSync(path.join(__dirname, "../../../../../Admin/frontend/src/utils/visaOptions.js"), "utf8");
   assert.ok(admin.includes("value: 'indianetourist', label: 'Indian E-Tourist Visa'"));
-  assert.ok(admin.includes("new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation', 'indianpassportrenewal'])"));
+  assert.ok(admin.includes("new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation', 'indianpassportrenewal', 'usvisitorvisa'])"));
   assert.ok(admin.includes("value: 'INDIAN_ETOURIST_BUSINESS', label: 'Business Visa'"));
   assert.ok(admin.includes("value: 'INDIAN_ETOURIST_SUBTYPE_2'"));
 });

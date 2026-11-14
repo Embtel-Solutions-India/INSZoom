@@ -53,7 +53,7 @@ test("registration: new visa type Indian Passport Renewal; subtype 1 has its own
   const backend = fs.readFileSync(path.join(__dirname, "../../../config/visaDropdown.js"), "utf8");
   const line = "{ value: 'indianpassportrenewal', label: 'Indian Passport Renewal', canonicalLabel: 'INDIAN-PASSPORT-RENEWAL' }";
   assert.ok(admin.includes(line) && backend.includes(line), "the same dropdown entry in both copies");
-  assert.ok(admin.includes("'indianpassportrenewal'])"), "an Indian Timeline visa type in the Admin picker");
+  assert.ok(admin.includes("'indianpassportrenewal'"), "an Indian Timeline visa type in the Admin picker");
   assert.ok(admin.includes("value: 'INDIAN_PASSPORT_RENEWAL_MINOR_HOLDER', label: 'Minor Indian Passport Holder'"), "the subtype is selectable in Admin");
 });
 

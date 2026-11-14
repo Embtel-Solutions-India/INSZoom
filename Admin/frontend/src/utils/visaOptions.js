@@ -53,6 +53,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'indianetourist', label: 'Indian E-Tourist Visa', canonicalLabel: 'INDIAN-E-TOURIST-VISA' },
   { value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' },
   { value: 'indianpassportrenewal', label: 'Indian Passport Renewal', canonicalLabel: 'INDIAN-PASSPORT-RENEWAL' },
+  { value: 'usvisitorvisa', label: 'US Visitor Visa', canonicalLabel: 'US-VISITOR-VISA' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
@@ -185,7 +186,7 @@ export const SINGLE_PARTY_FILING_TYPE_KEYS = {
 }
 // Indian Timeline Cases: single-person, no forms. Each visa type here has subtypes; the New case form shows a subtype dropdown and the subtype decides the checklist
 // (the filingTypeKey is the single-party filing type that creates the case and assigns that subtype's checklist).
-export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation', 'indianpassportrenewal'])
+export const INDIAN_TIMELINE_VISA_TYPES = new Set(['oci', 'uspassportminor', 'indianetourist', 'renunciation', 'indianpassportrenewal', 'usvisitorvisa'])
 export const INDIAN_TIMELINE_SUBTYPES = {
   oci: [{ value: 'OCI_ADULT_FORMER_INDIAN_PASSPORT', label: 'Adult Foreign citizen and held Indian passport', description: 'For adult foreign citizens who previously held an Indian passport and are applying for Overseas Citizen of India (OCI) registration.' },
     { value: 'OCI_ADULT_FOREIGN_CITIZEN_BY_BIRTH', label: 'Adult Foreign citizen and never held Indian passport', description: 'For adult foreign citizens born as foreign citizens who have never held an Indian passport and are applying for OCI registration.' },

@@ -16,7 +16,14 @@ const INDIAN_TIMELINE_VISA_NAMES = {
   RENUNCIATION: "Renunciation",
   "INDIAN-E-TOURIST-VISA": "Indian E-Tourist Visa",
   "US-PASSPORT-MINOR": "US Passport Renewal",
+  "US-VISITOR-VISA": "US Visitor Visa",
 };
+
+// Indian Timeline visa types with NO subtype are created through the generic path, which stores the visa type itself as the category; they are recognised by their visa type.
+const INDIAN_TIMELINE_NO_SUBTYPE_TYPES = new Set(["US-VISITOR-VISA"]);
+
+// The readable name of an Indian Timeline visa type code (undefined for any other code).
+export const indianTimelineVisaName = (visaType) => INDIAN_TIMELINE_VISA_NAMES[visaType];
 
 // The visa's display name: the readable name for an Indian Timeline code, otherwise exactly what resolveDisplayVisa returns.
 export function caseVisaTypeLabel(caseData) {
@@ -25,7 +32,7 @@ export function caseVisaTypeLabel(caseData) {
 
 export function caseCategoryLabel(caseData) {
   const category = caseData?.visaCategory;
-  if (category !== INDIAN_TIMELINE_CATEGORY) return category;
+  if (category !== INDIAN_TIMELINE_CATEGORY && !INDIAN_TIMELINE_NO_SUBTYPE_TYPES.has(caseData?.visaType)) return category;
   const subtype = typeof caseData?.petitionType === "string" ? caseData.petitionType.trim() : "";
   return subtype || caseVisaTypeLabel(caseData) || "";
 }

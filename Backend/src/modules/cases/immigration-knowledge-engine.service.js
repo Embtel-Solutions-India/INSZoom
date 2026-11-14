@@ -158,6 +158,9 @@ class ImmigrationKnowledgeEngineService {
   static selfContainedQuestionnaireIds(questionnaires = []) {
     const filingTypes = require("../../config/filingTypes");
     const owned = new Set(filingTypes.listFilingTypes().filter((type) => type.category === "indian_timeline" && type.questionnaireKey).map((type) => type.questionnaireKey));
+    // a visa type with NO subtype whose checklists are each self-contained (visa registry flag selfContainedChecklists: US Visitor Visa) keeps every checklist's documents inside that checklist too
+    const { VISA_CATEGORIES } = require("../../config/visaCategories");
+    for (const entry of Object.values(VISA_CATEGORIES)) if (entry?.selfContainedChecklists) for (const key of entry.checklists || []) owned.add(key);
     return new Set(questionnaires.filter((item) => owned.has(item.key)).map((item) => idOf(item._id)));
   }
 
@@ -196,7 +199,8 @@ class ImmigrationKnowledgeEngineService {
         const key = item.rootQuestionnaire ? idOf(item.rootQuestionnaire) : item.key;
         if (!grouped.has(key)) grouped.set(key, item);
       });
-    return [...grouped.values()];
+    // the checklists are assigned in this order, so a case holds them (and both portals list them) in the order the visa type declares (stable: a visa type that declares none is untouched)
+    return require("../questionnaires/checklistOrder").orderDefaultChecklists([...grouped.values()]);
   }
 
   static normalizeRequirement(requirement, defaults = {}) {

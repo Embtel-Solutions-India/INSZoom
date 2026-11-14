@@ -40,6 +40,7 @@ const { INDIAN_PASSPORT_RENEWAL_ADULT_HOLDER_DEFINITIONS } = require("./indianPa
 const { INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultLostPassportChecklist");
 const { INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS } = require("./indianPassportRenewalAdultDamagePassportChecklist");
 const { OCI_RENUNCIATION_DEFINITIONS } = require("./ociRenunciationChecklist");
+const { US_VISITOR_VISA_DEFINITIONS } = require("./usVisitorVisaChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
@@ -2473,6 +2474,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...INDIAN_PASSPORT_RENEWAL_ADULT_LOST_PASSPORT_DEFINITIONS,
   ...INDIAN_PASSPORT_RENEWAL_ADULT_DAMAGE_PASSPORT_DEFINITIONS,
   ...OCI_RENUNCIATION_DEFINITIONS,
+  ...US_VISITOR_VISA_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
@@ -2675,6 +2677,7 @@ async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
 // Same create-or-patch logic as the full seed, scoped to the checklists a request actually needs, cached per template key
 // (ENSURE_TTL_MS) so repeated page loads cost nothing.
 const lazyTemplateCache = new Map(); // definition.key -> { at, promise, present }
+const { orderDefaultChecklists } = require("./checklistOrder"); // a visa type's default checklists are shown in settings.checklistOrder order (stable; no order = unchanged)
 const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-\s]/g, "").toUpperCase();
 
 function reconcileInBackground(definition, user, req) {
@@ -2865,6 +2868,11 @@ async function reconcileDefinition(definition, systemUser, req) {
     // a definition that keeps its uploads inside their sections (settings.inlineDocuments) brings an existing template of that key in line
     if (definition.settings?.inlineDocuments !== undefined && Boolean(questionnaire.settings?.inlineDocuments) !== definition.settings.inlineDocuments) {
       questionnaire.set("settings.inlineDocuments", definition.settings.inlineDocuments);
+      changed = true;
+    }
+    // the order a visa type's default checklists are shown in (settings.checklistOrder; for example US Visitor Visa: applicant checklist 1, sponsor questionnaire 2)
+    if (definition.settings?.checklistOrder !== undefined && questionnaire.settings?.checklistOrder !== definition.settings.checklistOrder) {
+      questionnaire.set("settings.checklistOrder", definition.settings.checklistOrder);
       changed = true;
     }
     if (!designerEdited("assignmentRules") && definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
@@ -3433,6 +3441,7 @@ async function resolveCaseQuestionnaires(caseId) {
     }
     // a legacy L-1A case (it already carries an old Employer / Employee checklist) is not given the new L1A Document Checklist on top
     const legacyL1a = /^L1A/.test(visaType) ? await carriesRetiredL1aChecklist(caseData) : false;
+    orderDefaultChecklists(defaults);
     for (const questionnaire of defaults) {
       if (legacyL1a && NEW_DOCUMENT_CHECKLIST_KEYS.includes(questionnaire.key)) continue;
       const id = String(questionnaire._id);
@@ -3933,6 +3942,7 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  orderDefaultChecklists,
   isRetiredChecklistFor,
   deactivateQuestion,
   // create-or-patch ONE built-in checklist template from its code definition (used by scripts/syncChecklistDefinitions.js)

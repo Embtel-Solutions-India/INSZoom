@@ -38,6 +38,8 @@ import {
 } from "../../utils/questionnaireEngine";
 import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from "../../utils/checklistStatus";
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
+import { isStackedChecklistCase } from "../../utils/stackedChecklists";
+import { indianTimelineVisaName } from "../../utils/caseCategoryLabel";
 
 const ROLE_GROUP_LABEL = { employer: "Employer", business_plan: "Business plan", employee: "Employee" };
 // Heading shown above each role's sections in the main page, so two checklists for the same party (e.g. an L-1A
@@ -192,6 +194,10 @@ export default function Documents() {
   const isEmployerShapeCase = Array.isArray(allowedRoles) && allowedRoles.some((role) => EMPLOYER_SHAPE_ROLES.includes(role));
   const isFamilyShapeCase = Boolean(activeCase?.petitionerUser || activeCase?.beneficiaryUser);
   const useNewArchitecture = isEmployerShapeCase;
+  // A case whose checklists are filled one after another on this page (US Visitor Visa): the first checklist loads through the page's own questionnaire, each further checklist
+  // through an "extra" slot, and the sections are stacked under each checklist's title. Every other case keeps today's behaviour (this is false, the lists below are empty).
+  const isStackedCase = !useNewArchitecture && !isFamilyShapeCase && isStackedChecklistCase(activeCase) && visibleChecklists.length > 1 && visibleChecklists.every((item) => item.referenceId);
+  const stackedChecklists = isStackedCase ? visibleChecklists : [];
 
   const showEmployer = Boolean(allowedRoles?.includes("employer"));
   const showBusinessPlan = Boolean(allowedRoles?.includes("business_plan"));
@@ -239,7 +245,9 @@ export default function Documents() {
   // assigned checklist right now - every other case (the overwhelming
   // majority) keeps the exact same role-only fetch it always has.
   const roleChecklistCount = visibleChecklists.filter((item) => item.targetRole === effectiveRole).length;
-  const effectiveReferenceId = roleChecklistCount > 1 ? (activeReferenceId || visibleChecklists.find((item) => item.targetRole === effectiveRole)?.referenceId) : undefined;
+  const effectiveReferenceId = isStackedCase
+    ? stackedChecklists[0].referenceId
+    : roleChecklistCount > 1 ? (activeReferenceId || visibleChecklists.find((item) => item.targetRole === effectiveRole)?.referenceId) : undefined;
 
   const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments } = useDocumentChecklist({ caseId: activeCaseId });
 
@@ -264,13 +272,14 @@ export default function Documents() {
         .sort((left, right) => new Date(right.sentAt || 0) - new Date(left.sentAt || 0))
         .slice(0, MAX_EXTRA_EMPLOYER_CHECKLISTS)
     : [];
+  const extraChecklists = useNewArchitecture ? extraEmployerChecklists : stackedChecklists.slice(1, 1 + MAX_EXTRA_EMPLOYER_CHECKLISTS);
   const extraSlotQA = (index) => useQuestionnaireAnswers(
-    extraEmployerChecklists[index] ? activeCaseId : null,
-    "employer",
-    { disabled: !extraEmployerChecklists[index], referenceId: extraEmployerChecklists[index]?.referenceId }
+    extraChecklists[index] ? activeCaseId : null,
+    extraChecklists[index]?.targetRole || "employer",
+    { disabled: !extraChecklists[index], referenceId: extraChecklists[index]?.referenceId }
   );
   const extraQA0 = extraSlotQA(0), extraQA1 = extraSlotQA(1), extraQA2 = extraSlotQA(2), extraQA3 = extraSlotQA(3);
-  const extraQAs = [extraQA0, extraQA1, extraQA2, extraQA3].slice(0, extraEmployerChecklists.length);
+  const extraQAs = [extraQA0, extraQA1, extraQA2, extraQA3].slice(0, extraChecklists.length);
   const bizPlanQA = useQuestionnaireAnswers(useNewArchitecture && showBusinessPlan ? activeCaseId : null, "business_plan", { disabled: !(useNewArchitecture && showBusinessPlan) });
   const employeeQA = useQuestionnaireAnswers(useNewArchitecture && showEmployeeInline ? activeCaseId : null, "employee", { disabled: !(useNewArchitecture && showEmployeeInline) });
 
@@ -376,6 +385,19 @@ export default function Documents() {
     [legacyQA.sections, legacyQA.questionsBySection, legacyQA.answers, legacyReusableCategories]
   );
 
+  const stackedSections = useMemo(() => {
+    if (!isStackedCase) return [];
+    return [
+      ...buildRoleSections(legacyQA, legacyReusableCategories, "checklist_0").map((section) => ({ ...section, groupTitle: stackedChecklists[0]?.title || "Checklist 1" })),
+      ...extraQAs.flatMap((qa, index) => buildRoleSections(qa, [], `checklist_${index + 1}`).map((section) => ({ ...section, groupTitle: stackedChecklists[index + 1]?.title || `Checklist ${index + 2}` }))),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isStackedCase, stackedChecklists.length, legacyQA.sections, legacyQA.questionsBySection, legacyQA.answers, legacyReusableCategories,
+    extraQA0.sections, extraQA0.questionsBySection, extraQA0.answers, extraQA1.sections, extraQA1.questionsBySection, extraQA1.answers,
+    extraQA2.sections, extraQA2.questionsBySection, extraQA2.answers, extraQA3.sections, extraQA3.questionsBySection, extraQA3.answers,
+  ]);
+
   const newSections = useMemo(() => {
     if (!useNewArchitecture) return [];
     // employer and business_plan are always the SAME person (see
@@ -404,10 +426,10 @@ export default function Documents() {
     employeeQA.sections, employeeQA.questionsBySection, employeeQA.answers, employeeReusableCategories,
   ]);
 
-  const sections = useNewArchitecture ? newSections : legacySections;
+  const sections = useNewArchitecture ? newSections : isStackedCase ? stackedSections : legacySections;
   const activeQAs = useNewArchitecture
     ? [...extraQAs, showEmployer && employerQA, showBusinessPlan && bizPlanQA, showEmployeeInline && employeeQA].filter(Boolean)
-    : [legacyQA];
+    : isStackedCase ? [legacyQA, ...extraQAs] : [legacyQA];
   const combinedStatus = combineQaStatus(activeQAs);
   // FIX (blank/stuck-loading bug): sections.length === 0 used to render the
   // exact same "Complete your eligibility assessment" message whether the
@@ -760,6 +782,40 @@ export default function Documents() {
   // employeeRoleSubmitted explicitly per section group instead (Bug C) so
   // submitting the employer side never locks a still-pending employee
   // section.
+  // The "N items still to fill / Save progress / Submit case" bar. It is rendered once at the end of the page, exactly as before, and - for a stacked case (US Visitor Visa) - after EACH
+  // checklist as well. Every copy is the same markup with the same handlers and the same conditions, so every one of them saves and submits the whole case exactly like the main buttons.
+  const renderActionBar = (barKey) => (
+    <div key={barKey} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
+      <div>
+        <p className="text-sm font-semibold text-foreground">
+          {missingRequiredItemsForSubmit.length > 0 ? `${missingRequiredItemsForSubmit.length} item${missingRequiredItemsForSubmit.length === 1 ? "" : "s"} still to fill before you can submit` : "All required items complete"}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {allRolesSubmitted ? "This checklist is read-only after submission." : uploadsInFlightCount > 0 ? `Waiting on ${uploadsInFlightCount} upload${uploadsInFlightCount === 1 ? "" : "s"} to finish before you can save or submit.` : useNewArchitecture && showEmployer ? "Submitting locks the employer side for your case team's review. Save progress any time without submitting." : "Submitting locks this checklist for your case team's review. Save progress any time without submitting."}
+        </p>
+        {submitError && <p role="alert" className="mt-1.5 text-xs font-semibold text-destructive">{submitError}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSaveProgress}
+          disabled={allRolesSubmitted || submitting || saveProgressState === "saving" || uploadsInFlightCount > 0}
+          className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saveProgressState === "saving" ? "Saving…" : "Save progress"}
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={missingRequiredItemsForSubmit.length > 0 || allRolesSubmitted || submitting || uploadsInFlightCount > 0}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {allRolesSubmitted ? "Submitted" : submitting ? "Submitting…" : "Submit case"}
+        </button>
+      </div>
+    </div>
+  );
+
   const renderSections = (list, locked = submitted) => list.map((section, sectionIndex) => (
     <Fragment key={section.id}>
     {section.roleGroup && (section.groupTitle || ROLE_GROUP_TITLE[section.roleGroup]) && (sectionIndex === 0 || list[sectionIndex - 1].roleGroup !== section.roleGroup) && list.some((other) => other.roleGroup && other.roleGroup !== section.roleGroup) && (
@@ -826,6 +882,7 @@ export default function Documents() {
         })}
       </div>
     </section>
+    {isStackedCase && (sectionIndex === list.length - 1 || list[sectionIndex + 1].roleGroup !== section.roleGroup) && renderActionBar(`bar-${section.roleGroup}`)}
     </Fragment>
   ));
 
@@ -947,7 +1004,7 @@ export default function Documents() {
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Documents</p>
               <h1 className="truncate font-serif text-base font-bold text-foreground sm:text-lg">
-                {visaType ? `${visaType} Checklist` : "Your Case Checklist"}
+                {visaType ? `${indianTimelineVisaName(visaType) || visaType} Checklist` : "Your Case Checklist"}
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-4">
@@ -970,7 +1027,7 @@ export default function Documents() {
                 type="button"
                 onClick={handleSaveProgress}
                 disabled={allRolesSubmitted || submitting || saveProgressState === "saving" || uploadsInFlightCount > 0}
-                className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
+                className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {saveProgressState === "saving" ? "Saving…" : "Save progress"}
               </button>
@@ -978,14 +1035,14 @@ export default function Documents() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={missingRequiredItemsForSubmit.length > 0 || allRolesSubmitted || submitting || uploadsInFlightCount > 0}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {allRolesSubmitted ? "Submitted" : submitting ? "Submitting…" : "Submit case"}
               </button>
             </div>
           </div>
 
-          {!useNewArchitecture && visibleChecklists.length > 1 && (
+          {!useNewArchitecture && !isStackedCase && visibleChecklists.length > 1 && (
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Checklist role">
               {visibleChecklists.map((item) => {
                 const isActive = activeRole === item.targetRole && (roleChecklistCount <= 1 || activeReferenceId === item.referenceId);
@@ -1150,7 +1207,18 @@ export default function Documents() {
             </div>
           )}
 
-          {renderSections(useNewArchitecture ? employerBusinessPlanSections : sections, useNewArchitecture ? employerSectionsLocked : submitted)}
+          {isStackedCase ? (
+            <div className="space-y-10">
+              {[...new Set(sections.map((section) => section.roleGroup))].map((group, groupIndex) => (
+                <div key={group} className={`space-y-8 rounded-3xl border p-5 sm:p-8 ${groupIndex % 2 === 0 ? "border-primary/25 bg-primary/10" : "border-border bg-secondary/60"}`}>
+                  <h2 className="text-xl font-bold text-primary">{sections.find((section) => section.roleGroup === group)?.groupTitle}</h2>
+                  {renderSections(sections.filter((section) => section.roleGroup === group), submitted)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            renderSections(useNewArchitecture ? employerBusinessPlanSections : sections, useNewArchitecture ? employerSectionsLocked : submitted)
+          )}
 
           {showHandoffJunction && activeEmployeeMode && (
             <section className="rounded-xl border border-border bg-card p-5">
@@ -1214,35 +1282,7 @@ export default function Documents() {
             />
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                {missingRequiredItemsForSubmit.length > 0 ? `${missingRequiredItemsForSubmit.length} item${missingRequiredItemsForSubmit.length === 1 ? "" : "s"} still to fill before you can submit` : "All required items complete"}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {allRolesSubmitted ? "This checklist is read-only after submission." : uploadsInFlightCount > 0 ? `Waiting on ${uploadsInFlightCount} upload${uploadsInFlightCount === 1 ? "" : "s"} to finish before you can save or submit.` : useNewArchitecture && showEmployer ? "Submitting locks the employer side for your case team's review. Save progress any time without submitting." : "Submitting locks this checklist for your case team's review. Save progress any time without submitting."}
-              </p>
-              {submitError && <p role="alert" className="mt-1.5 text-xs font-semibold text-destructive">{submitError}</p>}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveProgress}
-                disabled={allRolesSubmitted || submitting || saveProgressState === "saving" || uploadsInFlightCount > 0}
-                className="rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
-              >
-                {saveProgressState === "saving" ? "Saving…" : "Save progress"}
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={missingRequiredItemsForSubmit.length > 0 || allRolesSubmitted || submitting || uploadsInFlightCount > 0}
-                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
-              >
-                {allRolesSubmitted ? "Submitted" : submitting ? "Submitting…" : "Submit case"}
-              </button>
-            </div>
-          </div>
+          {!isStackedCase && renderActionBar("end")}
         </main>
       </div>
     </div>
