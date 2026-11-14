@@ -261,11 +261,25 @@ function tolerantVisaRegex(text) {
   return chars.length ? chars.join("[^a-zA-Z0-9]*") : String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Visa CATEGORY filter (Cases page): ?visaTypes=H-1B,L-1A,... lists the visa types of one category (employment, family, Indian timeline ...). Each name must match the stored visa type
+// as a whole (tolerant of separators, like tolerantVisaRegex), so "L-1A" never also catches another visa that merely contains it.
+function visaTypesList(query) {
+  const raw = Array.isArray(query.visaTypes) ? query.visaTypes.join(",") : typeof query.visaTypes === "string" ? query.visaTypes : "";
+  return [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))].slice(0, 300);
+}
+function visaTypesCondition(query) {
+  const list = visaTypesList(query);
+  if (!list.length) return null;
+  return { visaType: { $regex: `^(?:${list.map(tolerantVisaRegex).join("|")})$`, $options: "i" } };
+}
+
 function buildCaseFilterFields(query) {
   const filter = {};
   if (query.status) filter.status = query.status;
   if (query.visaType) filter.visaType = { $regex: tolerantVisaRegex(query.visaType), $options: "i" };
   if (query.visaCategory) filter.visaCategory = query.visaCategory;
+  const visaTypesMatch = visaTypesCondition(query);
+  if (visaTypesMatch) filter.$and = [...(filter.$and || []), visaTypesMatch];
   if (query.stage) filter.stage = query.stage;
   if (query.priority) filter.priority = query.priority;
   if (query.package) filter.package = query.package;
@@ -387,9 +401,11 @@ async function resolveStaffListFilter(query, user) {
   // The Status and Stage filters roll up the same way (2026-11-06): a matter is listed when it OR any of its employee / beneficiary cases matches.
   const statusFilter = typeof query.status === "string" ? query.status.trim() : "";
   const stageFilter = typeof query.stage === "string" ? query.stage.trim() : "";
-  if (exclude && !query.caseRole && (visaType || visaCategory || statusFilter || stageFilter)) {
-    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaCategory: undefined, status: undefined, stage: undefined }, user);
+  const visaTypesMatch = visaTypesCondition(query);
+  if (exclude && !query.caseRole && (visaType || visaTypesMatch || visaCategory || statusFilter || stageFilter)) {
+    const base = await resolveStaffListFilter({ ...query, visaType: undefined, visaTypes: undefined, visaCategory: undefined, status: undefined, stage: undefined }, user);
     const attrMatch = {};
+    if (visaTypesMatch) attrMatch.$and = [visaTypesMatch]; // the category: this case OR any of its employees / beneficiaries is of one of its visa types
     if (visaType) attrMatch.visaType = { $regex: tolerantVisaRegex(visaType), $options: "i" };
     if (visaCategory) attrMatch.visaCategory = visaCategory;
     if (statusFilter) attrMatch.status = statusFilter;

@@ -375,7 +375,8 @@ function CaseStatusStepper({ caseData, profileData, profileFields, user, display
   // The bar shows the same steps as the Tasks page (the case's lifecycle milestones); when the card reaches Submitted on the Pipeline, "Filed" completes and so
   // does everything before it (utils/milestones.js). Only if those milestones are not available does it fall back to the pipeline's own stages / the standard steps.
   const useMilestones = Array.isArray(milestones) && milestones.length > 0;
-  const ghlStages = !useMilestones && pipeline?.stages?.length ? pipeline.stages : null;
+  // The client never sees the GoHighLevel pipeline stages (an internal view for the team): without milestones the standard steps are shown, never the pipeline.
+  const ghlStages = null;
   const steps = useMilestones ? milestones.map((milestone) => milestone.label) : ghlStages ? ghlStages.map((stage) => stage.name) : CASE_STATUS_STEPS;
   const found = ghlStages ? ghlStages.findIndex((stage) => stage.key === pipeline.currentKey) : -1;
   const firstOpen = useMilestones ? milestones.findIndex((milestone) => !milestone.completed) : -1;

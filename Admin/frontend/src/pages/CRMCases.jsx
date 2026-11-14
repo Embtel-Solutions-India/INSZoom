@@ -82,6 +82,11 @@ const CRMCases = ({ caseGroup } = {}) => {
   const { options: visaOptions, registryTypes } = useVisaOptions()
   const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
   const [visaFilter, setVisaFilter] = useState('')
+  // Visa category (Employment based, Family based, Indian timeline cases ...): the groups of the visa list above. A case is listed when it, or any employee / beneficiary of its matter,
+  // has a visa of the chosen category (the API rolls it up the same way as the visa filter). The Visa type list then shows only that category's visas.
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const categoryOptions = [...new Set(groupedVisaOptions.map((opt) => opt.group).filter(Boolean))]
+  const visaTypeName = (opt) => opt?.canonicalLabel || opt?.label || opt?.value
   // Newest / Oldest: the API sorts by creation order (GET /cases sortOrder), so it holds across every page, not just the one on screen.
   const [sortOrder, setSortOrder] = useState('desc') // 'desc' = newest first, 'asc' = oldest first
   // Deep-link-only filters from the case manager analytics panel's
@@ -140,7 +145,7 @@ const CRMCases = ({ caseGroup } = {}) => {
 
   useEffect(() => {
     fetchCases()
-  }, [stageFilter, pipelineStageFilter, statusFilter, visaFilter, page, appliedSearch, sortOrder])
+  }, [stageFilter, pipelineStageFilter, statusFilter, visaFilter, categoryFilter, page, appliedSearch, sortOrder])
 
   // Search now happens server-side (the API already supported it) instead of
   // filtering only the current page's rows in the browser — debounced, and
@@ -239,6 +244,10 @@ const CRMCases = ({ caseGroup } = {}) => {
         const chosen = visaOptions.find((opt) => opt.value === visaFilter)
         params.visaType = chosen?.canonicalLabel || chosen?.label || visaFilter
       }
+      if (categoryFilter && !visaFilter) {
+        const names = groupedVisaOptions.filter((opt) => opt.group === categoryFilter).map(visaTypeName).filter((name) => name && !String(name).includes(','))
+        if (names.length) params.visaTypes = names.join(',')
+      }
       if (appliedSearch) params.search = appliedSearch
       params.sortOrder = sortOrder
       params.toneGroup = true // working cases first, then orange (PWD under process), then blue (filed / outcome), then red (on hold); the sort applies inside each group
@@ -286,6 +295,13 @@ const CRMCases = ({ caseGroup } = {}) => {
   const handleStatusFilter = (value) => {
     setPage(1)
     setStatusFilter(value)
+  }
+
+  const handleCategoryFilter = (value) => {
+    setPage(1)
+    setCategoryFilter(value)
+    // a visa chosen earlier that is not part of the new category no longer applies
+    if (value && visaFilter && visaOptions.find((opt) => opt.value === visaFilter) && groupedVisaOptions.find((opt) => opt.value === visaFilter)?.group !== value) setVisaFilter('')
   }
 
   const handleVisaFilter = (value) => {
@@ -534,44 +550,21 @@ const CRMCases = ({ caseGroup } = {}) => {
             ]}
           />
           <FilterSelect
-            value={statusFilter}
-            onChange={handleStatusFilter}
-            className="w-full sm:w-auto"
-            options={[
-              { value: '', label: 'All Status' },
-              { value: 'pending_assignment', label: 'Pending Assignment' },
-              { value: 'assigned', label: 'Assigned' },
-              { value: 'active', label: 'Active' },
-              { value: 'on_hold', label: 'On Hold' },
-              { value: 'document_collection', label: 'Document Collection' },
-              { value: 'questionnaire', label: 'Questionnaire' },
-              { value: 'form_preparation', label: 'Form Preparation' },
-              { value: 'in_review', label: 'In Review' },
-              { value: 'under_review', label: 'Under Review' },
-              { value: 'ready_to_file', label: 'Ready to File' },
-              { value: 'ready_for_filing', label: 'Ready for Filing' },
-              { value: 'filed', label: 'Filed' },
-              { value: 'pending_approval', label: 'Pending Approval' },
-              { value: 'processing', label: 'Processing' },
-              { value: 'rfe', label: 'RFE' },
-              { value: 'approved', label: 'Approved' },
-              { value: 'rejected', label: 'Rejected' },
-              { value: 'completed', label: 'Completed' },
-              { value: 'cancelled', label: 'Cancelled' },
-              { value: 'archived', label: 'Archived' },
-              { value: 'closed', label: 'Closed' },
-            ]}
+            value={categoryFilter}
+            onChange={handleCategoryFilter}
+            className="w-full sm:!w-44"
+            options={[{ value: '', label: 'All Visa Categories' }, ...categoryOptions.map((group) => ({ value: group, label: group }))]}
           />
           <WrappingSelect
             value={visaFilter}
             onChange={handleVisaFilter}
             className="w-full sm:w-64"
             ariaLabel="Visa type"
-            options={[{ value: '', label: 'All Visa Types' }, ...groupedVisaOptions]}
+            options={[{ value: '', label: 'All Visa Types' }, ...(categoryFilter ? groupedVisaOptions.filter((opt) => opt.group === categoryFilter) : groupedVisaOptions)]}
           />
         </FilterBar>
         {/* Newest / Oldest: two buttons side by side sharing the middle border, on the right just under the Stage / Status boxes */}
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
         <div className="inline-flex" role="group" aria-label="Sort cases by creation date">
           <button
             type="button"
