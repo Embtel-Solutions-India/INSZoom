@@ -54,6 +54,7 @@ const VISA_TYPE_OPTIONS = [
   { value: 'renunciation', label: 'Renunciation', canonicalLabel: 'RENUNCIATION' },
   { value: 'indianpassportrenewal', label: 'Indian Passport Renewal', canonicalLabel: 'INDIAN-PASSPORT-RENEWAL' },
   { value: 'usvisitorvisa', label: 'US Visitor Visa', canonicalLabel: 'US-VISITOR-VISA' },
+  { value: 'stamping', label: 'Stamping', canonicalLabel: 'STAMPING' },
   // I-485 is a single-person case type (the registry's "Adjustment of Status"): Green Card + I-864 checklists
   { value: 'adjustmentofstatus', label: 'I-485', canonicalLabel: 'Adjustment of Status' },
   { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },

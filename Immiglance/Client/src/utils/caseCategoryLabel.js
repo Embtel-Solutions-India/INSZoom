@@ -17,10 +17,11 @@ const INDIAN_TIMELINE_VISA_NAMES = {
   "INDIAN-E-TOURIST-VISA": "Indian E-Tourist Visa",
   "US-PASSPORT-MINOR": "US Passport Renewal",
   "US-VISITOR-VISA": "US Visitor Visa",
+  STAMPING: "Stamping",
 };
 
 // Indian Timeline visa types with NO subtype are created through the generic path, which stores the visa type itself as the category; they are recognised by their visa type.
-const INDIAN_TIMELINE_NO_SUBTYPE_TYPES = new Set(["US-VISITOR-VISA"]);
+const INDIAN_TIMELINE_NO_SUBTYPE_TYPES = new Set(["US-VISITOR-VISA", "STAMPING"]);
 
 // The readable name of an Indian Timeline visa type code (undefined for any other code).
 export const indianTimelineVisaName = (visaType) => INDIAN_TIMELINE_VISA_NAMES[visaType];

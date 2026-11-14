@@ -246,7 +246,7 @@ B.file(T5, "doc_bank_statements", "Copy of bank statements for last 3 months");
 B.file(T5, "doc_sponsor_us_status", "If the sponsor is in the USA, then provide proof of US Status (for e.g. green card, Citizenship certificate, I-797 Approval notice, etc)", { required: false });
 
 // =====================================================================================================================
-function buildDefinition({ key, title, order, description, sections, specs, prefix }) {
+function buildDefinition({ key, title, order, description, sections, specs, prefix, visaType = VISA_TYPE }) {
   const counters = new Map();
   const questions = specs.map((spec) => {
     const n = (counters.get(spec.section) || 0) + 1;
@@ -269,8 +269,8 @@ function buildDefinition({ key, title, order, description, sections, specs, pref
   });
   return {
     key, title, description, sections, questions,
-    visaType: VISA_TYPE,
-    visaTypes: [VISA_TYPE],
+    visaType,
+    visaTypes: [visaType],
     checklistRole: "client",
     isDefault: true, // assigned to every case of THIS visa type (and only to those): the same path GC-NVC / PERM use
     reconcileMetadata: true,
@@ -283,4 +283,4 @@ const buildI134Checklist = () => buildDefinition({ key: I134_KEY, title: I134_TI
 
 const US_VISITOR_VISA_DEFINITIONS = [buildApplicantChecklist(), buildI134Checklist()];
 
-module.exports = { VISA_TYPE, APPLICANT_KEY, I134_KEY, APPLICANT_TITLE, I134_TITLE, APPLICANT_SECTIONS, I134_SECTIONS, US_VISITOR_VISA_DEFINITIONS, buildApplicantChecklist, buildI134Checklist };
+module.exports = { buildDefinition, APPLICANT_SPECS: A.specs, VISA_TYPE, APPLICANT_KEY, I134_KEY, APPLICANT_TITLE, I134_TITLE, APPLICANT_SECTIONS, I134_SECTIONS, US_VISITOR_VISA_DEFINITIONS, buildApplicantChecklist, buildI134Checklist };
